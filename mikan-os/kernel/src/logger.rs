@@ -83,6 +83,11 @@ pub(crate) extern "sysv64" fn log_cpp(
     // `%` のあとであるかを管理する
     let mut arg_maybe_needed = false;
 
+    // 0 埋めの有無
+    let mut padding = false;
+
+    let mut digit = 0;
+
     // 最終的に表示する文字列
     let mut str = String::with_capacity(s.len());
     for c in s.chars() {
@@ -107,11 +112,53 @@ pub(crate) extern "sysv64" fn log_cpp(
                     str.push_str(s);
                 }
                 // 10進整数
-                'd' => str.push_str(&format!("{}", arg as i64)),
+                'd' => {
+                    if padding {
+                        if digit != 0 {
+                            str.push_str(&format!("{:0digit$}", arg as i64));
+                        } else {
+                            str.push_str(&format!("{:0}", arg as i64));
+                        }
+                    } else {
+                        if digit != 0 {
+                            str.push_str(&format!("{:digit$}", arg as i64));
+                        } else {
+                            str.push_str(&format!("{}", arg as i64));
+                        }
+                    }
+                }
                 // 16進整数
-                'x' => str.push_str(&format!("{:x}", arg)),
+                'x' => {
+                    if padding {
+                        if digit != 0 {
+                            str.push_str(&format!("{:0digit$x}", arg as i64));
+                        } else {
+                            str.push_str(&format!("{:0x}", arg as i64));
+                        }
+                    } else {
+                        if digit != 0 {
+                            str.push_str(&format!("{:digit$x}", arg as i64));
+                        } else {
+                            str.push_str(&format!("{:x}", arg as i64));
+                        }
+                    }
+                }
                 // 符号なし10進整数
-                'u' => str.push_str(&format!("{}", arg)),
+                'u' => {
+                    if padding {
+                        if digit != 0 {
+                            str.push_str(&format!("{:0digit$}", arg));
+                        } else {
+                            str.push_str(&format!("{:0}", arg));
+                        }
+                    } else {
+                        if digit != 0 {
+                            str.push_str(&format!("{:digit$}", arg));
+                        } else {
+                            str.push_str(&format!("{}", arg));
+                        }
+                    }
+                }
                 // 文字
                 'c' => str.push(arg as u8 as char),
                 // ポインタ
@@ -120,13 +167,24 @@ pub(crate) extern "sysv64" fn log_cpp(
                 '%' => {
                     arg_maybe_needed = false;
                     str.push('%');
-                    str.push(c);
+                    continue;
+                }
+                // C では long だが、Rust（特にこの実装）では関係ない
+                'l' => continue,
+                '0' => {
+                    padding = true;
+                    continue;
+                }
+                d @ '1'..='9' => {
+                    digit = digit * 10 + (d as u8 - 0x30) as usize;
                     continue;
                 }
                 // 非対応
                 _ => panic!("Unknown format specifier: %{}", c),
             }
             arg_maybe_needed = false;
+            padding = false;
+            digit = 0;
             num_read += 1;
         } else {
             if c == '%' {
