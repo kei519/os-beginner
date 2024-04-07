@@ -6,6 +6,132 @@ use core::{
     sync::atomic::{AtomicBool, AtomicIsize, Ordering::*},
 };
 
+/// スレッドセーフなら内部可変性を持つ構造体。
+///
+/// 1度に1つの排他参照しか作れない。
+pub(crate) struct Mutex<T> {
+    data: UnsafeCell<T>,
+    lock: AtomicBool,
+}
+
+unsafe impl<T: Send> Sync for Mutex<T> {}
+
+impl<T> Mutex<T> {
+    pub(crate) const fn new(value: T) -> Self {
+        Self {
+            data: UnsafeCell::new(value),
+            lock: AtomicBool::new(false),
+        }
+    }
+
+    pub(crate) fn lock(&self) -> MutexGuard<'_, T> {
+        while self.lock.swap(true, Acquire) {
+            spin_loop();
+        }
+
+        MutexGuard {
+            data: unsafe { &mut *self.data.get() },
+            lock: &self.lock,
+        }
+    }
+}
+
+/// 可変の static 変数として使える、実行時に初期化が可能な [Mutex]。
+///
+/// ただし、初期化していないアクセスは未定義動作を引き起こすので注意。
+pub(crate) struct OnceMutex<T> {
+    data: UnsafeCell<MaybeUninit<T>>,
+    lock: AtomicBool,
+    is_initialized: AtomicBool,
+}
+
+unsafe impl<T: Send> Sync for OnceMutex<T> {}
+
+impl<T> OnceMutex<T> {
+    pub(crate) const fn new() -> Self {
+        Self {
+            data: UnsafeCell::new(MaybeUninit::uninit()),
+            lock: AtomicBool::new(false),
+            is_initialized: AtomicBool::new(false),
+        }
+    }
+
+    pub(crate) const fn from_value(value: T) -> Self {
+        Self {
+            data: UnsafeCell::new(MaybeUninit::new(value)),
+            lock: AtomicBool::new(false),
+            is_initialized: AtomicBool::new(true),
+        }
+    }
+
+    pub(crate) fn is_initialized(&self) -> bool {
+        self.is_initialized.load(Relaxed)
+    }
+
+    pub(crate) fn init(&self, value: T) -> bool {
+        while self.lock.swap(true, Acquire) {
+            spin_loop();
+        }
+
+        let ret = if self.is_initialized() {
+            false
+        } else {
+            unsafe { (*self.data.get()).write(value) };
+            true
+        };
+
+        self.lock.store(false, Release);
+        ret
+    }
+
+    pub(crate) fn lock(&self) -> MutexGuard<'_, T> {
+        while self.lock.swap(true, Acquire) {
+            spin_loop();
+        }
+
+        MutexGuard {
+            data: unsafe { (*self.data.get()).assume_init_mut() },
+            lock: &self.lock,
+        }
+    }
+
+    pub(crate) fn lock_checked(&self) -> Option<MutexGuard<'_, T>> {
+        if self.is_initialized() {
+            Some(self.lock())
+        } else {
+            None
+        }
+    }
+}
+
+/// [Mutex]、[OnceMutex] のロック、間接参照を行う構造体。
+pub(crate) struct MutexGuard<'this, T> {
+    data: &'this mut T,
+    lock: &'this AtomicBool,
+}
+
+unsafe impl<T: Sync> Sync for MutexGuard<'_, T> {}
+
+impl<T> Deref for MutexGuard<'_, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.data
+    }
+}
+
+impl<T> DerefMut for MutexGuard<'_, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.data
+    }
+}
+
+impl<T> Drop for MutexGuard<'_, T> {
+    fn drop(&mut self) {
+        self.lock.store(false, Release);
+    }
+}
+
 /// [RwLock] 等が借用されていないときの `count` の値。
 const UNUSED: isize = 0;
 /// [RwLock] 等が共有参照される最大値。
