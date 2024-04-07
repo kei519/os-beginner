@@ -2,7 +2,7 @@
 
 use core::{
     fmt::{self, Write},
-    ptr::copy_nonoverlapping,
+    ptr::{copy_nonoverlapping, write},
 };
 
 use alloc::boxed::Box;
@@ -24,7 +24,7 @@ pub(crate) struct Console {
     /// 背景色。
     bg_color: &'static PixelColor,
     /// 画面に描画する文字列を保持しておくバッファ。
-    buffer: [[u8; COLUMN_NUM]; ROW_NUM],
+    buffer: Box<[u8]>,
     /// 次に描画を行う行。
     cursor_row: usize,
     /// 次に描画を行う列。
@@ -41,7 +41,7 @@ impl Console {
             writer,
             fg_color,
             bg_color,
-            buffer: [[0u8; COLUMN_NUM]; ROW_NUM],
+            buffer: Box::new([0; ROW_NUM * COLUMN_NUM]),
             cursor_row: 0,
             cursor_column: 0,
         }
@@ -58,7 +58,7 @@ impl Console {
                     c,
                     &self.fg_color,
                 );
-                self.buffer[self.cursor_row][self.cursor_column] = c;
+                self.buffer[self.cursor_row * COLUMN_NUM + self.cursor_column] = c;
                 self.cursor_column += 1;
             }
         }
@@ -83,19 +83,29 @@ impl Console {
             for row in 0..ROW_NUM - 1 {
                 unsafe {
                     copy_nonoverlapping(
-                        self.buffer[row + 1].as_ptr(),
-                        self.buffer[row].as_mut_ptr(),
+                        self.buffer.as_ptr().add((row + 1) * COLUMN_NUM),
+                        self.buffer.as_mut_ptr().add(row * COLUMN_NUM),
                         COLUMN_NUM,
                     );
                 }
                 write_string(
                     &mut **self.writer.lock(),
                     Vector2D::new(0, 16 * row as u32),
-                    &self.buffer[row],
+                    &self.buffer[row * COLUMN_NUM..(row + 1) * COLUMN_NUM],
                     &self.fg_color,
                 );
             }
-            self.buffer[ROW_NUM - 1] = [0u8; COLUMN_NUM];
+
+            for column in 0..COLUMN_NUM {
+                unsafe {
+                    write(
+                        self.buffer
+                            .as_mut_ptr()
+                            .add((ROW_NUM - 1) * COLUMN_NUM + column),
+                        0,
+                    );
+                }
+            }
         }
     }
 
