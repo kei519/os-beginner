@@ -193,6 +193,8 @@ fn kernel_entry(
         &PIXEL_WRITER,
         &DESKTOP_FG_COLOR,
         &DESKTOP_BG_COLOR,
+        (frame_buffer_config.vertical_resolution - 50) / 16,
+        frame_buffer_config.horizontal_resolution / 8,
     ));
 
     // welcome 文

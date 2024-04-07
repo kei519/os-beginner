@@ -5,16 +5,13 @@ use core::{
     ptr::{copy_nonoverlapping, write},
 };
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, vec::Vec};
 
 use crate::{
     font::{write_ascii, write_string},
     graphics::{PixelColor, PixelWriter, Vector2D},
     sync::OnceMutex,
 };
-
-const ROW_NUM: usize = 25;
-const COLUMN_NUM: usize = 80;
 
 pub(crate) struct Console {
     /// ピクセル描画用。
@@ -29,6 +26,10 @@ pub(crate) struct Console {
     cursor_row: usize,
     /// 次に描画を行う列。
     cursor_column: usize,
+    /// 行のサイズ。
+    row_num: usize,
+    /// 列のサイズ。
+    column_num: usize,
 }
 
 impl Console {
@@ -36,14 +37,20 @@ impl Console {
         writer: &'static OnceMutex<Box<dyn PixelWriter + Send>>,
         fg_color: &'static PixelColor,
         bg_color: &'static PixelColor,
+        row_num: usize,
+        column_num: usize,
     ) -> Self {
+        let mut buf = Box::new(Vec::with_capacity(row_num * column_num));
+        buf.resize(row_num * column_num, 0u8);
         Self {
             writer,
             fg_color,
             bg_color,
-            buffer: Box::new([0; ROW_NUM * COLUMN_NUM]),
+            buffer: buf.into_boxed_slice(),
             cursor_row: 0,
             cursor_column: 0,
+            row_num,
+            column_num,
         }
     }
 
@@ -51,14 +58,14 @@ impl Console {
         for &c in s {
             if c == b'\n' {
                 self.new_line();
-            } else if (self.cursor_column < COLUMN_NUM) {
+            } else if (self.cursor_column < self.column_num) {
                 write_ascii(
                     &mut **self.writer.lock(),
                     Vector2D::new(8 * self.cursor_column as u32, 16 * self.cursor_row as u32),
                     c,
                     &self.fg_color,
                 );
-                self.buffer[self.cursor_row * COLUMN_NUM + self.cursor_column] = c;
+                self.buffer[self.cursor_row * self.column_num + self.cursor_column] = c;
                 self.cursor_column += 1;
             }
         }
@@ -67,12 +74,12 @@ impl Console {
     pub(crate) fn new_line(&mut self) {
         self.cursor_column = 0;
 
-        if self.cursor_row < ROW_NUM - 1 {
+        if self.cursor_row < self.row_num - 1 {
             self.cursor_row += 1;
         } else {
             // 背景の描画
-            for y in 0..16 * ROW_NUM {
-                for x in 0..8 * COLUMN_NUM {
+            for y in 0..16 * self.row_num {
+                for x in 0..8 * self.column_num {
                     self.writer
                         .lock()
                         .write(Vector2D::new(x as u32, y as u32), &self.bg_color);
@@ -80,28 +87,28 @@ impl Console {
             }
 
             // バッファの移動と描画
-            for row in 0..ROW_NUM - 1 {
+            for row in 0..self.row_num - 1 {
                 unsafe {
                     copy_nonoverlapping(
-                        self.buffer.as_ptr().add((row + 1) * COLUMN_NUM),
-                        self.buffer.as_mut_ptr().add(row * COLUMN_NUM),
-                        COLUMN_NUM,
+                        self.buffer.as_ptr().add((row + 1) * self.column_num),
+                        self.buffer.as_mut_ptr().add(row * self.column_num),
+                        self.column_num,
                     );
                 }
                 write_string(
                     &mut **self.writer.lock(),
                     Vector2D::new(0, 16 * row as u32),
-                    &self.buffer[row * COLUMN_NUM..(row + 1) * COLUMN_NUM],
+                    &self.buffer[row * self.column_num..(row + 1) * self.column_num],
                     &self.fg_color,
                 );
             }
 
-            for column in 0..COLUMN_NUM {
+            for column in 0..self.column_num {
                 unsafe {
                     write(
                         self.buffer
                             .as_mut_ptr()
-                            .add((ROW_NUM - 1) * COLUMN_NUM + column),
+                            .add((self.row_num - 1) * self.column_num + column),
                         0,
                     );
                 }
@@ -122,12 +129,12 @@ impl Write for Console {
         }
 
         let s = s.as_bytes();
-        let lines = (s.len() + COLUMN_NUM - 1) / COLUMN_NUM;
+        let lines = (s.len() + self.column_num - 1) / self.column_num;
         for i in 0..lines {
             if i == lines - 1 {
-                self.put_string(&s[COLUMN_NUM * i..s.len()]);
+                self.put_string(&s[self.column_num * i..s.len()]);
             } else {
-                self.put_string(&s[COLUMN_NUM * i..COLUMN_NUM * (i + 1)]);
+                self.put_string(&s[self.column_num * i..self.column_num * (i + 1)]);
             }
         }
         Ok(())
