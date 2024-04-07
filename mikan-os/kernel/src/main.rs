@@ -34,7 +34,7 @@ use graphics::{
 use interrupt::{notify_end_of_interrupt, InterruptFrame, Message};
 use mouse::MouseCursor;
 use pci::Device;
-use sync::{OnceRwLock, RwLock};
+use sync::{Mutex, OnceMutex};
 use uefi::table::boot::MemoryMap;
 
 use crate::{
@@ -62,7 +62,7 @@ impl KernelStack {
 static KERNEL_MAIN_STACK: KernelStack = KernelStack::new();
 
 /// ピクセル描画を担う。
-static PIXEL_WRITER: OnceRwLock<Box<dyn PixelWriter + Send>> = OnceRwLock::new();
+static PIXEL_WRITER: OnceMutex<Box<dyn PixelWriter + Send>> = OnceMutex::new();
 
 /// デスクトップ背景の色
 const DESKTOP_BG_COLOR: PixelColor = PixelColor::new(45, 118, 237);
@@ -70,17 +70,17 @@ const DESKTOP_BG_COLOR: PixelColor = PixelColor::new(45, 118, 237);
 const DESKTOP_FG_COLOR: PixelColor = PixelColor::new(255, 255, 255);
 
 /// コンソール処理を担う。
-static CONSOLE: OnceRwLock<Console> = OnceRwLock::new();
+static CONSOLE: OnceMutex<Console> = OnceMutex::new();
 
-static IDT: RwLock<[InterruptDescriptor; 256]> =
-    RwLock::new([InterruptDescriptor::const_default(); 256]);
+static IDT: Mutex<[InterruptDescriptor; 256]> =
+    Mutex::new([InterruptDescriptor::const_default(); 256]);
 
 #[macro_export]
 macro_rules! printk {
     ($($arg:tt)*) => {
         {
             use core::fmt::Write;
-            write!($crate::CONSOLE.write(), $($arg)*).unwrap();
+            write!($crate::CONSOLE.lock(), $($arg)*).unwrap();
         }
     };
 }
@@ -91,11 +91,11 @@ macro_rules! printkln {
     ($($arg:tt)*) => ($crate::printk!("{}\n", format_args!($($arg)*)));
 }
 
-static MOUSE_CURSOR: OnceRwLock<MouseCursor> = OnceRwLock::new();
+static MOUSE_CURSOR: OnceMutex<MouseCursor> = OnceMutex::new();
 
 fn mouse_observer(displacement_x: i8, displacement_y: i8) {
     MOUSE_CURSOR
-        .write()
+        .lock()
         .move_relative(Vector2D::new(displacement_x as u32, displacement_y as u32));
 }
 
@@ -124,14 +124,14 @@ fn switch_ehci2xhci(xhc_dev: &Device) {
     );
 }
 
-static XHC: OnceRwLock<Controller> = OnceRwLock::new();
+static XHC: OnceMutex<Controller> = OnceMutex::new();
 
-static MAIN_QUEUE: RwLock<VecDeque<Message>> = RwLock::new(VecDeque::new());
+static MAIN_QUEUE: Mutex<VecDeque<Message>> = Mutex::new(VecDeque::new());
 
 #[custom_attribute::interrupt]
 fn int_handler_xhci(_frame: &InterruptFrame) {
     MAIN_QUEUE
-        .write()
+        .lock()
         .push_back(Message::new(MessageType::InteruptXHCI));
     notify_end_of_interrupt();
 }
@@ -159,7 +159,7 @@ fn kernel_entry(
     PIXEL_WRITER.init(pixel_writer);
 
     {
-        let mut pixel_writer = PIXEL_WRITER.write();
+        let mut pixel_writer = PIXEL_WRITER.lock();
         let frame_width = pixel_writer.config().horizontal_resolution as u32;
         let frame_height = pixel_writer.config().vertical_resolution as u32;
 
@@ -269,7 +269,7 @@ fn kernel_entry(
 
     let cs = get_cs();
     {
-        let mut idt = IDT.write();
+        let mut idt = IDT.lock();
         idt[InterruptVector::XHCI as usize].set_idt_entry(
             InterruptDescriptorAttribute::new(
                 x86_descriptor::SystemSegmentType::InterruptGate,
@@ -320,7 +320,7 @@ fn kernel_entry(
     HIDMouseDriver::set_default_observer(mouse_observer);
 
     {
-        let mut xhc = XHC.write();
+        let mut xhc = XHC.lock();
 
         for i in 1..=xhc.max_ports() {
             let mut port = xhc.port_at(i);
@@ -343,7 +343,7 @@ fn kernel_entry(
     loop {
         cli();
         let msg = {
-            let mut main_queue = MAIN_QUEUE.write();
+            let mut main_queue = MAIN_QUEUE.lock();
 
             if main_queue.len() == 0 {
                 // 待機中ロックがかかったままになるため、明示的にドロップしておく
@@ -359,7 +359,7 @@ fn kernel_entry(
 
         match msg.r#type() {
             MessageType::InteruptXHCI => {
-                let mut xhc = XHC.write();
+                let mut xhc = XHC.lock();
                 while xhc.primary_event_ring().has_front() {
                     if let Err(err) = xhc.process_event() {
                         log!(LogLevel::Error, "Error while process_evnet: {}", err);
@@ -373,7 +373,7 @@ fn kernel_entry(
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     // 前の改行の有無をチェックし、なければ改行を追加する
-    if !CONSOLE.read().is_head() {
+    if !CONSOLE.lock().is_head() {
         printkln!();
     }
     printkln!("{}", info);

@@ -6,7 +6,11 @@ use core::{
 
 use uefi::table::boot::MemoryMap;
 
-use crate::{bitfield::BitField, memory_map, sync::RwLock};
+use crate::{
+    bitfield::BitField,
+    memory_map,
+    sync::{Mutex, RwLock},
+};
 
 /// グローバルアロケータ。
 #[global_allocator]
@@ -64,23 +68,23 @@ const UEFI_PAGE_SIZE: usize = 4 * KIB;
 /// ビットを使ってメモリの使用可能領域を管理する構造体。
 pub(crate) struct BitmapMemoryManager {
     /// フレームが使用可能かどうかを保持しておく。
-    alloc_map: RwLock<[MapLineType; FRAME_COUNT / BITS_PER_MAP_LINE]>,
+    alloc_map: Mutex<[MapLineType; FRAME_COUNT / BITS_PER_MAP_LINE]>,
     /// 使用可能領域の最初のフレーム。
     range_begin: RwLock<FrameId>,
     /// 使用可能領域の最後のフレーム。
     range_end: RwLock<FrameId>,
     /// ロック。
-    lock: RwLock<()>,
+    locker: Mutex<()>,
 }
 
 impl BitmapMemoryManager {
     /// [BitmapMemoryManager] を作る。
     const fn new() -> Self {
         Self {
-            alloc_map: RwLock::new([0; FRAME_COUNT / BITS_PER_MAP_LINE]),
+            alloc_map: Mutex::new([0; FRAME_COUNT / BITS_PER_MAP_LINE]),
             range_begin: RwLock::new(FrameId::new(0)),
             range_end: RwLock::new(FrameId::new(0)),
-            lock: RwLock::new(()),
+            locker: Mutex::new(()),
         }
     }
 
@@ -91,7 +95,7 @@ impl BitmapMemoryManager {
     /// * `kernel_size` - 展開されたカーネルのサイズ。
     pub(crate) fn init(&self, memory_map: &MemoryMap, kernel_base: usize, kernel_size: usize) {
         // 同時に初期化されないようにロックを取得
-        let _lock = self.lock.write();
+        let _lock = self.locker.lock();
 
         // 使用可能領域の最初が 0 でない場合は初期化済み
         if self.range_begin.read().id() != 0 {
@@ -136,7 +140,7 @@ impl BitmapMemoryManager {
         let line_index = frame.id() / BITS_PER_MAP_LINE;
         let bit_index = frame.id() % BITS_PER_MAP_LINE;
 
-        self.alloc_map.read()[line_index].get_bit(bit_index as u32)
+        self.alloc_map.lock()[line_index].get_bit(bit_index as u32)
     }
 
     /// 指定されたフレームが割り当て済みかどうかを変更する。
@@ -147,7 +151,7 @@ impl BitmapMemoryManager {
         let line_index = frame.id() / BITS_PER_MAP_LINE;
         let bit_index = frame.id() % BITS_PER_MAP_LINE;
 
-        let mut map = self.alloc_map.write();
+        let mut map = self.alloc_map.lock();
         map[line_index].set_bit(bit_index as u32, allocated);
     }
 
@@ -162,7 +166,7 @@ impl BitmapMemoryManager {
         let mut line_index = frame.id() / BITS_PER_MAP_LINE;
         let mut bit_index = frame.id() % BITS_PER_MAP_LINE;
 
-        let mut map = self.alloc_map.write();
+        let mut map = self.alloc_map.lock();
         while num_frames > 0 {
             if bit_index + num_frames > BITS_PER_MAP_LINE {
                 map[line_index].set_bits(bit_index as u32..BITS_PER_MAP_LINE as u32, allocated);
@@ -183,7 +187,7 @@ unsafe impl GlobalAlloc for BitmapMemoryManager {
         // 他のスレッドが同時に空き領域を探して、
         // 空いていた領域を同時に割り当てないようにするため、
         // ロックを取得
-        let _lock = self.lock.write();
+        let _lock = self.locker.lock();
 
         let num_frames = get_num_frames(layout.size());
 

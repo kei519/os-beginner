@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 
 use crate::{
     graphics::{PixelColor, PixelWriter, Vector2D},
-    sync::OnceRwLock,
+    sync::OnceMutex,
 };
 
 /// マウスカーソルの横幅
@@ -38,14 +38,14 @@ const MOUSE_CURSOR_SHAPE: [&[u8; MOUSE_CURSOR_WIDTH]; MOUSE_CURSOR_HEIGHT] = [
 ];
 
 pub(crate) struct MouseCursor {
-    pixel_writer: &'static OnceRwLock<Box<dyn PixelWriter + Send>>,
+    pixel_writer: &'static OnceMutex<Box<dyn PixelWriter + Send>>,
     erase_color: PixelColor,
     position: Vector2D<u32>,
 }
 
 impl MouseCursor {
     pub(crate) fn new(
-        writer: &'static OnceRwLock<Box<dyn PixelWriter + Send>>,
+        writer: &'static OnceMutex<Box<dyn PixelWriter + Send>>,
         erase_color: PixelColor,
         initial_position: Vector2D<u32>,
     ) -> Self {
@@ -68,12 +68,12 @@ impl MouseCursor {
         for dy in 0..MOUSE_CURSOR_HEIGHT {
             for dx in 0..MOUSE_CURSOR_WIDTH {
                 if MOUSE_CURSOR_SHAPE[dy][dx] == b'@' {
-                    self.pixel_writer.write().write(
+                    self.pixel_writer.lock().write(
                         self.position + Vector2D::new(dx as u32, dy as u32),
                         &PixelColor::new(0, 0, 0),
                     );
                 } else if MOUSE_CURSOR_SHAPE[dy][dx] == b'.' {
-                    self.pixel_writer.write().write(
+                    self.pixel_writer.lock().write(
                         self.position + Vector2D::new(dx as u32, dy as u32),
                         &PixelColor::new(255, 255, 255),
                     );
@@ -86,7 +86,7 @@ impl MouseCursor {
         for dy in 0..MOUSE_CURSOR_HEIGHT {
             for dx in 0..MOUSE_CURSOR_WIDTH {
                 if MOUSE_CURSOR_SHAPE[dy][dx] != b' ' {
-                    self.pixel_writer.write().write(
+                    self.pixel_writer.lock().write(
                         self.position + Vector2D::new(dx as u32, dy as u32),
                         &self.erase_color,
                     )

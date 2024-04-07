@@ -10,7 +10,7 @@ use alloc::boxed::Box;
 use crate::{
     font::{write_ascii, write_string},
     graphics::{PixelColor, PixelWriter, Vector2D},
-    sync::OnceRwLock,
+    sync::OnceMutex,
 };
 
 const ROW_NUM: usize = 25;
@@ -18,7 +18,7 @@ const COLUMN_NUM: usize = 80;
 
 pub(crate) struct Console {
     /// ピクセル描画用。
-    writer: &'static OnceRwLock<Box<dyn PixelWriter + Send>>,
+    writer: &'static OnceMutex<Box<dyn PixelWriter + Send>>,
     /// 前面色。
     fg_color: &'static PixelColor,
     /// 背景色。
@@ -33,7 +33,7 @@ pub(crate) struct Console {
 
 impl Console {
     pub(crate) fn new(
-        writer: &'static OnceRwLock<Box<dyn PixelWriter + Send>>,
+        writer: &'static OnceMutex<Box<dyn PixelWriter + Send>>,
         fg_color: &'static PixelColor,
         bg_color: &'static PixelColor,
     ) -> Self {
@@ -53,7 +53,7 @@ impl Console {
                 self.new_line();
             } else if (self.cursor_column < COLUMN_NUM) {
                 write_ascii(
-                    &mut **self.writer.write(),
+                    &mut **self.writer.lock(),
                     Vector2D::new(8 * self.cursor_column as u32, 16 * self.cursor_row as u32),
                     c,
                     &self.fg_color,
@@ -74,7 +74,7 @@ impl Console {
             for y in 0..16 * ROW_NUM {
                 for x in 0..8 * COLUMN_NUM {
                     self.writer
-                        .write()
+                        .lock()
                         .write(Vector2D::new(x as u32, y as u32), &self.bg_color);
                 }
             }
@@ -89,7 +89,7 @@ impl Console {
                     );
                 }
                 write_string(
-                    &mut **self.writer.write(),
+                    &mut **self.writer.lock(),
                     Vector2D::new(0, 16 * row as u32),
                     &self.buffer[row],
                     &self.fg_color,

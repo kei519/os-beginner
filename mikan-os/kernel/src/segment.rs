@@ -3,14 +3,14 @@ use core::mem::size_of;
 use crate::{
     asmfunc::load_gdt,
     bitfield::BitField,
-    sync::RwLock,
+    sync::Mutex,
     x86_descriptor::{DescriptorType, DescriptorTypeEnum, SystemSegmentType},
 };
 
-static GDT: RwLock<[SegmentDescriptor; 3]> = RwLock::new([SegmentDescriptor::default(); 3]);
+static GDT: Mutex<[SegmentDescriptor; 3]> = Mutex::new([SegmentDescriptor::default(); 3]);
 
 pub(crate) fn setup_segments() {
-    let mut gdt = GDT.write();
+    let mut gdt = GDT.lock();
     gdt[1] = SegmentDescriptor::code_segment(0, 0xfffff, false, true, false, 0);
     gdt[2] = SegmentDescriptor::data_segment(0, 0xfffff, false, true, true, 0);
     load_gdt(
