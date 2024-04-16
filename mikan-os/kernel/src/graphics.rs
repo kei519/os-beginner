@@ -7,7 +7,7 @@ use core::{
 
 use crate::frame_buffer_config::FrameBufferConfig;
 
-#[derive(PartialEq, Eq, Clone, Default)]
+#[derive(PartialEq, Eq, Clone, Default, Copy)]
 pub struct PixelColor {
     r: u8,
     g: u8,

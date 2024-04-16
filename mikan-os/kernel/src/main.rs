@@ -21,6 +21,7 @@ mod pci;
 mod segment;
 mod sync;
 mod usb;
+mod window;
 mod x86_descriptor;
 
 use alloc::{boxed::Box, collections::VecDeque};
