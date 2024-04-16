@@ -160,8 +160,8 @@ fn kernel_entry(
 
     {
         let mut pixel_writer = PIXEL_WRITER.lock();
-        let frame_width = pixel_writer.config().horizontal_resolution as u32;
-        let frame_height = pixel_writer.config().vertical_resolution as u32;
+        let frame_width = pixel_writer.horizontal_resolution() as u32;
+        let frame_height = pixel_writer.vertical_resolution() as u32;
 
         // デスクトップ背景の描画
         pixel_writer.fill_rectangle(

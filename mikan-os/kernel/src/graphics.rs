@@ -7,7 +7,7 @@ use core::{
 
 use crate::frame_buffer_config::FrameBufferConfig;
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone, Default)]
 pub struct PixelColor {
     r: u8,
     g: u8,
@@ -35,20 +35,18 @@ impl PixelColor {
 pub(crate) trait PixelWriter {
     /// ピクセルを塗る手段を提供する。
     fn write(&mut self, pos: Vector2D<u32>, color: &PixelColor);
-    /// フレームバッファの情報を提供する。
-    fn config(&self) -> &FrameBufferConfig;
 
-    /// ピクセルの位置から、そのピクセルを塗るための配列を提供する。
-    fn pixel_at(&mut self, pos: Vector2D<u32>) -> &mut [u8] {
-        unsafe {
-            slice::from_raw_parts_mut(
-                (self.config().frame_buffer
-                    + 4 * (self.config().pixels_per_scan_line * pos.y as usize + pos.x as usize))
-                    as *mut u8,
-                3,
-            )
-        }
-    }
+    /// フレームバッファの先頭アドレスを表す。
+    fn frame_buffer(&self) -> usize;
+
+    /// 1行あたりのピクセル数を表す。
+    fn pixels_per_scan_line(&self) -> usize;
+
+    /// 横方向の解像度を表す。
+    fn horizontal_resolution(&self) -> usize;
+
+    /// 縦方向の解像度を表す。
+    fn vertical_resolution(&self) -> usize;
 
     /// 長方形の枠を指定された色で塗る。
     fn draw_rectangle(&mut self, pos: Vector2D<u32>, size: Vector2D<u32>, c: &PixelColor) {
@@ -84,6 +82,19 @@ impl RgbResv8BitPerColorPixelWriter {
     pub(crate) fn new(config: FrameBufferConfig) -> Self {
         Self { config }
     }
+
+    fn pixel_at(&mut self, pos: Vector2D<u32>) -> &mut [u8; 3] {
+        unsafe {
+            slice::from_raw_parts_mut(
+                (self.frame_buffer()
+                    + 4 * (self.pixels_per_scan_line() * pos.y as usize + pos.x as usize))
+                    as *mut u8,
+                3,
+            )
+            .try_into()
+            .unwrap()
+        }
+    }
 }
 
 impl PixelWriter for RgbResv8BitPerColorPixelWriter {
@@ -94,8 +105,20 @@ impl PixelWriter for RgbResv8BitPerColorPixelWriter {
         pixel[2] = color.b;
     }
 
-    fn config(&self) -> &FrameBufferConfig {
-        &self.config
+    fn frame_buffer(&self) -> usize {
+        self.config.frame_buffer
+    }
+
+    fn pixels_per_scan_line(&self) -> usize {
+        self.config.pixels_per_scan_line
+    }
+
+    fn horizontal_resolution(&self) -> usize {
+        self.config.horizontal_resolution
+    }
+
+    fn vertical_resolution(&self) -> usize {
+        self.config.vertical_resolution
     }
 }
 
@@ -109,6 +132,19 @@ impl BgrResv8BitPerColorPixelWriter {
     pub(crate) fn new(config: FrameBufferConfig) -> Self {
         Self { config }
     }
+
+    fn pixel_at(&mut self, pos: Vector2D<u32>) -> &mut [u8; 3] {
+        unsafe {
+            slice::from_raw_parts_mut(
+                (self.frame_buffer()
+                    + 4 * (self.pixels_per_scan_line() * pos.y as usize + pos.x as usize))
+                    as *mut u8,
+                3,
+            )
+        }
+        .try_into()
+        .unwrap()
+    }
 }
 
 impl PixelWriter for BgrResv8BitPerColorPixelWriter {
@@ -119,8 +155,20 @@ impl PixelWriter for BgrResv8BitPerColorPixelWriter {
         pixel[2] = color.r;
     }
 
-    fn config(&self) -> &FrameBufferConfig {
-        &self.config
+    fn frame_buffer(&self) -> usize {
+        self.config.frame_buffer
+    }
+
+    fn pixels_per_scan_line(&self) -> usize {
+        self.config.pixels_per_scan_line
+    }
+
+    fn horizontal_resolution(&self) -> usize {
+        self.config.horizontal_resolution
+    }
+
+    fn vertical_resolution(&self) -> usize {
+        self.config.vertical_resolution
     }
 }
 
