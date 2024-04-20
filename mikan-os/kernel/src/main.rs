@@ -12,6 +12,7 @@ mod font_data;
 mod frame_buffer_config;
 mod graphics;
 mod interrupt;
+mod layer;
 mod logger;
 mod memory_manager;
 mod memory_map;
@@ -26,13 +27,19 @@ mod x86_descriptor;
 
 use alloc::{boxed::Box, collections::VecDeque};
 use console::Console;
-use core::{arch::asm, mem::size_of, panic::PanicInfo};
+use core::{
+    arch::asm,
+    mem::size_of,
+    panic::PanicInfo,
+    sync::atomic::{AtomicU32, Ordering},
+};
 use frame_buffer_config::{FrameBufferConfig, PixelFormat};
 use graphics::{
     BgrResv8BitPerColorPixelWriter, PixelColor, PixelWriter, RgbResv8BitPerColorPixelWriter,
     Vector2D,
 };
 use interrupt::{notify_end_of_interrupt, InterruptFrame, Message};
+use layer::LayerManager;
 use mouse::MouseCursor;
 use pci::Device;
 use sync::{Mutex, OnceMutex};
@@ -41,9 +48,12 @@ use uefi::table::boot::MemoryMap;
 use crate::{
     asmfunc::{cli, get_cs, load_idt, set_cs_ss, set_ds_all, sti, sti_hlt},
     bitfield::BitField,
+    graphics::draw_desktop,
     interrupt::{InterruptDescriptor, InterruptDescriptorAttribute, InterruptVector, MessageType},
     logger::{set_log_level, LogLevel},
+    mouse::{MOUSE_CURSOR_HEIGHT, MOUSE_CURSOR_WIDTH, MOUSE_TRANSPARENT_COLOR},
     usb::{Controller, HIDMouseDriver},
+    window::Window,
 };
 
 /// カーネル用スタック
@@ -73,6 +83,8 @@ const DESKTOP_FG_COLOR: PixelColor = PixelColor::new(255, 255, 255);
 /// コンソール処理を担う。
 static CONSOLE: OnceMutex<Console> = OnceMutex::new();
 
+static LAYER_MANAGER: OnceMutex<LayerManager> = OnceMutex::new();
+
 static IDT: Mutex<[InterruptDescriptor; 256]> =
     Mutex::new([InterruptDescriptor::const_default(); 256]);
 
@@ -93,11 +105,15 @@ macro_rules! printkln {
 }
 
 static MOUSE_CURSOR: OnceMutex<MouseCursor> = OnceMutex::new();
+static MOUSE_LAYER_ID: AtomicU32 = AtomicU32::new(0);
 
 fn mouse_observer(displacement_x: i8, displacement_y: i8) {
-    MOUSE_CURSOR
-        .lock()
+    let mut layer_maneger = LAYER_MANAGER.lock();
+    let layer_id = MOUSE_LAYER_ID.load(Ordering::Acquire);
+    layer_maneger
+        .layer(layer_id)
         .move_relative(Vector2D::new(displacement_x as u32, displacement_y as u32));
+    layer_maneger.draw();
 }
 
 fn switch_ehci2xhci(xhc_dev: &Device) {
@@ -159,36 +175,8 @@ fn kernel_entry(
     };
     PIXEL_WRITER.init(pixel_writer);
 
-    {
-        let mut pixel_writer = PIXEL_WRITER.lock();
-        let frame_width = pixel_writer.horizontal_resolution() as u32;
-        let frame_height = pixel_writer.vertical_resolution() as u32;
+    draw_desktop(&mut **PIXEL_WRITER.lock());
 
-        // デスクトップ背景の描画
-        pixel_writer.fill_rectangle(
-            Vector2D::new(0, 0),
-            Vector2D::new(frame_width, frame_height - 50),
-            &DESKTOP_BG_COLOR,
-        );
-        // タスクバーの表示
-        pixel_writer.fill_rectangle(
-            Vector2D::new(0, frame_height - 50),
-            Vector2D::new(frame_width, 50),
-            &PixelColor::new(1, 8, 17),
-        );
-        // （多分）Windows の検索窓
-        pixel_writer.fill_rectangle(
-            Vector2D::new(0, frame_height - 50),
-            Vector2D::new(frame_width / 5, 50),
-            &PixelColor::new(80, 80, 80),
-        );
-        // （多分）Windows のスタートボタン
-        pixel_writer.fill_rectangle(
-            Vector2D::new(10, frame_height - 40),
-            Vector2D::new(30, 30),
-            &PixelColor::new(160, 160, 160),
-        );
-    }
     // コンソールの生成
     CONSOLE.init(Console::new(
         &PIXEL_WRITER,
@@ -341,6 +329,34 @@ fn kernel_entry(
                 }
             }
         }
+    }
+
+    LAYER_MANAGER.init(LayerManager::new(&PIXEL_WRITER));
+
+    {
+        let mut layer_manager = LAYER_MANAGER.lock();
+        let frame_width = frame_buffer_config.horizontal_resolution as u32;
+        let framw_height = frame_buffer_config.vertical_resolution as u32;
+
+        let bgwindow = Window::new(frame_width, framw_height);
+        let bglayer_id = layer_manager.new_layer(bgwindow);
+        draw_desktop(layer_manager.layer(bglayer_id).widow());
+        CONSOLE.lock().set_layer(bglayer_id);
+
+        let mut mouse_window = Window::new(MOUSE_CURSOR_WIDTH as u32, MOUSE_CURSOR_HEIGHT as u32);
+        mouse_window.set_transparent_color(Some(MOUSE_TRANSPARENT_COLOR));
+        mouse::draw_mouse_cursor(&mut mouse_window, &Vector2D::new(0, 0));
+        let mouse_layer_id = layer_manager.new_layer(mouse_window);
+
+        layer_manager.layer(bglayer_id).r#move(Vector2D::new(0, 0));
+        layer_manager
+            .layer(mouse_layer_id)
+            .move_relative(Vector2D::new(200, 200));
+
+        layer_manager.up_down(bglayer_id, 0);
+        layer_manager.up_down(mouse_layer_id, 1);
+        layer_manager.draw();
+        MOUSE_LAYER_ID.store(mouse_layer_id, Ordering::Release);
     }
 
     loop {
