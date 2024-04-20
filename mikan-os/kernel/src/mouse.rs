@@ -6,9 +6,11 @@ use crate::{
 };
 
 /// マウスカーソルの横幅
-const MOUSE_CURSOR_WIDTH: usize = 15;
+pub(crate) const MOUSE_CURSOR_WIDTH: usize = 15;
 /// マウスカーソルの高さ
-const MOUSE_CURSOR_HEIGHT: usize = 24;
+pub(crate) const MOUSE_CURSOR_HEIGHT: usize = 24;
+/// マウスの透明色
+pub(crate) const MOUSE_TRANSPARENT_COLOR: PixelColor = PixelColor::new(0, 0, 1);
 /// マウスカーソルの形
 const MOUSE_CURSOR_SHAPE: [&[u8; MOUSE_CURSOR_WIDTH]; MOUSE_CURSOR_HEIGHT] = [
     b"@              ",
@@ -65,21 +67,7 @@ impl MouseCursor {
     }
 
     fn draw_mouse_cursor(&mut self) {
-        for dy in 0..MOUSE_CURSOR_HEIGHT {
-            for dx in 0..MOUSE_CURSOR_WIDTH {
-                if MOUSE_CURSOR_SHAPE[dy][dx] == b'@' {
-                    self.pixel_writer.lock().write(
-                        self.position + Vector2D::new(dx as u32, dy as u32),
-                        &PixelColor::new(0, 0, 0),
-                    );
-                } else if MOUSE_CURSOR_SHAPE[dy][dx] == b'.' {
-                    self.pixel_writer.lock().write(
-                        self.position + Vector2D::new(dx as u32, dy as u32),
-                        &PixelColor::new(255, 255, 255),
-                    );
-                }
-            }
-        }
+        draw_mouse_cursor(&mut **self.pixel_writer.lock(), &self.position)
     }
 
     fn erase_mouse_cursor(&mut self) {
@@ -91,6 +79,21 @@ impl MouseCursor {
                         &self.erase_color,
                     )
                 }
+            }
+        }
+    }
+}
+
+pub(crate) fn draw_mouse_cursor(writer: &mut dyn PixelWriter, pos: &Vector2D<u32>) {
+    for dy in 0..MOUSE_CURSOR_HEIGHT {
+        for dx in 0..MOUSE_CURSOR_WIDTH {
+            let pos = *pos + Vector2D::new(dx as u32, dy as u32);
+            if MOUSE_CURSOR_SHAPE[dy][dx] == b'@' {
+                writer.write(pos, &PixelColor::new(0, 0, 0));
+            } else if MOUSE_CURSOR_SHAPE[dy][dx] == b'.' {
+                writer.write(pos, &PixelColor::new(255, 255, 255));
+            } else {
+                writer.write(pos, &MOUSE_TRANSPARENT_COLOR);
             }
         }
     }

@@ -5,7 +5,7 @@ use core::{
     slice,
 };
 
-use crate::frame_buffer_config::FrameBufferConfig;
+use crate::{frame_buffer_config::FrameBufferConfig, DESKTOP_BG_COLOR};
 
 #[derive(PartialEq, Eq, Clone, Default, Copy)]
 pub struct PixelColor {
@@ -172,7 +172,7 @@ impl PixelWriter for BgrResv8BitPerColorPixelWriter {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, Default)]
 /// 2次元のベクトル情報を保持するクラス。
 pub(crate) struct Vector2D<T> {
     x: T,
@@ -238,4 +238,34 @@ impl<T: SubAssign> SubAssign for Vector2D<T> {
         self.x -= rhs.x;
         self.y -= rhs.y;
     }
+}
+
+pub(crate) fn draw_desktop(writer: &mut dyn PixelWriter) {
+    let frame_width = writer.horizontal_resolution() as u32;
+    let frame_height = writer.vertical_resolution() as u32;
+
+    // デスクトップ背景の描画
+    writer.fill_rectangle(
+        Vector2D::new(0, 0),
+        Vector2D::new(frame_width, frame_height - 50),
+        &DESKTOP_BG_COLOR,
+    );
+    // タスクバーの表示
+    writer.fill_rectangle(
+        Vector2D::new(0, frame_height - 50),
+        Vector2D::new(frame_width, 50),
+        &PixelColor::new(1, 8, 17),
+    );
+    // （多分）Windows の検索窓
+    writer.fill_rectangle(
+        Vector2D::new(0, frame_height - 50),
+        Vector2D::new(frame_width / 5, 50),
+        &PixelColor::new(80, 80, 80),
+    );
+    // （多分）Windows のスタートボタン
+    writer.fill_rectangle(
+        Vector2D::new(10, frame_height - 40),
+        Vector2D::new(30, 30),
+        &PixelColor::new(160, 160, 160),
+    );
 }

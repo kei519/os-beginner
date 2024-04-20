@@ -11,6 +11,7 @@ use crate::{
     font::{write_ascii, write_string},
     graphics::{PixelColor, PixelWriter, Vector2D},
     sync::OnceMutex,
+    LAYER_MANAGER,
 };
 
 pub(crate) struct Console {
@@ -30,6 +31,8 @@ pub(crate) struct Console {
     row_num: usize,
     /// 列のサイズ。
     column_num: usize,
+    /// コンソールをレイヤー上に持つときのレイヤー ID。
+    layer_id: u32,
 }
 
 impl Console {
@@ -51,6 +54,7 @@ impl Console {
             cursor_column: 0,
             row_num,
             column_num,
+            layer_id: 0,
         }
     }
 
@@ -58,16 +62,25 @@ impl Console {
         for &c in s {
             if c == b'\n' {
                 self.new_line();
-            } else if (self.cursor_column < self.column_num) {
-                write_ascii(
-                    &mut **self.writer.lock(),
-                    Vector2D::new(8 * self.cursor_column as u32, 16 * self.cursor_row as u32),
-                    c,
-                    &self.fg_color,
-                );
+            } else if (self.cursor_column < self.column_num - 1) {
+                let pos = Vector2D::new(8 * self.cursor_column as u32, 16 * self.cursor_row as u32);
+                if self.layer_id == 0 {
+                    write_ascii(&mut **self.writer.lock(), pos, c, &self.fg_color);
+                } else {
+                    write_ascii(
+                        LAYER_MANAGER.lock().layer(self.layer_id).widow(),
+                        pos,
+                        c,
+                        &self.fg_color,
+                    )
+                }
                 self.buffer[self.cursor_row * self.column_num + self.cursor_column] = c;
                 self.cursor_column += 1;
             }
+        }
+
+        if LAYER_MANAGER.is_initialized() {
+            LAYER_MANAGER.lock().draw();
         }
     }
 
@@ -119,6 +132,21 @@ impl Console {
     /// 行の先頭であるかを返す。
     pub(crate) fn is_head(&self) -> bool {
         self.cursor_column == 0
+    }
+
+    pub(crate) fn set_layer(&mut self, layer_id: u32) {
+        self.layer_id = layer_id;
+    }
+
+    pub(crate) fn refresh(&mut self) {
+        for row in 0..self.row_num {
+            write_string(
+                &mut **self.writer.lock(),
+                Vector2D::new(0, 16 * row as u32),
+                &self.buffer[row * self.column_num..(row + 1) * self.column_num],
+                &self.fg_color,
+            );
+        }
     }
 }
 
