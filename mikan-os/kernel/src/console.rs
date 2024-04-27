@@ -136,12 +136,13 @@ impl Console {
 
     pub(crate) fn set_layer(&mut self, layer_id: u32) {
         self.layer_id = layer_id;
+        self.refresh();
     }
 
     pub(crate) fn refresh(&mut self) {
         for row in 0..self.row_num {
             write_string(
-                &mut **self.writer.lock(),
+                LAYER_MANAGER.lock().layer(self.layer_id).widow(),
                 Vector2D::new(0, 16 * row as u32),
                 &self.buffer[row * self.column_num..(row + 1) * self.column_num],
                 &self.fg_color,
@@ -164,6 +165,10 @@ impl Write for Console {
             } else {
                 self.put_string(&s[self.column_num * i..self.column_num * (i + 1)]);
             }
+        }
+
+        if self.layer_id != 0 {
+            LAYER_MANAGER.lock().draw();
         }
         Ok(())
     }

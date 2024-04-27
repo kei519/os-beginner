@@ -333,7 +333,9 @@ fn kernel_entry(
 
     LAYER_MANAGER.init(LayerManager::new(&PIXEL_WRITER));
 
-    {
+    // デッドロックを回避するために、`CONSOLE` の `wirter` 変更（これに伴って redraw される）は
+    // ロックを解除してから行う
+    let bglayer_id = {
         let mut layer_manager = LAYER_MANAGER.lock();
         let frame_width = frame_buffer_config.horizontal_resolution as u32;
         let framw_height = frame_buffer_config.vertical_resolution as u32;
@@ -341,7 +343,6 @@ fn kernel_entry(
         let bgwindow = Window::new(frame_width, framw_height);
         let bglayer_id = layer_manager.new_layer(bgwindow);
         draw_desktop(layer_manager.layer(bglayer_id).widow());
-        CONSOLE.lock().set_layer(bglayer_id);
 
         let mut mouse_window = Window::new(MOUSE_CURSOR_WIDTH as u32, MOUSE_CURSOR_HEIGHT as u32);
         mouse_window.set_transparent_color(Some(MOUSE_TRANSPARENT_COLOR));
@@ -355,9 +356,12 @@ fn kernel_entry(
 
         layer_manager.up_down(bglayer_id, 0);
         layer_manager.up_down(mouse_layer_id, 1);
-        layer_manager.draw();
         MOUSE_LAYER_ID.store(mouse_layer_id, Ordering::Release);
-    }
+
+        bglayer_id
+    };
+    CONSOLE.lock().set_layer(bglayer_id);
+    LAYER_MANAGER.lock().draw();
 
     loop {
         cli();
