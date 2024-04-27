@@ -5,18 +5,18 @@ use crate::{
 
 #[repr(packed)]
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct InterruptDescriptorAttribute {
+pub struct InterruptDescriptorAttribute {
     etc_1: u8,
     etc_2: u8,
 }
 
 impl InterruptDescriptorAttribute {
     #![allow(unused)]
-    pub(crate) const fn const_default() -> Self {
+    pub const fn const_default() -> Self {
         Self { etc_1: 0, etc_2: 0 }
     }
 
-    pub(crate) fn new(
+    pub fn new(
         r#type: SystemSegmentType,
         descriptor_privilege_level: u8,
         present: bool,
@@ -28,19 +28,19 @@ impl InterruptDescriptorAttribute {
         Self { etc_1: 0, etc_2 }
     }
 
-    pub(crate) fn interrupt_stack_table(&self) -> u8 {
+    pub fn interrupt_stack_table(&self) -> u8 {
         self.etc_1 & 0x07
     }
 
-    pub(crate) fn r#type(&self) -> DescriptorType {
+    pub fn r#type(&self) -> DescriptorType {
         DescriptorType::from(self.etc_2 & 0x0f)
     }
 
-    pub(crate) fn descriptor_privilege_level(&self) -> u8 {
+    pub fn descriptor_privilege_level(&self) -> u8 {
         (self.etc_2 >> 5) & 0x03
     }
 
-    pub(crate) fn present(&self) -> bool {
+    pub fn present(&self) -> bool {
         (self.etc_2 >> 7) & 0x01 == 1
     }
 }
@@ -53,7 +53,7 @@ impl Default for InterruptDescriptorAttribute {
 
 #[repr(packed)]
 #[derive(Default, Clone, Copy)]
-pub(crate) struct InterruptDescriptor {
+pub struct InterruptDescriptor {
     offset_low: u16,
     segment_selector: u16,
     attr: InterruptDescriptorAttribute,
@@ -63,7 +63,7 @@ pub(crate) struct InterruptDescriptor {
 }
 
 impl InterruptDescriptor {
-    pub(crate) const fn const_default() -> Self {
+    pub const fn const_default() -> Self {
         Self {
             offset_low: 0,
             segment_selector: 0,
@@ -74,7 +74,7 @@ impl InterruptDescriptor {
         }
     }
 
-    pub(crate) fn set_idt_entry(
+    pub fn set_idt_entry(
         &mut self,
         attr: InterruptDescriptorAttribute,
         entry: unsafe extern "C" fn(),
@@ -89,18 +89,18 @@ impl InterruptDescriptor {
     }
 }
 
-pub(crate) fn notify_end_of_interrupt() {
+pub fn notify_end_of_interrupt() {
     let end_of_interrupt = 0xfee0_00b0 as *mut u32;
     unsafe {
         end_of_interrupt.write_volatile(0);
     }
 }
 
-pub(crate) enum InterruptVector {
+pub enum InterruptVector {
     XHCI = 0x40,
 }
 
-pub(crate) struct InterruptFrame {
+pub struct InterruptFrame {
     rip: u64,
     cs: u64,
     rflags: u64,
@@ -111,44 +111,44 @@ pub(crate) struct InterruptFrame {
 impl InterruptFrame {
     #![allow(unused)]
 
-    pub(crate) fn rip(&self) -> u64 {
+    pub fn rip(&self) -> u64 {
         self.rip
     }
 
-    pub(crate) fn cs(&self) -> u64 {
+    pub fn cs(&self) -> u64 {
         self.cs
     }
 
-    pub(crate) fn rflags(&self) -> u64 {
+    pub fn rflags(&self) -> u64 {
         self.rflags
     }
 
-    pub(crate) fn rsp(&self) -> u64 {
+    pub fn rsp(&self) -> u64 {
         self.rsp
     }
 
-    pub(crate) fn ss(&self) -> u64 {
+    pub fn ss(&self) -> u64 {
         self.ss
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(u32)]
-pub(crate) enum MessageType {
+pub enum MessageType {
     InteruptXHCI,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub(crate) struct Message {
+pub struct Message {
     r#type: MessageType,
 }
 
 impl Message {
-    pub(crate) fn new(r#type: MessageType) -> Self {
+    pub fn new(r#type: MessageType) -> Self {
         Self { r#type }
     }
 
-    pub(crate) fn r#type(&self) -> MessageType {
+    pub fn r#type(&self) -> MessageType {
         self.r#type
     }
 }

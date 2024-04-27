@@ -22,7 +22,7 @@ impl PixelColor {
     }
 
     /// 32 bit 情報から [PixelColor] へ変換する。
-    pub(crate) fn to_color(c: u32) -> Self {
+    pub fn to_color(c: u32) -> Self {
         Self {
             r: (c >> 16) as u8 & 0xff,
             g: (c >> 8) as u8 & 0xff,
@@ -32,7 +32,7 @@ impl PixelColor {
 }
 
 /// ピクセルを塗るための色々を提供する。
-pub(crate) trait PixelWriter {
+pub trait PixelWriter {
     /// ピクセルを塗る手段を提供する。
     fn write(&mut self, pos: Vector2D<u32>, color: &PixelColor);
 
@@ -74,12 +74,12 @@ pub(crate) trait PixelWriter {
 }
 
 /// フレームバッファのピクセルの持ち方が RGB のときのクラス。
-pub(crate) struct RgbResv8BitPerColorPixelWriter {
+pub struct RgbResv8BitPerColorPixelWriter {
     config: FrameBufferConfig,
 }
 
 impl RgbResv8BitPerColorPixelWriter {
-    pub(crate) fn new(config: FrameBufferConfig) -> Self {
+    pub fn new(config: FrameBufferConfig) -> Self {
         Self { config }
     }
 
@@ -123,13 +123,13 @@ impl PixelWriter for RgbResv8BitPerColorPixelWriter {
 }
 
 /// フレームバッファのピクセルの持ち方が BGR のときのクラス。
-pub(crate) struct BgrResv8BitPerColorPixelWriter {
+pub struct BgrResv8BitPerColorPixelWriter {
     config: FrameBufferConfig,
 }
 
 impl BgrResv8BitPerColorPixelWriter {
     /// 初期化。
-    pub(crate) fn new(config: FrameBufferConfig) -> Self {
+    pub fn new(config: FrameBufferConfig) -> Self {
         Self { config }
     }
 
@@ -174,24 +174,24 @@ impl PixelWriter for BgrResv8BitPerColorPixelWriter {
 
 #[derive(PartialEq, Eq, Clone, Copy, Default)]
 /// 2次元のベクトル情報を保持するクラス。
-pub(crate) struct Vector2D<T> {
+pub struct Vector2D<T> {
     x: T,
     y: T,
 }
 
 impl<T: Copy + Add + AddAssign + Sub + SubAssign> Vector2D<T> {
     /// 初期化。
-    pub(crate) const fn new(x: T, y: T) -> Self {
+    pub const fn new(x: T, y: T) -> Self {
         Self { x, y }
     }
 
     /// x 成分を返す。
-    pub(crate) const fn x(&self) -> T {
+    pub const fn x(&self) -> T {
         self.x
     }
 
     /// y 成分を返す。
-    pub(crate) const fn y(&self) -> T {
+    pub const fn y(&self) -> T {
         self.y
     }
 }
@@ -240,7 +240,7 @@ impl<T: SubAssign> SubAssign for Vector2D<T> {
     }
 }
 
-pub(crate) fn draw_desktop(writer: &mut dyn PixelWriter) {
+pub fn draw_desktop(writer: &mut dyn PixelWriter) {
     let frame_width = writer.horizontal_resolution() as u32;
     let frame_height = writer.vertical_resolution() as u32;
 

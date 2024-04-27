@@ -2,11 +2,11 @@
 
 use core::fmt::{self, Display};
 
-pub(crate) type Result<T> = core::result::Result<T, Error>;
+pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(C)]
-pub(crate) enum Code {
+pub enum Code {
     Full,
     Empty,
     NoEnoughMemory,
@@ -75,26 +75,26 @@ impl Display for Code {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Error {
+pub struct Error {
     code: Code,
     line: u32,
     file: &'static str,
 }
 
 impl Error {
-    pub(crate) const fn new(code: Code, file: &'static str, line: u32) -> Self {
+    pub const fn new(code: Code, file: &'static str, line: u32) -> Self {
         Self { code, line, file }
     }
 
-    pub(crate) const fn cause(&self) -> Code {
+    pub const fn cause(&self) -> Code {
         self.code
     }
 
-    pub(crate) const fn file(&self) -> &str {
+    pub const fn file(&self) -> &str {
         self.file
     }
 
-    pub(crate) const fn line(&self) -> u32 {
+    pub const fn line(&self) -> u32 {
         self.line
     }
 }

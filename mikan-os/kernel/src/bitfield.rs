@@ -1,6 +1,6 @@
 use core::ops::RangeBounds;
 
-pub(crate) trait BitField {
+pub trait BitField {
     /// 指定されたビットのフラグが立っているかを得る。
     fn get_bit(&self, bit: u32) -> bool;
     /// 指定された範囲のビットの値を得る。

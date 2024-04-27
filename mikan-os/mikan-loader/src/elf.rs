@@ -2,39 +2,39 @@
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub(crate) struct Elf64Ehdr {
-    pub(crate) ident: [u8; 16],
-    pub(crate) r#type: u16,
-    pub(crate) machine: u16,
-    pub(crate) version: u32,
-    pub(crate) entry: usize,
-    pub(crate) phoff: u64,
-    pub(crate) shoff: u64,
-    pub(crate) flags: u32,
-    pub(crate) ehsize: u16,
-    pub(crate) phentsize: u16,
-    pub(crate) phnum: u16,
-    pub(crate) shentsize: u16,
-    pub(crate) shnum: u16,
-    pub(crate) shstrndx: u16,
+pub struct Elf64Ehdr {
+    pub ident: [u8; 16],
+    pub r#type: u16,
+    pub machine: u16,
+    pub version: u32,
+    pub entry: usize,
+    pub phoff: u64,
+    pub shoff: u64,
+    pub flags: u32,
+    pub ehsize: u16,
+    pub phentsize: u16,
+    pub phnum: u16,
+    pub shentsize: u16,
+    pub shnum: u16,
+    pub shstrndx: u16,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub(crate) struct Elf64Phdr {
-    pub(crate) r#type: u32,
-    pub(crate) flags: u32,
-    pub(crate) offset: u64,
-    pub(crate) vaddr: usize,
-    pub(crate) paddr: usize,
-    pub(crate) filesz: u64,
-    pub(crate) memsz: u64,
-    pub(crate) align: u64,
+pub struct Elf64Phdr {
+    pub r#type: u32,
+    pub flags: u32,
+    pub offset: u64,
+    pub vaddr: usize,
+    pub paddr: usize,
+    pub filesz: u64,
+    pub memsz: u64,
+    pub align: u64,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub(crate) enum ProgramType {
+pub enum ProgramType {
     Null = 0,
     Load = 1,
     Dynamic = 2,
@@ -47,14 +47,14 @@ pub(crate) enum ProgramType {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub(crate) struct Elf64Dyn {
+pub struct Elf64Dyn {
     tag: i64,
     val: u64,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub(crate) enum DT {
+pub enum DT {
     Null = 0,
     Rela = 7,
     Relasz = 8,
@@ -63,8 +63,8 @@ pub(crate) enum DT {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub(crate) struct Elf64Rela {
-    pub(crate) offset: u64,
-    pub(crate) info: u32,
-    pub(crate) addend: i32,
+pub struct Elf64Rela {
+    pub offset: u64,
+    pub info: u32,
+    pub addend: i32,
 }

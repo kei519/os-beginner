@@ -9,7 +9,7 @@ use crate::{
 
 static GDT: Mutex<[SegmentDescriptor; 3]> = Mutex::new([SegmentDescriptor::default(); 3]);
 
-pub(crate) fn setup_segments() {
+pub fn setup_segments() {
     let mut gdt = GDT.lock();
     gdt[1] = SegmentDescriptor::code_segment(0, 0xfffff, false, true, false, 0);
     gdt[2] = SegmentDescriptor::data_segment(0, 0xfffff, false, true, true, 0);
@@ -22,7 +22,7 @@ pub(crate) fn setup_segments() {
 /// セグメントディスクリプタを表す。
 #[derive(Debug, Default, Clone, Copy)]
 #[repr(packed)]
-pub(crate) struct SegmentDescriptor {
+pub struct SegmentDescriptor {
     limit_low: u16,
     base_low: u16,
     base_middle: u8,
@@ -35,7 +35,7 @@ impl SegmentDescriptor {
     #![allow(unused)]
 
     /// システムセグメントを表すディスクリプタを作る。
-    pub(crate) fn system_segment(
+    pub fn system_segment(
         base: u32,
         limit: u32,
         r#type: SystemSegmentType,
@@ -68,7 +68,7 @@ impl SegmentDescriptor {
     }
 
     /// コードセグメントを表すディスクリプタを作る。
-    pub(crate) fn code_segment(
+    pub fn code_segment(
         base: u32,
         limit: u32,
         accesed: bool,
@@ -108,7 +108,7 @@ impl SegmentDescriptor {
     }
 
     /// データセグメントを表すディスクリプタを作る。
-    pub(crate) fn data_segment(
+    pub fn data_segment(
         base: u32,
         limit: u32,
         accesed: bool,
@@ -148,7 +148,7 @@ impl SegmentDescriptor {
     }
 
     /// ヌルディスクリプタを作る。
-    pub(crate) const fn default() -> Self {
+    pub const fn default() -> Self {
         Self {
             limit_low: 0,
             base_low: 0,
@@ -160,62 +160,62 @@ impl SegmentDescriptor {
     }
 
     /// リミットを取得する。
-    pub(crate) fn limit(&self) -> u32 {
+    pub fn limit(&self) -> u32 {
         (self.etc_2.get_bits(4..) as u32) << 16 | self.limit_low as u32
     }
 
     /// ベースを取得する。
-    pub(crate) fn base(&self) -> u32 {
+    pub fn base(&self) -> u32 {
         (self.base_high as u32) << 24 | (self.base_middle as u32) << 16 | self.base_low as u32
     }
 
     /// 種類を [DescriptorType] として取得する。
-    pub(crate) fn type_raw(&self) -> DescriptorType {
+    pub fn type_raw(&self) -> DescriptorType {
         self.etc_1.get_bits(..5).into()
     }
 
     /// 種類を [DescriptorTypeEnum] として取得する。
-    pub(crate) fn r#type(&self) -> DescriptorTypeEnum {
+    pub fn r#type(&self) -> DescriptorTypeEnum {
         self.type_raw().get()
     }
 
     /// ディスクリプタが表しているのがシステムセグメントであるかを取得する。
-    pub(crate) fn is_system_segment(&self) -> bool {
+    pub fn is_system_segment(&self) -> bool {
         self.type_raw().is_system_segment()
     }
 
     /// ディスクリプタが表しているのがコード・データセグメントであるかを取得する。
-    pub(crate) fn is_code_data_segment(&self) -> bool {
+    pub fn is_code_data_segment(&self) -> bool {
         self.type_raw().is_code_data_segment()
     }
 
     /// DPL を取得する。
-    pub(crate) fn descriptor_privilege_level(&self) -> u8 {
+    pub fn descriptor_privilege_level(&self) -> u8 {
         self.etc_1.get_bits(5..7)
     }
 
     /// 有効かどうかを取得する。
-    pub(crate) fn present(&self) -> bool {
+    pub fn present(&self) -> bool {
         self.etc_1.get_bit(7)
     }
 
     /// available（プログラムが利用可能）を取得する。
-    pub(crate) fn available(&self) -> bool {
+    pub fn available(&self) -> bool {
         self.etc_2.get_bit(4)
     }
 
     /// ロングモードが有効かどうかを取得する。
-    pub(crate) fn long_mode(&self) -> bool {
+    pub fn long_mode(&self) -> bool {
         self.etc_2.get_bit(5)
     }
 
     /// Default ビットを取得する。
-    pub(crate) fn default_operation_size(&self) -> bool {
+    pub fn default_operation_size(&self) -> bool {
         self.etc_2.get_bit(6)
     }
 
     /// Granuality ビットを取得する。
-    pub(crate) fn granalarity(&self) -> bool {
+    pub fn granalarity(&self) -> bool {
         self.etc_2.get_bit(7)
     }
 }

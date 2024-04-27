@@ -23,7 +23,7 @@ const CONFIG_DATA: u16 = 0x0cfc;
 
 /// PCI デバイスのクラスコード。
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ClassCode {
+pub struct ClassCode {
     base: u8,
     sub: u8,
     interface: u8,
@@ -31,17 +31,17 @@ pub(crate) struct ClassCode {
 
 impl ClassCode {
     /// ベースクラスが等しいかどうか。
-    pub(crate) fn match_base(&self, b: u8) -> bool {
+    pub fn match_base(&self, b: u8) -> bool {
         b == self.base
     }
 
     /// ベースクラスとサブクラスが等しいかどうか。
-    pub(crate) fn match_base_sub(&self, b: u8, s: u8) -> bool {
+    pub fn match_base_sub(&self, b: u8, s: u8) -> bool {
         self.match_base(b) && s == self.sub
     }
 
     /// ベース、サブ、インターフェースが等しいかどうか。
-    pub(crate) fn r#match(&self, b: u8, s: u8, i: u8) -> bool {
+    pub fn r#match(&self, b: u8, s: u8, i: u8) -> bool {
         self.match_base_sub(b, s) && i == self.interface
     }
 }
@@ -68,7 +68,7 @@ impl LowerHex for ClassCode {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Device {
+pub struct Device {
     bus: u8,
     device: u8,
     function: u8,
@@ -77,7 +77,7 @@ pub(crate) struct Device {
 }
 
 impl Device {
-    pub(crate) fn new(
+    pub fn new(
         bus: u8,
         device: u8,
         function: u8,
@@ -93,41 +93,41 @@ impl Device {
         }
     }
 
-    pub(crate) fn bus(&self) -> u8 {
+    pub fn bus(&self) -> u8 {
         self.bus
     }
 
-    pub(crate) fn device(&self) -> u8 {
+    pub fn device(&self) -> u8 {
         self.device
     }
 
-    pub(crate) fn function(&self) -> u8 {
+    pub fn function(&self) -> u8 {
         self.function
     }
 
-    pub(crate) fn header_type(&self) -> u8 {
+    pub fn header_type(&self) -> u8 {
         self.header_type
     }
 
-    pub(crate) fn class_code(&self) -> ClassCode {
+    pub fn class_code(&self) -> ClassCode {
         self.class_code
     }
 
-    pub(crate) fn read_vendor_id(&self) -> u16 {
+    pub fn read_vendor_id(&self) -> u16 {
         read_vendor_id(self.bus, self.device, self.function)
     }
 
-    pub(crate) fn read_conf_reg(&self, reg_addr: u8) -> u32 {
+    pub fn read_conf_reg(&self, reg_addr: u8) -> u32 {
         write_address(make_address(self.bus, self.device, self.function, reg_addr));
         read_data()
     }
 
-    pub(crate) fn write_conf_reg(&self, reg_addr: u8, value: u32) {
+    pub fn write_conf_reg(&self, reg_addr: u8, value: u32) {
         write_address(make_address(self.bus, self.device, self.function, reg_addr));
         write_data(value);
     }
 
-    pub(crate) fn read_bar(&self, bar_index: u32) -> Result<u64> {
+    pub fn read_bar(&self, bar_index: u32) -> Result<u64> {
         if bar_index >= 6 {
             return Err(make_error!(error::Code::IndexOutOfRange));
         }
@@ -273,7 +273,7 @@ impl Device {
         Err(make_error!(error::Code::NotImplemented))
     }
 
-    pub(crate) fn configure_msi_fixed_destination(
+    pub fn configure_msi_fixed_destination(
         &mut self,
         apic_id: u8,
         trigger_mode: MSITriggerMode,
@@ -291,40 +291,40 @@ impl Device {
 }
 
 /// CONFIG_ADDRESS に指定された整数を書き込む。
-pub(crate) fn write_address(address: u32) {
+pub fn write_address(address: u32) {
     io_out_32(CONFIG_ADDRESS, address);
 }
 
 /// CONFIG_DATA に指定された整数を書き込む。
-pub(crate) fn write_data(value: u32) {
+pub fn write_data(value: u32) {
     io_out_32(CONFIG_DATA, value);
 }
 
 /// CONFIG_DATA から 32 ビット整数を読み込む。
-pub(crate) fn read_data() -> u32 {
+pub fn read_data() -> u32 {
     io_in_32(CONFIG_DATA)
 }
 
 /// ベンダ ID レジスタを読み取る（全ヘッダタイプ共通）。
-pub(crate) fn read_vendor_id(bus: u8, device: u8, function: u8) -> u16 {
+pub fn read_vendor_id(bus: u8, device: u8, function: u8) -> u16 {
     write_address(make_address(bus, device, function, 0x00));
     read_data() as u16
 }
 
 /// デバイス ID レジスタを読み取る（全ヘッダタイプ共通）。
-pub(crate) fn read_device_id(bus: u8, device: u8, function: u8) -> u16 {
+pub fn read_device_id(bus: u8, device: u8, function: u8) -> u16 {
     write_address(make_address(bus, device, function, 0x00));
     (read_data() >> 16) as u16
 }
 
 /// ヘッダタイプレジスタを読み取る（全ヘッダタイプ共通）。
-pub(crate) fn read_header_type(bus: u8, device: u8, function: u8) -> u8 {
+pub fn read_header_type(bus: u8, device: u8, function: u8) -> u8 {
     write_address(make_address(bus, device, function, 0x0c));
     (read_data() >> 16) as u8
 }
 
 /// クラスコード・レジスタを読み取る（全ヘッダタイプ共通）。
-pub(crate) fn read_class_code(bus: u8, device: u8, function: u8) -> ClassCode {
+pub fn read_class_code(bus: u8, device: u8, function: u8) -> ClassCode {
     write_address(make_address(bus, device, function, 0x08));
     let reg = read_data();
     ClassCode {
@@ -340,7 +340,7 @@ pub(crate) fn read_class_code(bus: u8, device: u8, function: u8) -> ClassCode {
 /// - 23:16 : サブオーディネイトバス番号
 /// - 15:8  : セカンダリバス番号
 /// - 7:0   : リビジョン番号
-pub(crate) fn read_bus_numbers(bus: u8, device: u8, function: u8) -> u32 {
+pub fn read_bus_numbers(bus: u8, device: u8, function: u8) -> u32 {
     write_address(make_address(bus, device, function, 0x18));
     read_data()
 }
@@ -353,7 +353,7 @@ fn is_single_function_device(header_type: u8) -> bool {
 /// [DEVICES] の配列長。
 const DEVICE_MAX_LEN: usize = 32;
 /// [scan_all_bus] により発見された PCI デバイスの一覧。
-pub(crate) static DEVICES: RwLock<Vec<Device>> = RwLock::new(Vec::new());
+pub static DEVICES: RwLock<Vec<Device>> = RwLock::new(Vec::new());
 
 const fn cals_bar_address(bar_index: u32) -> u8 {
     0x10 + 4 * bar_index as u8
@@ -363,7 +363,7 @@ const fn cals_bar_address(bar_index: u32) -> u8 {
 ///
 /// バス 0 から再帰的に PCI デバイスを探索し、[DEVICES] の先頭から詰めて書き込む。
 /// 発見したデバイスの数を [NUM_DEVICES] に設定する。
-pub(crate) fn scan_all_bus() -> Result<()> {
+pub fn scan_all_bus() -> Result<()> {
     let mut num_device = 0;
 
     let header_type = read_header_type(0, 0, 0);
@@ -383,29 +383,29 @@ pub(crate) fn scan_all_bus() -> Result<()> {
 /// PCI ケーパビリティレジスタの共通ヘッダ
 #[derive(Clone, Copy)]
 #[repr(packed)]
-pub(crate) struct CapabilityHeader {
+pub struct CapabilityHeader {
     cap_id: u8,
     next_ptr: u8,
     cap: u16,
 }
 
 impl CapabilityHeader {
-    pub(crate) const fn from_raw(value: u32) -> Self {
+    pub const fn from_raw(value: u32) -> Self {
         Self {
             cap_id: value as u8,
             next_ptr: (value >> 8) as u8,
             cap: (value >> 16) as u16,
         }
     }
-    pub(crate) const fn cap_id(&self) -> u32 {
+    pub const fn cap_id(&self) -> u32 {
         self.cap_id as u32
     }
 
-    pub(crate) const fn next_ptr(&self) -> u32 {
+    pub const fn next_ptr(&self) -> u32 {
         self.next_ptr as u32
     }
 
-    pub(crate) const fn cap(&self) -> u32 {
+    pub const fn cap(&self) -> u32 {
         self.cap as u32
     }
 }
@@ -415,7 +415,7 @@ const CAPABILITY_MSIX: u8 = 0x11;
 
 #[derive(Clone, Copy)]
 #[repr(packed)]
-pub(crate) struct MSICapabilityHeader {
+pub struct MSICapabilityHeader {
     cap_id: u8,
     next_ptr: u8,
     etc_1: u8,
@@ -423,7 +423,7 @@ pub(crate) struct MSICapabilityHeader {
 }
 
 impl MSICapabilityHeader {
-    pub(crate) const fn from_raw(value: u32) -> Self {
+    pub const fn from_raw(value: u32) -> Self {
         Self {
             cap_id: value as u8,
             next_ptr: (value >> 8) as u8,
@@ -432,45 +432,45 @@ impl MSICapabilityHeader {
         }
     }
 
-    pub(crate) fn data(self) -> u32 {
+    pub fn data(self) -> u32 {
         self.cap_id as u32
             | (self.next_ptr as u32) << 8
             | (self.etc_1 as u32) << 16
             | (self.etc_2 as u32) << 24
     }
-    pub(crate) fn cap_id(&self) -> u32 {
+    pub fn cap_id(&self) -> u32 {
         self.cap_id as u32
     }
 
-    pub(crate) fn next_ptr(&self) -> u32 {
+    pub fn next_ptr(&self) -> u32 {
         self.next_ptr as u32
     }
 
-    pub(crate) fn msi_enable(&self) -> u32 {
+    pub fn msi_enable(&self) -> u32 {
         (self.etc_1 & 0x01) as u32
     }
 
-    pub(crate) fn set_msi_enable(&mut self, value: u32) {
+    pub fn set_msi_enable(&mut self, value: u32) {
         self.etc_1 = (self.etc_1 & !0x01) | ((value as u8) & 0x01);
     }
 
-    pub(crate) fn multi_msg_capable(&self) -> u32 {
+    pub fn multi_msg_capable(&self) -> u32 {
         ((self.etc_1 >> 1) & 0x07) as u32
     }
 
-    pub(crate) fn multi_msg_enable(&self) -> u32 {
+    pub fn multi_msg_enable(&self) -> u32 {
         ((self.etc_1 >> 4) & 0x07) as u32
     }
 
-    pub(crate) fn set_multi_msg_enable(&mut self, value: u32) {
+    pub fn set_multi_msg_enable(&mut self, value: u32) {
         self.etc_1.set_bits(4..7, value as u8);
     }
 
-    pub(crate) fn addr_64_capable(&self) -> u32 {
+    pub fn addr_64_capable(&self) -> u32 {
         self.etc_1.get_bit(7).into()
     }
 
-    pub(crate) fn per_vector_mask_capable(&self) -> u32 {
+    pub fn per_vector_mask_capable(&self) -> u32 {
         self.etc_2.get_bit(0).into()
     }
 }
@@ -478,7 +478,7 @@ impl MSICapabilityHeader {
 /// MSI ケーパビリティ構造は 64 ビットサポートの有無などで亜種が沢山ある。
 /// この構造体は各亜種に対応するために最大の亜種に合わせてメンバを定義してある。
 #[repr(packed)]
-pub(crate) struct MSICapability {
+pub struct MSICapability {
     header: MSICapabilityHeader,
     msg_addr: u32,
     msg_upper_addr: u32,
@@ -488,12 +488,12 @@ pub(crate) struct MSICapability {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum MSITriggerMode {
+pub enum MSITriggerMode {
     Edge = 0,
     Level = 1,
 }
 
-pub(crate) enum MSIDeliverMode {
+pub enum MSIDeliverMode {
     Fixed = 0b000,
     LowestPriority = 0b001,
     SMI = 0b010,
@@ -502,7 +502,7 @@ pub(crate) enum MSIDeliverMode {
     ExtINT = 0b111,
 }
 
-pub(crate) fn initialize_pci() {}
+pub fn initialize_pci() {}
 
 fn make_address(bus: u8, device: u8, function: u8, reg_addr: u8) -> u32 {
     let shl = |x: u8, bits: u32| (x as u32) << bits;

@@ -1,4 +1,4 @@
-pub(crate) const fn get_font(c: u8) -> &'static [u8; 16] {
+pub const fn get_font(c: u8) -> &'static [u8; 16] {
     match c {
         0x00 => &[
             0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000,

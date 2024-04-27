@@ -13,13 +13,13 @@ use crate::bitfield::BitField;
 /// メモリセグメント以外の情報を含んでいるシステムセグメントであることを表す。
 /// \[3:0\] ビットが具体的にどのようなタイプであるかを表す。
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct DescriptorType(u8);
+pub struct DescriptorType(u8);
 
 impl DescriptorType {
     #![allow(unused)]
 
     /// コード・データセグメントのディスクリプタタイプを作る。
-    pub(crate) fn code_data_segment(accesed: bool, rw: bool, dc: bool, executable: bool) -> Self {
+    pub fn code_data_segment(accesed: bool, rw: bool, dc: bool, executable: bool) -> Self {
         let mut data = 0;
         data.set_bit(4, true);
         data.set_bits(
@@ -30,19 +30,19 @@ impl DescriptorType {
     }
 
     /// システムセグメントのディスクリプタタイプを作る。
-    pub(crate) fn system_segment(r#type: SystemSegmentType) -> Self {
+    pub fn system_segment(r#type: SystemSegmentType) -> Self {
         let mut data = 0;
         data.set_bits(..4, r#type as u8);
         Self(data)
     }
 
     /// ディスクリプタがコード・データセグメントを表しているかどうかを得る。
-    pub(crate) fn is_code_data_segment(&self) -> bool {
+    pub fn is_code_data_segment(&self) -> bool {
         self.0.get_bit(4)
     }
 
     /// ディスクリプタがシステムセグメントを表しているかどうかを表す。
-    pub(crate) fn is_system_segment(&self) -> bool {
+    pub fn is_system_segment(&self) -> bool {
         !self.is_code_data_segment()
     }
 
@@ -57,7 +57,7 @@ impl DescriptorType {
     }
 
     /// ディスクリプタがコード・データセグメントを表していればそう解釈して返す。
-    pub(crate) fn as_code_data_segment(&self) -> Option<CodeDataSegmentType> {
+    pub fn as_code_data_segment(&self) -> Option<CodeDataSegmentType> {
         if self.is_code_data_segment() {
             Some(self.as_code_data_segment_unchecked())
         } else {
@@ -66,7 +66,7 @@ impl DescriptorType {
     }
 
     /// ディスクリプタがシステムセグメントを表していればそう解釈して返す。
-    pub(crate) fn as_system_segment(&self) -> Option<SystemSegmentType> {
+    pub fn as_system_segment(&self) -> Option<SystemSegmentType> {
         if self.is_system_segment() {
             Some(self.as_system_segment_unchecked())
         } else {
@@ -76,7 +76,7 @@ impl DescriptorType {
 
     /// ディスクリプタがコード・データセグメント、システムセグメントを表しているかどうかと、
     /// その中身を返す。
-    pub(crate) fn get(&self) -> DescriptorTypeEnum {
+    pub fn get(&self) -> DescriptorTypeEnum {
         if self.is_code_data_segment() {
             DescriptorTypeEnum::CodeData(self.as_code_data_segment_unchecked())
         } else {
@@ -107,14 +107,14 @@ impl From<DescriptorType> for u8 {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum DescriptorTypeEnum {
+pub enum DescriptorTypeEnum {
     System(SystemSegmentType),
     CodeData(CodeDataSegmentType),
 }
 
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
-pub(crate) enum SystemSegmentType {
+pub enum SystemSegmentType {
     // system セグメント、ゲートディスクリプタ
     Upper8Byte = 0,
     LDT = 2,
@@ -174,14 +174,14 @@ impl From<u8> for SystemSegmentType {
 /// ビットが立っていないときはデータセグメントであり、
 /// 立っていればコードセグメントを表す。
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct CodeDataSegmentType(u8);
+pub struct CodeDataSegmentType(u8);
 
 impl CodeDataSegmentType {
     #![allow(unused)]
 
     /// それぞれのビットが立っているかどうかを指定して、
     /// コード・データセグメントを作る。
-    pub(crate) fn new(accessed: bool, rw: bool, dc: bool, executable: bool) -> Self {
+    pub fn new(accessed: bool, rw: bool, dc: bool, executable: bool) -> Self {
         let mut data = 0;
         data.set_bit(0, accessed);
         data.set_bit(1, rw);
@@ -191,22 +191,22 @@ impl CodeDataSegmentType {
     }
 
     /// CPU によってアクセスされたかどうかを得る。
-    pub(crate) fn is_accessed(&self) -> bool {
+    pub fn is_accessed(&self) -> bool {
         self.0.get_bit(0)
     }
 
     /// 読み込み/書き込み可能であるかを得る。
-    pub(crate) fn is_readable_writable(&self) -> bool {
+    pub fn is_readable_writable(&self) -> bool {
         self.0.get_bit(1)
     }
 
     /// 下方伸長/適応型であるかを得る。
-    pub(crate) fn is_growdown_conforming(&self) -> bool {
+    pub fn is_growdown_conforming(&self) -> bool {
         self.0.get_bit(2)
     }
 
     /// コードセグメントかどうかを得る。
-    pub(crate) fn is_executable(&self) -> bool {
+    pub fn is_executable(&self) -> bool {
         self.0.get_bit(3)
     }
 }

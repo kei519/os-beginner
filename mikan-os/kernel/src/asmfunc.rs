@@ -1,46 +1,46 @@
 use core::arch::{asm, global_asm};
 
-pub(crate) fn io_out_32(addr: u16, data: u32) {
+pub fn io_out_32(addr: u16, data: u32) {
     unsafe { io_out_32_unsafe(addr, data) }
 }
 
-pub(crate) fn io_in_32(addr: u16) -> u32 {
+pub fn io_in_32(addr: u16) -> u32 {
     unsafe { io_in_32_unsafe(addr) }
 }
 
-pub(crate) fn get_cs() -> u16 {
+pub fn get_cs() -> u16 {
     unsafe { get_cs_unsafe() }
 }
 
-pub(crate) fn load_idt(limit: u16, offset: u64) {
+pub fn load_idt(limit: u16, offset: u64) {
     unsafe { load_idt_unsafe(limit, offset) }
 }
 
-pub(crate) fn load_gdt(limit: u16, offset: u64) {
+pub fn load_gdt(limit: u16, offset: u64) {
     unsafe { load_gdt_unsafe(limit, offset) }
 }
 
-pub(crate) fn set_ds_all(value: u16) {
+pub fn set_ds_all(value: u16) {
     unsafe { set_ds_all_unsafe(value) }
 }
 
-pub(crate) fn set_cs_ss(cs: u16, ss: u16) {
+pub fn set_cs_ss(cs: u16, ss: u16) {
     unsafe { set_cs_ss_unsafe(cs, ss) }
 }
 
-pub(crate) fn set_cr3(value: u64) {
+pub fn set_cr3(value: u64) {
     unsafe { set_cr3_unsafe(value) }
 }
 
-pub(crate) fn sti() {
+pub fn sti() {
     unsafe { asm!("sti") }
 }
 
-pub(crate) fn sti_hlt() {
+pub fn sti_hlt() {
     unsafe { asm!("sti", "hlt") }
 }
 
-pub(crate) fn cli() {
+pub fn cli() {
     unsafe { asm!("cli") }
 }
 

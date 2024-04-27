@@ -9,7 +9,7 @@ use core::{
 /// スレッドセーフなら内部可変性を持つ構造体。
 ///
 /// 1度に1つの排他参照しか作れない。
-pub(crate) struct Mutex<T> {
+pub struct Mutex<T> {
     data: UnsafeCell<T>,
     lock: AtomicBool,
 }
@@ -17,14 +17,14 @@ pub(crate) struct Mutex<T> {
 unsafe impl<T: Send> Sync for Mutex<T> {}
 
 impl<T> Mutex<T> {
-    pub(crate) const fn new(value: T) -> Self {
+    pub const fn new(value: T) -> Self {
         Self {
             data: UnsafeCell::new(value),
             lock: AtomicBool::new(false),
         }
     }
 
-    pub(crate) fn lock(&self) -> MutexGuard<'_, T> {
+    pub fn lock(&self) -> MutexGuard<'_, T> {
         while self.lock.swap(true, Acquire) {
             spin_loop();
         }
@@ -39,7 +39,7 @@ impl<T> Mutex<T> {
 /// 可変の static 変数として使える、実行時に初期化が可能な [Mutex]。
 ///
 /// ただし、初期化していないアクセスは未定義動作を引き起こすので注意。
-pub(crate) struct OnceMutex<T> {
+pub struct OnceMutex<T> {
     data: UnsafeCell<MaybeUninit<T>>,
     lock: AtomicBool,
     is_initialized: AtomicBool,
@@ -48,7 +48,7 @@ pub(crate) struct OnceMutex<T> {
 unsafe impl<T: Send> Sync for OnceMutex<T> {}
 
 impl<T> OnceMutex<T> {
-    pub(crate) const fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             data: UnsafeCell::new(MaybeUninit::uninit()),
             lock: AtomicBool::new(false),
@@ -56,7 +56,7 @@ impl<T> OnceMutex<T> {
         }
     }
 
-    pub(crate) const fn from_value(value: T) -> Self {
+    pub const fn from_value(value: T) -> Self {
         Self {
             data: UnsafeCell::new(MaybeUninit::new(value)),
             lock: AtomicBool::new(false),
@@ -64,11 +64,11 @@ impl<T> OnceMutex<T> {
         }
     }
 
-    pub(crate) fn is_initialized(&self) -> bool {
+    pub fn is_initialized(&self) -> bool {
         self.is_initialized.load(Relaxed)
     }
 
-    pub(crate) fn init(&self, value: T) -> bool {
+    pub fn init(&self, value: T) -> bool {
         while self.lock.swap(true, Acquire) {
             spin_loop();
         }
@@ -84,7 +84,7 @@ impl<T> OnceMutex<T> {
         ret
     }
 
-    pub(crate) fn lock(&self) -> MutexGuard<'_, T> {
+    pub fn lock(&self) -> MutexGuard<'_, T> {
         while self.lock.swap(true, Acquire) {
             spin_loop();
         }
@@ -95,7 +95,7 @@ impl<T> OnceMutex<T> {
         }
     }
 
-    pub(crate) fn lock_checked(&self) -> Option<MutexGuard<'_, T>> {
+    pub fn lock_checked(&self) -> Option<MutexGuard<'_, T>> {
         if self.is_initialized() {
             Some(self.lock())
         } else {
@@ -105,7 +105,7 @@ impl<T> OnceMutex<T> {
 }
 
 /// [Mutex]、[OnceMutex] のロック、間接参照を行う構造体。
-pub(crate) struct MutexGuard<'this, T> {
+pub struct MutexGuard<'this, T> {
     data: &'this mut T,
     lock: &'this AtomicBool,
 }
@@ -140,7 +140,7 @@ const BORROW_MAX: isize = isize::MAX / 2;
 /// スレッドセーフな内部可変性を持つ構造体。
 ///
 /// 1度に1つの排他参照、または複数の共有参照を作れる。
-pub(crate) struct RwLock<T> {
+pub struct RwLock<T> {
     /// 内部データを持つ。
     data: UnsafeCell<T>,
     /// 参照カウンタ。
@@ -151,7 +151,7 @@ unsafe impl<T: Send + Sync> Sync for RwLock<T> {}
 
 impl<T> RwLock<T> {
     /// [RwLock] のコンストラクタ。
-    pub(crate) const fn new(value: T) -> Self {
+    pub const fn new(value: T) -> Self {
         Self {
             data: UnsafeCell::new(value),
             counter: AtomicIsize::new(0),
@@ -161,7 +161,7 @@ impl<T> RwLock<T> {
     /// 読み取りのための共有参照を取得する。
     ///
     /// 参照が得られるまで無限に待機する。
-    pub(crate) fn read(&self) -> ReadGuard<'_, T> {
+    pub fn read(&self) -> ReadGuard<'_, T> {
         let mut c = self.counter.load(Relaxed);
         loop {
             if c < UNUSED || c > BORROW_MAX {
@@ -187,7 +187,7 @@ impl<T> RwLock<T> {
     /// 書き込みのための排他参照を取得する。
     ///
     /// 参照が得られるまで無限に待機する。
-    pub(crate) fn write(&self) -> WriteGuard<'_, T> {
+    pub fn write(&self) -> WriteGuard<'_, T> {
         while self
             .counter
             .compare_exchange(0, 1, Acquire, Relaxed)
@@ -206,7 +206,7 @@ impl<T> RwLock<T> {
 /// 可変の static 変数として使える、実行時に初期化が可能な [RwLock]。
 ///
 /// ただし、初期化していないアクセスは未定義動作を引き起こすので注意。
-pub(crate) struct OnceRwLock<T> {
+pub struct OnceRwLock<T> {
     /// 内部データを持つ。
     data: UnsafeCell<MaybeUninit<T>>,
     /// 参照カウンタ。
@@ -219,7 +219,7 @@ unsafe impl<T: Send + Sync> Sync for OnceRwLock<T> {}
 
 impl<T> OnceRwLock<T> {
     /// [OnceMutex] のコンストラクタ。
-    pub(crate) const fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             data: UnsafeCell::new(MaybeUninit::uninit()),
             counter: AtomicIsize::new(0),
@@ -230,7 +230,7 @@ impl<T> OnceRwLock<T> {
     /// [OnceMutex] の、初期化も行うコンストラクタ。
     ///
     /// * `value` - 設定する値。
-    pub(crate) const fn from_value(value: T) -> Self {
+    pub const fn from_value(value: T) -> Self {
         Self {
             data: UnsafeCell::new(MaybeUninit::new(value)),
             counter: AtomicIsize::new(0),
@@ -238,7 +238,7 @@ impl<T> OnceRwLock<T> {
         }
     }
 
-    pub(crate) fn is_initialized(&self) -> bool {
+    pub fn is_initialized(&self) -> bool {
         self.is_initialized.load(Relaxed)
     }
 
@@ -250,7 +250,7 @@ impl<T> OnceRwLock<T> {
     /// 初期化できたかどうかを返す。
     ///
     /// 既に初期化されている場合は初期化されない。
-    pub(crate) fn init(&self, value: T) -> bool {
+    pub fn init(&self, value: T) -> bool {
         while self
             .counter
             .compare_exchange(0, -1, Acquire, Relaxed)
@@ -276,7 +276,7 @@ impl<T> OnceRwLock<T> {
     /// 参照が得られるまで無限に待機する。
     ///
     /// ただし、初期化されていない場合の動作は未定義。
-    pub(crate) fn read(&self) -> ReadGuard<'_, T> {
+    pub fn read(&self) -> ReadGuard<'_, T> {
         let mut c = self.counter.load(Relaxed);
         loop {
             if c < UNUSED || c > BORROW_MAX {
@@ -303,7 +303,7 @@ impl<T> OnceRwLock<T> {
     ///
     /// [read()][Self::read()] との違いは、初期化が行われていない場合に未定義動作でなく、
     /// `None` が返ること。
-    pub(crate) fn read_checked(&self) -> Option<ReadGuard<'_, T>> {
+    pub fn read_checked(&self) -> Option<ReadGuard<'_, T>> {
         if self.is_initialized() {
             Some(self.read())
         } else {
@@ -316,7 +316,7 @@ impl<T> OnceRwLock<T> {
     /// 参照が得られるまで無限に待機する。
     ///
     /// ただし、初期化されていない場合の動作は未定義。
-    pub(crate) fn write(&self) -> WriteGuard<'_, T> {
+    pub fn write(&self) -> WriteGuard<'_, T> {
         while self
             .counter
             .compare_exchange(UNUSED, -1, Acquire, Relaxed)
@@ -335,7 +335,7 @@ impl<T> OnceRwLock<T> {
     ///
     /// [write()][Self::write()] との違いは、初期化が行われていない場合に未定義動作でなく、
     /// `None` が返ること。
-    pub(crate) fn write_checked(&self) -> Option<WriteGuard<'_, T>> {
+    pub fn write_checked(&self) -> Option<WriteGuard<'_, T>> {
         if self.is_initialized() {
             Some(self.write())
         } else {
@@ -345,7 +345,7 @@ impl<T> OnceRwLock<T> {
 }
 
 /// [RwLock] を読み取るときに、そのデータと参照カウンタを管理するために使われる構造体。
-pub(crate) struct ReadGuard<'this, T> {
+pub struct ReadGuard<'this, T> {
     data: &'this T,
     counter: &'this AtomicIsize,
 }
@@ -365,7 +365,7 @@ impl<T> Drop for ReadGuard<'_, T> {
 }
 
 /// [RwLock] に書き込むときに、そのデータと参照カウンタを管理するために使われる構造体。
-pub(crate) struct WriteGuard<'this, T> {
+pub struct WriteGuard<'this, T> {
     data: &'this mut T,
     counter: &'this AtomicIsize,
 }

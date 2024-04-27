@@ -21,6 +21,7 @@ mod paging;
 mod pci;
 mod segment;
 mod sync;
+mod timer;
 mod usb;
 mod window;
 mod x86_descriptor;

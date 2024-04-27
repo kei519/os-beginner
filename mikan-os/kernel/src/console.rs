@@ -14,7 +14,7 @@ use crate::{
     LAYER_MANAGER,
 };
 
-pub(crate) struct Console {
+pub struct Console {
     /// ピクセル描画用。
     writer: &'static OnceMutex<Box<dyn PixelWriter + Send>>,
     /// 前面色。
@@ -36,7 +36,7 @@ pub(crate) struct Console {
 }
 
 impl Console {
-    pub(crate) fn new(
+    pub fn new(
         writer: &'static OnceMutex<Box<dyn PixelWriter + Send>>,
         fg_color: &'static PixelColor,
         bg_color: &'static PixelColor,
@@ -58,7 +58,7 @@ impl Console {
         }
     }
 
-    pub(crate) fn put_string(&mut self, s: &[u8]) {
+    pub fn put_string(&mut self, s: &[u8]) {
         for &c in s {
             if c == b'\n' {
                 self.new_line();
@@ -84,7 +84,7 @@ impl Console {
         }
     }
 
-    pub(crate) fn new_line(&mut self) {
+    pub fn new_line(&mut self) {
         self.cursor_column = 0;
 
         if self.cursor_row < self.row_num - 1 {
@@ -130,16 +130,16 @@ impl Console {
     }
 
     /// 行の先頭であるかを返す。
-    pub(crate) fn is_head(&self) -> bool {
+    pub fn is_head(&self) -> bool {
         self.cursor_column == 0
     }
 
-    pub(crate) fn set_layer(&mut self, layer_id: u32) {
+    pub fn set_layer(&mut self, layer_id: u32) {
         self.layer_id = layer_id;
         self.refresh();
     }
 
-    pub(crate) fn refresh(&mut self) {
+    pub fn refresh(&mut self) {
         for row in 0..self.row_num {
             write_string(
                 LAYER_MANAGER.lock().layer(self.layer_id).widow(),

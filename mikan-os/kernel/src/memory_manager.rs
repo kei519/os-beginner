@@ -14,14 +14,14 @@ use crate::{
 
 /// グローバルアロケータ。
 #[global_allocator]
-pub(crate) static GLOBAL: BitmapMemoryManager = BitmapMemoryManager::new();
+pub static GLOBAL: BitmapMemoryManager = BitmapMemoryManager::new();
 
 const KIB: usize = 1024;
 const MIB: usize = 1024 * KIB;
 const GIB: usize = 1024 * MIB;
 
 /// 1フレームで取り扱うメモリのサイズ。
-pub(crate) const BYTES_PER_FRAME: usize = 4 * KIB;
+pub const BYTES_PER_FRAME: usize = 4 * KIB;
 
 /// フレームを表す構造体。
 struct FrameId {
@@ -30,23 +30,23 @@ struct FrameId {
 
 impl FrameId {
     /// ID から [FrameId] を作る。
-    pub(crate) const fn new(id: usize) -> Self {
+    pub const fn new(id: usize) -> Self {
         Self { id }
     }
 
-    pub(crate) fn from_addr(addr: usize) -> Self {
+    pub fn from_addr(addr: usize) -> Self {
         Self {
             id: addr / BYTES_PER_FRAME,
         }
     }
 
     /// ID を取得する。
-    pub(crate) fn id(&self) -> usize {
+    pub fn id(&self) -> usize {
         self.id
     }
 
     /// フレームの先頭へのポインタ。
-    pub(crate) fn frame(&self) -> *mut u8 {
+    pub fn frame(&self) -> *mut u8 {
         (self.id * BYTES_PER_FRAME) as *mut u8
     }
 }
@@ -66,7 +66,7 @@ const FRAME_COUNT: usize = MAX_PHYSICAL_MEMORY / BYTES_PER_FRAME;
 const UEFI_PAGE_SIZE: usize = 4 * KIB;
 
 /// ビットを使ってメモリの使用可能領域を管理する構造体。
-pub(crate) struct BitmapMemoryManager {
+pub struct BitmapMemoryManager {
     /// フレームが使用可能かどうかを保持しておく。
     alloc_map: Mutex<[MapLineType; FRAME_COUNT / BITS_PER_MAP_LINE]>,
     /// 使用可能領域の最初のフレーム。
@@ -93,7 +93,7 @@ impl BitmapMemoryManager {
     /// * `memory_map` - メモリ情報。
     /// * `kernel_base` - カーネルが展開されたメモリの先頭。
     /// * `kernel_size` - 展開されたカーネルのサイズ。
-    pub(crate) fn init(&self, memory_map: &MemoryMap, kernel_base: usize, kernel_size: usize) {
+    pub fn init(&self, memory_map: &MemoryMap, kernel_base: usize, kernel_size: usize) {
         // 同時に初期化されないようにロックを取得
         let _lock = self.locker.lock();
 

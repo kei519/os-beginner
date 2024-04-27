@@ -3,7 +3,7 @@ use crate::{
     graphics::{PixelColor, PixelWriter, Vector2D},
 };
 
-pub(crate) fn write_ascii(
+pub fn write_ascii(
     writer: &mut dyn PixelWriter,
     pos: Vector2D<u32>,
     c: u8,
@@ -19,7 +19,7 @@ pub(crate) fn write_ascii(
     }
 }
 
-pub(crate) fn write_string(
+pub fn write_string(
     writer: &mut dyn PixelWriter,
     pos: Vector2D<u32>,
     s: &[u8],

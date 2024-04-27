@@ -4,7 +4,7 @@ use crate::graphics::{PixelColor, PixelWriter, Vector2D};
 
 /// ウィンドウを管理する構造体。
 #[derive(Default)]
-pub(crate) struct Window {
+pub struct Window {
     /// 幅。
     width: u32,
     /// 高さ。
@@ -20,7 +20,7 @@ impl Window {
     ///
     /// * width - ウィンドウの幅。
     /// * height - ウィンドウの高さ
-    pub(crate) fn new(width: u32, height: u32) -> Self {
+    pub fn new(width: u32, height: u32) -> Self {
         let mut data = Vec::with_capacity((width * height) as usize);
         data.resize((width * height) as usize, Default::default());
         let data = data.into_boxed_slice();
@@ -37,7 +37,7 @@ impl Window {
     ///
     /// * writer - 描画に用いるライター。
     /// * position - 描画する位置。
-    pub(crate) fn draw_to(&mut self, writer: &mut dyn PixelWriter, position: Vector2D<u32>) {
+    pub fn draw_to(&mut self, writer: &mut dyn PixelWriter, position: Vector2D<u32>) {
         // 透明色が設定されていない場合はそのまま描画する
         if self.transparent_color.is_none() {
             for y in 0..self.height {
@@ -63,12 +63,12 @@ impl Window {
     }
 
     /// ウィンドウの透過色を設定する。
-    pub(crate) fn set_transparent_color(&mut self, c: Option<PixelColor>) {
+    pub fn set_transparent_color(&mut self, c: Option<PixelColor>) {
         self.transparent_color = c;
     }
 
     /// 指定された位置のピクセルへの排他参照を返す。
-    pub(crate) fn at(&mut self, pos: Vector2D<u32>) -> &mut PixelColor {
+    pub fn at(&mut self, pos: Vector2D<u32>) -> &mut PixelColor {
         &mut self.data[(pos.y() * self.width + pos.x()) as usize]
     }
 }

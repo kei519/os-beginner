@@ -2,7 +2,7 @@ use core::ops::{Index, IndexMut};
 
 use crate::{asmfunc::set_cr3, sync::Mutex};
 
-pub(crate) const PAGE_DIRECTORY_COUNT: usize = 64;
+pub const PAGE_DIRECTORY_COUNT: usize = 64;
 
 const PAGE_SIZE_4K: u64 = 4096;
 const PAGE_SIZE_2M: u64 = 512 * PAGE_SIZE_4K;
@@ -48,7 +48,7 @@ impl<T, const N: usize> IndexMut<usize> for PageTable<T, N> {
     }
 }
 
-pub(crate) fn setup_indentity_page_table() {
+pub fn setup_indentity_page_table() {
     let mut pml4_table = PML4_TABLE.lock();
     let mut pdp_table = PDP_TABLE.lock();
     let mut page_directory = PAGE_DIRECTORY.lock();

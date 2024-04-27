@@ -12,7 +12,7 @@ use crate::{printk, sync::RwLock};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 #[repr(C)]
-pub(crate) enum LogLevel {
+pub enum LogLevel {
     Error = 3,
     Warn = 4,
     Info = 6,
@@ -21,11 +21,11 @@ pub(crate) enum LogLevel {
 
 static LOG_LEVEL: RwLock<LogLevel> = RwLock::new(LogLevel::Warn);
 
-pub(crate) fn set_log_level(level: LogLevel) {
+pub fn set_log_level(level: LogLevel) {
     *LOG_LEVEL.write() = level;
 }
 
-pub(crate) fn get_log_level() -> LogLevel {
+pub fn get_log_level() -> LogLevel {
     *LOG_LEVEL.read()
 }
 
@@ -55,7 +55,7 @@ macro_rules! log {
 /// また、本来は `AL` レジスタが引数に使用されているベクターレジスタの数を保存しているが、
 /// `AL` レジスタを取得するのは大変なため、浮動小数点数は非対応。
 #[export_name = "_Z3Log8LogLevelPKcz"]
-pub(crate) extern "sysv64" fn log_cpp(
+pub extern "sysv64" fn log_cpp(
     level: LogLevel,
     format: *const c_char,
     arg1: u64,
