@@ -44,6 +44,7 @@ use layer::LayerManager;
 use mouse::MouseCursor;
 use pci::Device;
 use sync::{Mutex, OnceMutex};
+use timer::stop_lapic_timer;
 use uefi::table::boot::MemoryMap;
 
 use crate::{
@@ -109,12 +110,19 @@ static MOUSE_CURSOR: OnceMutex<MouseCursor> = OnceMutex::new();
 static MOUSE_LAYER_ID: AtomicU32 = AtomicU32::new(0);
 
 fn mouse_observer(displacement_x: i8, displacement_y: i8) {
-    let mut layer_maneger = LAYER_MANAGER.lock();
-    let layer_id = MOUSE_LAYER_ID.load(Ordering::Acquire);
-    layer_maneger
-        .layer(layer_id)
-        .move_relative(Vector2D::new(displacement_x as u32, displacement_y as u32));
-    layer_maneger.draw();
+    let elapsed = {
+        let mut layer_maneger = LAYER_MANAGER.lock();
+        let layer_id = MOUSE_LAYER_ID.load(Ordering::Acquire);
+        layer_maneger
+            .layer(layer_id)
+            .move_relative(Vector2D::new(displacement_x as u32, displacement_y as u32));
+        timer::start_lapic_timer();
+        layer_maneger.draw();
+        let elapsed = timer::lapic_timer_elapsed();
+        stop_lapic_timer();
+        elapsed
+    };
+    printkln!("mouse_obserer: elapsed = {}", elapsed);
 }
 
 fn switch_ehci2xhci(xhc_dev: &Device) {
@@ -192,6 +200,9 @@ fn kernel_entry(
 
     // ログレベルの設定
     set_log_level(LogLevel::Warn);
+
+    // タイマーの初期化
+    timer::initialize_lapic_timer();
 
     // セグメントの設定
     segment::setup_segments();

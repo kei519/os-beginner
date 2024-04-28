@@ -91,11 +91,20 @@ impl Console {
             self.cursor_row += 1;
         } else {
             // 背景の描画
-            for y in 0..16 * self.row_num {
-                for x in 0..8 * self.column_num {
-                    self.writer
-                        .lock()
-                        .write(Vector2D::new(x as u32, y as u32), &self.bg_color);
+            if self.layer_id == 0 {
+                let mut writer = self.writer.lock();
+                for y in 0..16 * self.row_num {
+                    for x in 0..8 * self.column_num {
+                        writer.write(Vector2D::new(x as u32, y as u32), &self.bg_color);
+                    }
+                }
+            } else {
+                let mut writer = LAYER_MANAGER.lock();
+                let writer = writer.layer(self.layer_id).widow();
+                for y in 0..16 * self.row_num {
+                    for x in 0..8 * self.column_num {
+                        writer.write(Vector2D::new(x as u32, y as u32), &self.bg_color);
+                    }
                 }
             }
 
@@ -108,12 +117,21 @@ impl Console {
                         self.column_num,
                     );
                 }
-                write_string(
-                    &mut **self.writer.lock(),
-                    Vector2D::new(0, 16 * row as u32),
-                    &self.buffer[row * self.column_num..(row + 1) * self.column_num],
-                    &self.fg_color,
-                );
+                if self.layer_id == 0 {
+                    write_string(
+                        &mut **self.writer.lock(),
+                        Vector2D::new(0, 16 * row as u32),
+                        &self.buffer[row * self.column_num..(row + 1) * self.column_num],
+                        &self.fg_color,
+                    );
+                } else {
+                    write_string(
+                        LAYER_MANAGER.lock().layer(self.layer_id).widow(),
+                        Vector2D::new(0, 16 * row as u32),
+                        &self.buffer[row * self.column_num..(row + 1) * self.column_num],
+                        &self.fg_color,
+                    );
+                }
             }
 
             for column in 0..self.column_num {
