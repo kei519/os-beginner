@@ -1,16 +1,12 @@
-use alloc::{boxed::Box, collections::BTreeMap, vec::Vec};
+use alloc::{collections::BTreeMap, vec::Vec};
 
-use crate::{
-    graphics::{PixelWriter, Vector2D},
-    sync::OnceMutex,
-    window::Window,
-};
+use crate::{frame_buffer::FrameBuffer, graphics::Vector2D, sync::OnceMutex, window::Window};
 
 /// 全レイヤーを管理する構造体。
 pub struct LayerManager {
     /// レイヤーを描画するライター。
     /// 一般にはフレームバッファに書き込めるライター。
-    writer: &'static OnceMutex<Box<dyn PixelWriter + Send>>,
+    screen: &'static OnceMutex<FrameBuffer>,
     /// レイヤーを保有するマップ。
     /// キーをそのレイヤーの ID として管理する。
     layers: BTreeMap<u32, Layer>,
@@ -24,9 +20,9 @@ impl LayerManager {
     /// コンストラクタ。
     ///
     /// * writer - ライター。
-    pub fn new(writer: &'static OnceMutex<Box<dyn PixelWriter + Send>>) -> Self {
+    pub fn new(screen: &'static OnceMutex<FrameBuffer>) -> Self {
         Self {
-            writer,
+            screen,
             layers: BTreeMap::new(),
             layer_stack: Vec::new(),
             latest_id: 0,
@@ -75,7 +71,7 @@ impl LayerManager {
             self.layers
                 .get_mut(layer_id)
                 .unwrap()
-                .draw_to(&mut **self.writer.lock())
+                .draw_to(&mut *self.screen.lock())
         }
     }
 
@@ -135,7 +131,6 @@ impl LayerManager {
 }
 
 /// レイヤーを表す構造体。
-#[derive(Default)]
 pub struct Layer {
     /// 位置。
     pos: Vector2D<u32>,
@@ -150,7 +145,7 @@ impl Layer {
     pub fn new(window: Window) -> Self {
         Self {
             window,
-            ..Default::default()
+            pos: Default::default(),
         }
     }
 
@@ -172,7 +167,7 @@ impl Layer {
     }
 
     /// レイヤーを設定された位置に描画する。
-    pub fn draw_to(&mut self, writer: &mut dyn PixelWriter) {
-        self.window.draw_to(writer, self.pos);
+    pub fn draw_to(&mut self, screen: &mut FrameBuffer) {
+        self.window.draw_to(screen, self.pos);
     }
 }

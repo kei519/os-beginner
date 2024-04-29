@@ -1,9 +1,12 @@
 use alloc::{boxed::Box, vec::Vec};
 
-use crate::graphics::{PixelColor, PixelWriter, Vector2D};
+use crate::{
+    frame_buffer::FrameBuffer,
+    frame_buffer_config::{FrameBufferConfig, PixelFormat},
+    graphics::{PixelColor, PixelWriter, Vector2D},
+};
 
 /// ウィンドウを管理する構造体。
-#[derive(Default)]
 pub struct Window {
     /// 幅。
     width: u32,
@@ -13,6 +16,8 @@ pub struct Window {
     data: Box<[PixelColor]>,
     /// 透明色の有無と、透明にする色。
     transparent_color: Option<PixelColor>,
+    /// シャドウバッファ。
+    shadow_buffer: FrameBuffer,
 }
 
 impl Window {
@@ -20,32 +25,36 @@ impl Window {
     ///
     /// * width - ウィンドウの幅。
     /// * height - ウィンドウの高さ
-    pub fn new(width: u32, height: u32) -> Self {
+    pub fn new(width: u32, height: u32, shadow_fomrat: PixelFormat) -> Self {
         let mut data = Vec::with_capacity((width * height) as usize);
         data.resize((width * height) as usize, Default::default());
         let data = data.into_boxed_slice();
+
+        let config = FrameBufferConfig {
+            frame_buffer: 0,
+            pixels_per_scan_line: 0,
+            horizontal_resolution: width as _,
+            vertical_resolution: height as _,
+            pixel_format: shadow_fomrat,
+        };
 
         Self {
             width,
             height,
             data,
             transparent_color: None,
+            shadow_buffer: FrameBuffer::new(config).unwrap(),
         }
     }
 
-    /// ウィンドウの内容を指定された描画先へ描画する。
+    /// ウィンドウの内容を指定されたフレームバッファへ転送する。
     ///
     /// * writer - 描画に用いるライター。
     /// * position - 描画する位置。
-    pub fn draw_to(&mut self, writer: &mut dyn PixelWriter, position: Vector2D<u32>) {
+    pub fn draw_to(&mut self, dst: &mut FrameBuffer, position: Vector2D<u32>) {
         // 透明色が設定されていない場合はそのまま描画する
         if self.transparent_color.is_none() {
-            for y in 0..self.height {
-                for x in 0..self.width {
-                    let pos_relative = Vector2D::new(x, y);
-                    writer.write(position + pos_relative, self.at(pos_relative));
-                }
-            }
+            dst.copy(position, &self.shadow_buffer).unwrap();
             return;
         }
 
@@ -56,7 +65,7 @@ impl Window {
                 let pos_relative = Vector2D::new(x, y);
                 let c = self.at(pos_relative);
                 if *c != tc {
-                    writer.write(position + pos_relative, c);
+                    dst.write(position + pos_relative, c);
                 }
             }
         }
@@ -74,8 +83,14 @@ impl Window {
 }
 
 impl PixelWriter for Window {
+    /// 保持しているバッファ内に書き込みを行う。
+    ///
+    /// # Remarks
+    ///
+    /// 描画が必要な場合は `Window::draw_to()` を呼ぶこと。
     fn write(&mut self, pos: Vector2D<u32>, color: &PixelColor) {
         *self.at(pos) = *color;
+        self.shadow_buffer.write(pos, color);
     }
 
     fn frame_buffer(&self) -> usize {

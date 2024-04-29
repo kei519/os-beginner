@@ -9,6 +9,7 @@ mod console;
 mod error;
 mod font;
 mod font_data;
+mod frame_buffer;
 mod frame_buffer_config;
 mod graphics;
 mod interrupt;
@@ -34,6 +35,7 @@ use core::{
     panic::PanicInfo,
     sync::atomic::{AtomicU32, Ordering},
 };
+use frame_buffer::FrameBuffer;
 use frame_buffer_config::{FrameBufferConfig, PixelFormat};
 use graphics::{
     BgrResv8BitPerColorPixelWriter, PixelColor, PixelWriter, RgbResv8BitPerColorPixelWriter,
@@ -86,6 +88,9 @@ const DESKTOP_FG_COLOR: PixelColor = PixelColor::new(255, 255, 255);
 static CONSOLE: OnceMutex<Console> = OnceMutex::new();
 
 static LAYER_MANAGER: OnceMutex<LayerManager> = OnceMutex::new();
+
+/// 本当のフレームバッファを表す `FrameBuffer`。
+static SCREEN: OnceMutex<FrameBuffer> = OnceMutex::new();
 
 static IDT: Mutex<[InterruptDescriptor; 256]> =
     Mutex::new([InterruptDescriptor::const_default(); 256]);
@@ -343,7 +348,19 @@ fn kernel_entry(
         }
     }
 
-    LAYER_MANAGER.init(LayerManager::new(&PIXEL_WRITER));
+    let screen = match FrameBuffer::new(frame_buffer_config) {
+        Ok(s) => s,
+        Err(e) => {
+            panic!(
+                "failed to initialize frame buffer: {} as {}:{}",
+                e,
+                e.file(),
+                e.line()
+            );
+        }
+    };
+    SCREEN.init(screen);
+    LAYER_MANAGER.init(LayerManager::new(&SCREEN));
 
     // デッドロックを回避するために、`CONSOLE` の `wirter` 変更（これに伴って redraw される）は
     // ロックを解除してから行う
@@ -352,11 +369,15 @@ fn kernel_entry(
         let frame_width = frame_buffer_config.horizontal_resolution as u32;
         let framw_height = frame_buffer_config.vertical_resolution as u32;
 
-        let bgwindow = Window::new(frame_width, framw_height);
+        let bgwindow = Window::new(frame_width, framw_height, frame_buffer_config.pixel_format);
         let bglayer_id = layer_manager.new_layer(bgwindow);
         draw_desktop(layer_manager.layer(bglayer_id).widow());
 
-        let mut mouse_window = Window::new(MOUSE_CURSOR_WIDTH as u32, MOUSE_CURSOR_HEIGHT as u32);
+        let mut mouse_window = Window::new(
+            MOUSE_CURSOR_WIDTH as u32,
+            MOUSE_CURSOR_HEIGHT as u32,
+            frame_buffer_config.pixel_format,
+        );
         mouse_window.set_transparent_color(Some(MOUSE_TRANSPARENT_COLOR));
         mouse::draw_mouse_cursor(&mut mouse_window, &Vector2D::new(0, 0));
         let mouse_layer_id = layer_manager.new_layer(mouse_window);

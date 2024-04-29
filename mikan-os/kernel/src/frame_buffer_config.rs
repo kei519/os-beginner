@@ -1,5 +1,5 @@
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PixelFormat {
     Rgb,
     Bgr,
