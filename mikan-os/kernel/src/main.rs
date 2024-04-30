@@ -100,7 +100,12 @@ macro_rules! printk {
     ($($arg:tt)*) => {
         {
             use core::fmt::Write;
+            use $crate::timer;
+            timer::start_lapic_timer();
             write!($crate::CONSOLE.lock(), $($arg)*).unwrap();
+            let elapsed = timer::lapic_timer_elapsed();
+            timer::stop_lapic_timer();
+            write!($crate::CONSOLE.lock(), "[{}]", elapsed).unwrap();
         }
     };
 }
