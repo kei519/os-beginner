@@ -105,7 +105,7 @@ macro_rules! printk {
             write!($crate::CONSOLE.lock(), $($arg)*).unwrap();
             let elapsed = timer::lapic_timer_elapsed();
             timer::stop_lapic_timer();
-            write!($crate::CONSOLE.lock(), "[{}]", elapsed).unwrap();
+            write!($crate::CONSOLE.lock(), "[{:9}]", elapsed).unwrap();
         }
     };
 }

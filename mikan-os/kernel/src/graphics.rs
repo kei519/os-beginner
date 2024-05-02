@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 use core::{
-    ops::{Add, AddAssign, Sub, SubAssign},
+    ops::{Add, AddAssign, BitAnd, Sub, SubAssign},
     slice,
 };
 
@@ -237,6 +237,52 @@ impl<T: SubAssign> SubAssign for Vector2D<T> {
     fn sub_assign(&mut self, rhs: Self) {
         self.x -= rhs.x;
         self.y -= rhs.y;
+    }
+}
+
+pub struct Rectangle<T> {
+    pub pos: Vector2D<T>,
+    pub size: Vector2D<T>,
+}
+
+impl<T> BitAnd for Rectangle<T>
+where
+    T: Add<Output = T> + Sub<Output = T> + Ord + Default + Copy,
+{
+    type Output = Self;
+    fn bitand(self, rhs: Self) -> Self::Output {
+        use core::cmp::{max, min};
+
+        let self_end = self.pos + self.size;
+        let rhs_end = rhs.pos + rhs.size;
+
+        if (self_end.x < rhs.pos.x
+            || self_end.y < rhs.pos.y
+            || rhs_end.x < self.pos.x
+            || rhs_end.y < self.pos.y)
+        {
+            return Self {
+                pos: Vector2D {
+                    ..Default::default()
+                },
+                size: Vector2D {
+                    ..Default::default()
+                },
+            };
+        }
+
+        let new_pos = Vector2D {
+            x: max(self.pos.x, rhs.pos.x),
+            y: max(self.pos.y, rhs.pos.y),
+        };
+        let new_size = Vector2D {
+            x: min(self_end.x, rhs_end.x) - new_pos.x,
+            y: min(self_end.y, rhs_end.y) - new_pos.y,
+        };
+        Self {
+            pos: new_pos,
+            size: new_size,
+        }
     }
 }
 

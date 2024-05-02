@@ -3,7 +3,7 @@ use alloc::{boxed::Box, vec::Vec};
 use crate::{
     frame_buffer::FrameBuffer,
     frame_buffer_config::{FrameBufferConfig, PixelFormat},
-    graphics::{PixelColor, PixelWriter, Vector2D},
+    graphics::{PixelColor, PixelWriter, Rectangle, Vector2D},
 };
 
 /// ウィンドウを管理する構造体。
@@ -69,6 +69,10 @@ impl Window {
                 }
             }
         }
+    }
+
+    pub fn r#move(&mut self, dst_pos: Vector2D<u32>, src: &Rectangle<u32>) {
+        self.shadow_buffer.r#move(dst_pos, src)
     }
 
     /// ウィンドウの透過色を設定する。

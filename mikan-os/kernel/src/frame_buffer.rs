@@ -4,7 +4,8 @@ use crate::{
     error::{Code, Result},
     frame_buffer_config::{FrameBufferConfig, PixelFormat},
     graphics::{
-        BgrResv8BitPerColorPixelWriter, PixelWriter, RgbResv8BitPerColorPixelWriter, Vector2D,
+        BgrResv8BitPerColorPixelWriter, PixelWriter, Rectangle, RgbResv8BitPerColorPixelWriter,
+        Vector2D,
     },
     make_error,
 };
@@ -105,6 +106,46 @@ impl FrameBuffer {
         }
         Ok(())
     }
+
+    pub fn r#move(&mut self, dst_pos: Vector2D<u32>, src: &Rectangle<u32>) {
+        use core::ptr::copy_nonoverlapping;
+
+        let bytes_per_pixel = bytes_per_pixel(&self.pixel_format);
+        let bytes_per_scan_line = bytes_per_pixel * self.pixels_per_scan_line();
+
+        let config = FrameBufferConfig {
+            frame_buffer: self.frame_buffer(),
+            pixels_per_scan_line: self.pixels_per_scan_line(),
+            horizontal_resolution: self.horizontal_resolution(),
+            vertical_resolution: self.vertical_resolution(),
+            pixel_format: self.pixel_format,
+        };
+
+        if dst_pos.y() < src.pos.y() {
+            let mut dst_buf = frame_addr_at(dst_pos, &config);
+            let mut src_buf = frame_addr_at(src.pos, &config) as *const _;
+
+            for _ in 0..src.size.y() {
+                unsafe {
+                    copy_nonoverlapping(src_buf, dst_buf, bytes_per_pixel * src.size.x() as usize);
+                    dst_buf = dst_buf.add(bytes_per_scan_line);
+                    src_buf = src_buf.add(bytes_per_scan_line);
+                }
+            }
+        } else {
+            let mut dst_buf = frame_addr_at(dst_pos + Vector2D::new(0, src.size.y() - 1), &config);
+            let mut src_buf =
+                frame_addr_at(src.pos + Vector2D::new(0, src.size.y() - 1), &config) as *const _;
+
+            for _ in 0..src.size.y() {
+                unsafe {
+                    copy_nonoverlapping(src_buf, dst_buf, bytes_per_pixel * src.size.x() as usize);
+                    dst_buf = dst_buf.sub(bytes_per_scan_line);
+                    src_buf = src_buf.sub(bytes_per_scan_line);
+                }
+            }
+        }
+    }
 }
 
 impl PixelWriter for FrameBuffer {
@@ -146,4 +187,23 @@ fn bits_per_pixel(format: PixelFormat) -> usize {
         PixelFormat::Rgb => 32,
         PixelFormat::Bgr => 32,
     }
+}
+
+fn bytes_per_pixel(format: &PixelFormat) -> usize {
+    match format {
+        PixelFormat::Rgb | PixelFormat::Bgr => 4,
+    }
+}
+
+fn frame_addr_at(pos: Vector2D<u32>, config: &FrameBufferConfig) -> *mut u8 {
+    (config.frame_buffer
+        + bytes_per_pixel(&config.pixel_format)
+            * (config.pixels_per_scan_line * pos.y() as usize + pos.x() as usize)) as *mut u8
+}
+
+fn frame_buffer_size(config: &FrameBufferConfig) -> Vector2D<u32> {
+    Vector2D::new(
+        config.horizontal_resolution as _,
+        config.vertical_resolution as _,
+    )
 }

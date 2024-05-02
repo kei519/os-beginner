@@ -9,7 +9,7 @@ use alloc::{boxed::Box, vec::Vec};
 
 use crate::{
     font::{write_ascii, write_string},
-    graphics::{PixelColor, PixelWriter, Vector2D},
+    graphics::{PixelColor, PixelWriter, Rectangle, Vector2D},
     sync::OnceMutex,
     LAYER_MANAGER,
 };
@@ -89,61 +89,46 @@ impl Console {
 
         if self.cursor_row < self.row_num - 1 {
             self.cursor_row += 1;
-        } else {
-            // 背景の描画
-            if self.layer_id == 0 {
-                let mut writer = self.writer.lock();
-                for y in 0..16 * self.row_num {
-                    for x in 0..8 * self.column_num {
-                        writer.write(Vector2D::new(x as u32, y as u32), &self.bg_color);
-                    }
-                }
-            } else {
-                let mut writer = LAYER_MANAGER.lock();
-                let writer = writer.layer(self.layer_id).widow();
-                for y in 0..16 * self.row_num {
-                    for x in 0..8 * self.column_num {
-                        writer.write(Vector2D::new(x as u32, y as u32), &self.bg_color);
-                    }
-                }
-            }
+            return;
+        }
 
-            // バッファの移動と描画
+        // 背景の描画
+        if self.layer_id == 0 {
+            let mut writer = self.writer.lock();
+            writer.fill_rectangle(
+                Vector2D::new(0, 0),
+                Vector2D::new(8 * self.column_num as u32, 16 * self.row_num as u32),
+                &self.bg_color,
+            );
+
             for row in 0..self.row_num - 1 {
                 unsafe {
-                    copy_nonoverlapping(
-                        self.buffer.as_ptr().add((row + 1) * self.column_num),
-                        self.buffer.as_mut_ptr().add(row * self.column_num),
+                    core::ptr::copy_nonoverlapping(
+                        self.buffer[(row + 1) * self.column_num..].as_ptr(),
+                        self.buffer[row * self.column_num..].as_mut_ptr(),
                         self.column_num,
-                    );
-                }
-                if self.layer_id == 0 {
-                    write_string(
-                        &mut **self.writer.lock(),
-                        Vector2D::new(0, 16 * row as u32),
-                        &self.buffer[row * self.column_num..(row + 1) * self.column_num],
-                        &self.fg_color,
-                    );
-                } else {
-                    write_string(
-                        LAYER_MANAGER.lock().layer(self.layer_id).widow(),
-                        Vector2D::new(0, 16 * row as u32),
-                        &self.buffer[row * self.column_num..(row + 1) * self.column_num],
-                        &self.fg_color,
-                    );
-                }
+                    )
+                };
+                write_string(
+                    &mut **writer,
+                    Vector2D::new(0, 16 * row as u32),
+                    &self.buffer[row * self.column_num..(row + 1) * self.column_num],
+                    &self.fg_color,
+                );
             }
-
-            for column in 0..self.column_num {
-                unsafe {
-                    write(
-                        self.buffer
-                            .as_mut_ptr()
-                            .add((self.row_num - 1) * self.column_num + column),
-                        0,
-                    );
-                }
-            }
+        } else {
+            let mov_src = Rectangle {
+                pos: Vector2D::new(0, 16),
+                size: Vector2D::new(8 * self.column_num as u32, 16 * (self.row_num as u32 - 1)),
+            };
+            let mut layer_manager = LAYER_MANAGER.lock();
+            let window = layer_manager.layer(self.layer_id).widow();
+            window.r#move(Vector2D::new(0, 0), &mov_src);
+            window.fill_rectangle(
+                Vector2D::new(0, 16 * (self.row_num as u32 - 1)),
+                Vector2D::new(8 * self.column_num as u32, 16),
+                &self.bg_color,
+            );
         }
     }
 
