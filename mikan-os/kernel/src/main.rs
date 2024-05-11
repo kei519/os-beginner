@@ -46,7 +46,6 @@ use layer::LayerManager;
 use mouse::MouseCursor;
 use pci::Device;
 use sync::{Mutex, OnceMutex};
-use timer::stop_lapic_timer;
 use uefi::table::boot::MemoryMap;
 
 use crate::{
@@ -100,12 +99,7 @@ macro_rules! printk {
     ($($arg:tt)*) => {
         {
             use core::fmt::Write;
-            use $crate::timer;
-            timer::start_lapic_timer();
             write!($crate::CONSOLE.lock(), $($arg)*).unwrap();
-            let elapsed = timer::lapic_timer_elapsed();
-            timer::stop_lapic_timer();
-            write!($crate::CONSOLE.lock(), "[{:9}]", elapsed).unwrap();
         }
     };
 }
@@ -120,19 +114,19 @@ static MOUSE_CURSOR: OnceMutex<MouseCursor> = OnceMutex::new();
 static MOUSE_LAYER_ID: AtomicU32 = AtomicU32::new(0);
 
 fn mouse_observer(displacement_x: i8, displacement_y: i8) {
-    let elapsed = {
-        let mut layer_maneger = LAYER_MANAGER.lock();
-        let layer_id = MOUSE_LAYER_ID.load(Ordering::Acquire);
-        layer_maneger
-            .layer(layer_id)
-            .move_relative(Vector2D::new(displacement_x as i32, displacement_y as i32));
-        timer::start_lapic_timer();
-        layer_maneger.draw();
-        let elapsed = timer::lapic_timer_elapsed();
-        stop_lapic_timer();
-        elapsed
-    };
-    printkln!("mouse_obserer: elapsed = {}", elapsed);
+    let mut layer_maneger = LAYER_MANAGER.lock();
+    let layer_id = MOUSE_LAYER_ID.load(Ordering::Acquire);
+
+    let newpos = layer_maneger.layer(layer_id).pos()
+        + Vector2D::new(displacement_x as i32, displacement_y as i32);
+    let newpos = Vector2D::element_min(
+        &newpos,
+        &(layer_maneger.screen_size() + Vector2D::new(-1, -1)),
+    );
+    let mouse_pos = Vector2D::element_max(&newpos, &Vector2D::new(0, 0));
+
+    layer_maneger.layer(layer_id).r#move(mouse_pos);
+    layer_maneger.draw();
 }
 
 fn switch_ehci2xhci(xhc_dev: &Device) {

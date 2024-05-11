@@ -198,6 +198,30 @@ impl<T: Copy> Vector2D<T> {
     }
 }
 
+impl<T: Ord + Copy> Vector2D<T> {
+    /// 与えられた2つの各 x, y 要素のうち、最大のものを
+    /// 新たな x, y 要素としたものを返す。
+    pub fn element_max(lhs: &Self, rhs: &Self) -> Self {
+        use core::cmp::max;
+
+        Self {
+            x: max(lhs.x, rhs.x),
+            y: max(lhs.y, rhs.y),
+        }
+    }
+
+    /// 与えられた2つの各 x, y 要素のうち、最小のものを
+    /// 新たな x, y 要素としたものを返す。
+    pub fn element_min(lhs: &Self, rhs: &Self) -> Self {
+        use core::cmp::min;
+
+        Self {
+            x: min(lhs.x, rhs.x),
+            y: min(lhs.y, rhs.y),
+        }
+    }
+}
+
 /// 成分の加算を加算として定義する。
 impl<T> Add for Vector2D<T>
 where

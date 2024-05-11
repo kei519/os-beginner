@@ -1,3 +1,5 @@
+use core::cmp;
+
 use alloc::{boxed::Box, vec::Vec};
 
 use crate::{
@@ -60,8 +62,19 @@ impl Window {
 
         // 透明色が設定されている場合は、その色のピクセルは描画しない
         let tc = self.transparent_color.unwrap();
-        for y in 0..self.height {
-            for x in 0..self.width {
+        // 描き込むフレームバッファからはみ出る分は描画しない
+        for y in cmp::max(0, 0 - position.y())
+            ..cmp::min(
+                self.height as i32,
+                dst.vertical_resolution() as i32 - position.y(),
+            )
+        {
+            for x in cmp::max(0, 0 - position.x())
+                ..cmp::min(
+                    self.width as i32,
+                    dst.horizontal_resolution() as i32 - position.x(),
+                )
+            {
                 let pos_relative = Vector2D::new(x as i32, y as i32);
                 let c = self.at(pos_relative);
                 if *c != tc {

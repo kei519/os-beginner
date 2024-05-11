@@ -29,6 +29,15 @@ impl LayerManager {
         }
     }
 
+    pub fn screen_size(&self) -> Vector2D<i32> {
+        use crate::PixelWriter;
+        let screen = self.screen.lock();
+        Vector2D::new(
+            screen.horizontal_resolution() as i32,
+            screen.vertical_resolution() as i32,
+        )
+    }
+
     /// 新しいレイヤーを作成し、そのレイヤーの ID を返す。
     ///
     /// * window - 生成するレイヤーに紐づけるウィンドウ。
@@ -152,6 +161,11 @@ impl Layer {
     /// 紐づいているウィンドウへの排他参照を返す。
     pub fn widow(&mut self) -> &mut Window {
         &mut self.window
+    }
+
+    /// レイヤーの場所を返す。
+    pub fn pos(&self) -> Vector2D<i32> {
+        self.pos
     }
 
     /// レイヤーを指定された位置に動かす。
