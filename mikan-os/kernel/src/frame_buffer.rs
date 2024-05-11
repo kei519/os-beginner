@@ -67,7 +67,7 @@ impl FrameBuffer {
         })
     }
 
-    pub fn copy(&mut self, pos: Vector2D<u32>, src: &FrameBuffer) -> Result<()> {
+    pub fn copy(&mut self, pos: Vector2D<i32>, src: &FrameBuffer) -> Result<()> {
         use core::cmp::{max, min};
 
         if self.pixel_format != src.pixel_format {
@@ -107,7 +107,7 @@ impl FrameBuffer {
         Ok(())
     }
 
-    pub fn r#move(&mut self, dst_pos: Vector2D<u32>, src: &Rectangle<u32>) {
+    pub fn r#move(&mut self, dst_pos: Vector2D<i32>, src: &Rectangle<i32>) {
         use core::ptr::copy_nonoverlapping;
 
         let bytes_per_pixel = bytes_per_pixel(&self.pixel_format);
@@ -149,7 +149,7 @@ impl FrameBuffer {
 }
 
 impl PixelWriter for FrameBuffer {
-    fn write(&mut self, pos: crate::graphics::Vector2D<u32>, color: &crate::graphics::PixelColor) {
+    fn write(&mut self, pos: crate::graphics::Vector2D<i32>, color: &crate::graphics::PixelColor) {
         self.writer.write(pos, color)
     }
 
@@ -195,13 +195,13 @@ fn bytes_per_pixel(format: &PixelFormat) -> usize {
     }
 }
 
-fn frame_addr_at(pos: Vector2D<u32>, config: &FrameBufferConfig) -> *mut u8 {
+fn frame_addr_at(pos: Vector2D<i32>, config: &FrameBufferConfig) -> *mut u8 {
     (config.frame_buffer
         + bytes_per_pixel(&config.pixel_format)
             * (config.pixels_per_scan_line * pos.y() as usize + pos.x() as usize)) as *mut u8
 }
 
-fn frame_buffer_size(config: &FrameBufferConfig) -> Vector2D<u32> {
+fn frame_buffer_size(config: &FrameBufferConfig) -> Vector2D<i32> {
     Vector2D::new(
         config.horizontal_resolution as _,
         config.vertical_resolution as _,

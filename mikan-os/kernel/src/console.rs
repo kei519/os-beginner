@@ -63,7 +63,7 @@ impl Console {
             if c == b'\n' {
                 self.new_line();
             } else if (self.cursor_column < self.column_num - 1) {
-                let pos = Vector2D::new(8 * self.cursor_column as u32, 16 * self.cursor_row as u32);
+                let pos = Vector2D::new(8 * self.cursor_column as i32, 16 * self.cursor_row as i32);
                 if self.layer_id == 0 {
                     write_ascii(&mut **self.writer.lock(), pos, c, &self.fg_color);
                 } else {
@@ -97,7 +97,7 @@ impl Console {
             let mut writer = self.writer.lock();
             writer.fill_rectangle(
                 Vector2D::new(0, 0),
-                Vector2D::new(8 * self.column_num as u32, 16 * self.row_num as u32),
+                Vector2D::new(8 * self.column_num as i32, 16 * self.row_num as i32),
                 &self.bg_color,
             );
 
@@ -111,7 +111,7 @@ impl Console {
                 };
                 write_string(
                     &mut **writer,
-                    Vector2D::new(0, 16 * row as u32),
+                    Vector2D::new(0, 16 * row as i32),
                     &self.buffer[row * self.column_num..(row + 1) * self.column_num],
                     &self.fg_color,
                 );
@@ -119,14 +119,14 @@ impl Console {
         } else {
             let mov_src = Rectangle {
                 pos: Vector2D::new(0, 16),
-                size: Vector2D::new(8 * self.column_num as u32, 16 * (self.row_num as u32 - 1)),
+                size: Vector2D::new(8 * self.column_num as i32, 16 * (self.row_num as i32 - 1)),
             };
             let mut layer_manager = LAYER_MANAGER.lock();
             let window = layer_manager.layer(self.layer_id).widow();
             window.r#move(Vector2D::new(0, 0), &mov_src);
             window.fill_rectangle(
-                Vector2D::new(0, 16 * (self.row_num as u32 - 1)),
-                Vector2D::new(8 * self.column_num as u32, 16),
+                Vector2D::new(0, 16 * (self.row_num as i32 - 1)),
+                Vector2D::new(8 * self.column_num as i32, 16),
                 &self.bg_color,
             );
         }
@@ -146,7 +146,7 @@ impl Console {
         for row in 0..self.row_num {
             write_string(
                 LAYER_MANAGER.lock().layer(self.layer_id).widow(),
-                Vector2D::new(0, 16 * row as u32),
+                Vector2D::new(0, 16 * row as i32),
                 &self.buffer[row * self.column_num..(row + 1) * self.column_num],
                 &self.fg_color,
             );

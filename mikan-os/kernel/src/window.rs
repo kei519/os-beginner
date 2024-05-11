@@ -51,7 +51,7 @@ impl Window {
     ///
     /// * writer - 描画に用いるライター。
     /// * position - 描画する位置。
-    pub fn draw_to(&mut self, dst: &mut FrameBuffer, position: Vector2D<u32>) {
+    pub fn draw_to(&mut self, dst: &mut FrameBuffer, position: Vector2D<i32>) {
         // 透明色が設定されていない場合はそのまま描画する
         if self.transparent_color.is_none() {
             dst.copy(position, &self.shadow_buffer).unwrap();
@@ -62,7 +62,7 @@ impl Window {
         let tc = self.transparent_color.unwrap();
         for y in 0..self.height {
             for x in 0..self.width {
-                let pos_relative = Vector2D::new(x, y);
+                let pos_relative = Vector2D::new(x as i32, y as i32);
                 let c = self.at(pos_relative);
                 if *c != tc {
                     dst.write(position + pos_relative, c);
@@ -71,7 +71,7 @@ impl Window {
         }
     }
 
-    pub fn r#move(&mut self, dst_pos: Vector2D<u32>, src: &Rectangle<u32>) {
+    pub fn r#move(&mut self, dst_pos: Vector2D<i32>, src: &Rectangle<i32>) {
         self.shadow_buffer.r#move(dst_pos, src)
     }
 
@@ -81,8 +81,8 @@ impl Window {
     }
 
     /// 指定された位置のピクセルへの排他参照を返す。
-    pub fn at(&mut self, pos: Vector2D<u32>) -> &mut PixelColor {
-        &mut self.data[(pos.y() * self.width + pos.x()) as usize]
+    pub fn at(&mut self, pos: Vector2D<i32>) -> &mut PixelColor {
+        &mut self.data[(pos.y() * self.width as i32 + pos.x()) as usize]
     }
 }
 
@@ -92,7 +92,7 @@ impl PixelWriter for Window {
     /// # Remarks
     ///
     /// 描画が必要な場合は `Window::draw_to()` を呼ぶこと。
-    fn write(&mut self, pos: Vector2D<u32>, color: &PixelColor) {
+    fn write(&mut self, pos: Vector2D<i32>, color: &PixelColor) {
         *self.at(pos) = *color;
         self.shadow_buffer.write(pos, color);
     }

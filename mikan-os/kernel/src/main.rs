@@ -125,7 +125,7 @@ fn mouse_observer(displacement_x: i8, displacement_y: i8) {
         let layer_id = MOUSE_LAYER_ID.load(Ordering::Acquire);
         layer_maneger
             .layer(layer_id)
-            .move_relative(Vector2D::new(displacement_x as u32, displacement_y as u32));
+            .move_relative(Vector2D::new(displacement_x as i32, displacement_y as i32));
         timer::start_lapic_timer();
         layer_maneger.draw();
         let elapsed = timer::lapic_timer_elapsed();

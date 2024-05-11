@@ -42,14 +42,14 @@ const MOUSE_CURSOR_SHAPE: [&[u8; MOUSE_CURSOR_WIDTH]; MOUSE_CURSOR_HEIGHT] = [
 pub struct MouseCursor {
     pixel_writer: &'static OnceMutex<Box<dyn PixelWriter + Send>>,
     erase_color: PixelColor,
-    position: Vector2D<u32>,
+    position: Vector2D<i32>,
 }
 
 impl MouseCursor {
     pub fn new(
         writer: &'static OnceMutex<Box<dyn PixelWriter + Send>>,
         erase_color: PixelColor,
-        initial_position: Vector2D<u32>,
+        initial_position: Vector2D<i32>,
     ) -> Self {
         let mut ret = Self {
             pixel_writer: writer,
@@ -60,7 +60,7 @@ impl MouseCursor {
         ret
     }
 
-    pub fn move_relative(&mut self, displacement: Vector2D<u32>) {
+    pub fn move_relative(&mut self, displacement: Vector2D<i32>) {
         self.erase_mouse_cursor();
         self.position += displacement;
         self.draw_mouse_cursor();
@@ -75,7 +75,7 @@ impl MouseCursor {
             for dx in 0..MOUSE_CURSOR_WIDTH {
                 if MOUSE_CURSOR_SHAPE[dy][dx] != b' ' {
                     self.pixel_writer.lock().write(
-                        self.position + Vector2D::new(dx as u32, dy as u32),
+                        self.position + Vector2D::new(dx as i32, dy as i32),
                         &self.erase_color,
                     )
                 }
@@ -84,10 +84,10 @@ impl MouseCursor {
     }
 }
 
-pub fn draw_mouse_cursor(writer: &mut dyn PixelWriter, pos: &Vector2D<u32>) {
+pub fn draw_mouse_cursor(writer: &mut dyn PixelWriter, pos: &Vector2D<i32>) {
     for dy in 0..MOUSE_CURSOR_HEIGHT {
         for dx in 0..MOUSE_CURSOR_WIDTH {
-            let pos = *pos + Vector2D::new(dx as u32, dy as u32);
+            let pos = *pos + Vector2D::new(dx as i32, dy as i32);
             if MOUSE_CURSOR_SHAPE[dy][dx] == b'@' {
                 writer.write(pos, &PixelColor::new(0, 0, 0));
             } else if MOUSE_CURSOR_SHAPE[dy][dx] == b'.' {

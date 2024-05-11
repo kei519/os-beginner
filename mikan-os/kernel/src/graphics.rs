@@ -34,7 +34,7 @@ impl PixelColor {
 /// ピクセルを塗るための色々を提供する。
 pub trait PixelWriter {
     /// ピクセルを塗る手段を提供する。
-    fn write(&mut self, pos: Vector2D<u32>, color: &PixelColor);
+    fn write(&mut self, pos: Vector2D<i32>, color: &PixelColor);
 
     /// フレームバッファの先頭アドレスを表す。
     fn frame_buffer(&self) -> usize;
@@ -49,7 +49,7 @@ pub trait PixelWriter {
     fn vertical_resolution(&self) -> usize;
 
     /// 長方形の枠を指定された色で塗る。
-    fn draw_rectangle(&mut self, pos: Vector2D<u32>, size: Vector2D<u32>, c: &PixelColor) {
+    fn draw_rectangle(&mut self, pos: Vector2D<i32>, size: Vector2D<i32>, c: &PixelColor) {
         // 横線
         for dx in 0..size.x {
             self.write(pos + Vector2D::new(dx, 0), c);
@@ -64,7 +64,7 @@ pub trait PixelWriter {
     }
 
     // 長方形を指定された色で塗る。
-    fn fill_rectangle(&mut self, pos: Vector2D<u32>, size: Vector2D<u32>, c: &PixelColor) {
+    fn fill_rectangle(&mut self, pos: Vector2D<i32>, size: Vector2D<i32>, c: &PixelColor) {
         for dy in 0..size.y {
             for dx in 0..size.x {
                 self.write(pos + Vector2D::new(dx, dy), c);
@@ -83,7 +83,7 @@ impl RgbResv8BitPerColorPixelWriter {
         Self { config }
     }
 
-    fn pixel_at(&mut self, pos: Vector2D<u32>) -> &mut [u8; 3] {
+    fn pixel_at(&mut self, pos: Vector2D<i32>) -> &mut [u8; 3] {
         unsafe {
             slice::from_raw_parts_mut(
                 (self.frame_buffer()
@@ -98,7 +98,7 @@ impl RgbResv8BitPerColorPixelWriter {
 }
 
 impl PixelWriter for RgbResv8BitPerColorPixelWriter {
-    fn write(&mut self, pos: Vector2D<u32>, color: &PixelColor) {
+    fn write(&mut self, pos: Vector2D<i32>, color: &PixelColor) {
         let pixel = self.pixel_at(pos);
         pixel[0] = color.r;
         pixel[1] = color.g;
@@ -133,7 +133,7 @@ impl BgrResv8BitPerColorPixelWriter {
         Self { config }
     }
 
-    fn pixel_at(&mut self, pos: Vector2D<u32>) -> &mut [u8; 3] {
+    fn pixel_at(&mut self, pos: Vector2D<i32>) -> &mut [u8; 3] {
         unsafe {
             slice::from_raw_parts_mut(
                 (self.frame_buffer()
@@ -148,7 +148,7 @@ impl BgrResv8BitPerColorPixelWriter {
 }
 
 impl PixelWriter for BgrResv8BitPerColorPixelWriter {
-    fn write(&mut self, pos: Vector2D<u32>, color: &PixelColor) {
+    fn write(&mut self, pos: Vector2D<i32>, color: &PixelColor) {
         let pixel = self.pixel_at(pos);
         pixel[0] = color.b;
         pixel[1] = color.g;
@@ -179,12 +179,14 @@ pub struct Vector2D<T> {
     y: T,
 }
 
-impl<T: Copy + Add + AddAssign + Sub + SubAssign> Vector2D<T> {
+impl<T> Vector2D<T> {
     /// 初期化。
     pub const fn new(x: T, y: T) -> Self {
         Self { x, y }
     }
+}
 
+impl<T: Copy> Vector2D<T> {
     /// x 成分を返す。
     pub const fn x(&self) -> T {
         self.x
@@ -287,8 +289,8 @@ where
 }
 
 pub fn draw_desktop(writer: &mut dyn PixelWriter) {
-    let frame_width = writer.horizontal_resolution() as u32;
-    let frame_height = writer.vertical_resolution() as u32;
+    let frame_width = writer.horizontal_resolution() as i32;
+    let frame_height = writer.vertical_resolution() as i32;
 
     // デスクトップ背景の描画
     writer.fill_rectangle(

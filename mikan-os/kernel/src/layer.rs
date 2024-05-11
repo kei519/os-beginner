@@ -52,7 +52,7 @@ impl LayerManager {
     /// # Remarks
     ///
     /// 有効な ID を指定していない場合は `panic` する。
-    pub fn r#move(&mut self, id: u32, new_position: Vector2D<u32>) {
+    pub fn r#move(&mut self, id: u32, new_position: Vector2D<i32>) {
         self.find_layer_mut(id).unwrap().r#move(new_position);
     }
 
@@ -61,7 +61,7 @@ impl LayerManager {
     /// # Remarks
     ///
     /// 有効な ID を指定していない場合は `panic` する。
-    pub fn move_relative(&mut self, id: u32, pos_diff: Vector2D<u32>) {
+    pub fn move_relative(&mut self, id: u32, pos_diff: Vector2D<i32>) {
         self.find_layer_mut(id).unwrap().move_relative(pos_diff);
     }
 
@@ -133,7 +133,7 @@ impl LayerManager {
 /// レイヤーを表す構造体。
 pub struct Layer {
     /// 位置。
-    pos: Vector2D<u32>,
+    pos: Vector2D<i32>,
     /// 設定されているウィンドウ。
     window: Window,
 }
@@ -155,13 +155,13 @@ impl Layer {
     }
 
     /// レイヤーを指定された位置に動かす。
-    pub fn r#move(&mut self, pos: Vector2D<u32>) -> &mut Self {
+    pub fn r#move(&mut self, pos: Vector2D<i32>) -> &mut Self {
         self.pos = pos;
         self
     }
 
     /// レイヤーを指定された分だけ動かす。
-    pub fn move_relative(&mut self, pos_diff: Vector2D<u32>) -> &mut Self {
+    pub fn move_relative(&mut self, pos_diff: Vector2D<i32>) -> &mut Self {
         self.pos += pos_diff;
         self
     }
