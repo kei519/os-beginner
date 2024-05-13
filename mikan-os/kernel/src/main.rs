@@ -27,7 +27,7 @@ mod usb;
 mod window;
 mod x86_descriptor;
 
-use alloc::{boxed::Box, collections::VecDeque};
+use alloc::{boxed::Box, collections::VecDeque, format};
 use console::Console;
 use core::{
     arch::asm,
@@ -385,20 +385,8 @@ fn kernel_entry(
             .layer(mouse_layer_id)
             .move_relative(Vector2D::new(200, 200));
 
-        let mut main_window = Window::new(160, 68, frame_buffer_config.pixel_format);
+        let mut main_window = Window::new(160, 52, frame_buffer_config.pixel_format);
         main_window.draw_window(b"Hello Window");
-        font::write_string(
-            &mut main_window,
-            Vector2D::new(24, 28),
-            b"Welcome to",
-            &PixelColor::new(0, 0, 0),
-        );
-        font::write_string(
-            &mut main_window,
-            Vector2D::new(24, 44),
-            b"MikanOS world!",
-            &PixelColor::new(0, 0, 0),
-        );
 
         let main_window_id = layer_manager.new_layer(main_window);
         layer_manager
@@ -416,7 +404,26 @@ fn kernel_entry(
     CONSOLE.lock().set_layer(bglayer_id);
     LAYER_MANAGER.lock().draw();
 
+    let mut count = 0;
     loop {
+        count += 1;
+        {
+            let mut layer_manager = LAYER_MANAGER.lock();
+            let window = layer_manager.layer(main_window_id).widow();
+            window.fill_rectangle(
+                Vector2D::new(24, 28),
+                Vector2D::new(8 * 10, 16),
+                &PixelColor::new(0xc6, 0xc6, 0xc6),
+            );
+            font::write_string(
+                window,
+                Vector2D::new(24, 28),
+                format!("{:010}", count).as_bytes(),
+                &PixelColor::new(0, 0, 0),
+            );
+            layer_manager.draw();
+        }
+
         cli();
         let msg = {
             let mut main_queue = MAIN_QUEUE.lock();
@@ -424,7 +431,7 @@ fn kernel_entry(
             if main_queue.len() == 0 {
                 // 待機中ロックがかかったままになるため、明示的にドロップしておく
                 drop(main_queue);
-                sti_hlt();
+                sti();
                 continue;
             }
 
