@@ -46,7 +46,7 @@ use layer::LayerManager;
 use mouse::MouseCursor;
 use pci::Device;
 use sync::{Mutex, OnceMutex};
-use uefi::table::boot::MemoryMap;
+use uefi::{proto::network, table::boot::MemoryMap};
 
 use crate::{
     asmfunc::{cli, get_cs, load_idt, set_cs_ss, set_ds_all, sti, sti_hlt},
@@ -363,7 +363,7 @@ fn kernel_entry(
 
     // デッドロックを回避するために、`CONSOLE` の `wirter` 変更（これに伴って redraw される）は
     // ロックを解除してから行う
-    let bglayer_id = {
+    let (bglayer_id, main_window_id) = {
         let mut layer_manager = LAYER_MANAGER.lock();
         let frame_width = frame_buffer_config.horizontal_resolution as u32;
         let framw_height = frame_buffer_config.vertical_resolution as u32;
@@ -371,6 +371,7 @@ fn kernel_entry(
         let bgwindow = Window::new(frame_width, framw_height, frame_buffer_config.pixel_format);
         let bglayer_id = layer_manager.new_layer(bgwindow);
         draw_desktop(layer_manager.layer(bglayer_id).widow());
+        layer_manager.layer(bglayer_id).r#move(Vector2D::new(0, 0));
 
         let mut mouse_window = Window::new(
             MOUSE_CURSOR_WIDTH as u32,
@@ -380,17 +381,37 @@ fn kernel_entry(
         mouse_window.set_transparent_color(Some(MOUSE_TRANSPARENT_COLOR));
         mouse::draw_mouse_cursor(&mut mouse_window, &Vector2D::new(0, 0));
         let mouse_layer_id = layer_manager.new_layer(mouse_window);
-
-        layer_manager.layer(bglayer_id).r#move(Vector2D::new(0, 0));
         layer_manager
             .layer(mouse_layer_id)
             .move_relative(Vector2D::new(200, 200));
 
+        let mut main_window = Window::new(160, 68, frame_buffer_config.pixel_format);
+        main_window.draw_window(b"Hello Window");
+        font::write_string(
+            &mut main_window,
+            Vector2D::new(24, 28),
+            b"Welcome to",
+            &PixelColor::new(0, 0, 0),
+        );
+        font::write_string(
+            &mut main_window,
+            Vector2D::new(24, 44),
+            b"MikanOS world!",
+            &PixelColor::new(0, 0, 0),
+        );
+
+        let main_window_id = layer_manager.new_layer(main_window);
+        layer_manager
+            .layer(main_window_id)
+            .r#move(Vector2D::new(300, 100));
+
         layer_manager.up_down(bglayer_id, 0);
         layer_manager.up_down(mouse_layer_id, 1);
+        layer_manager.up_down(main_window_id, 1);
+        layer_manager.draw();
         MOUSE_LAYER_ID.store(mouse_layer_id, Ordering::Release);
 
-        bglayer_id
+        (bglayer_id, main_window_id)
     };
     CONSOLE.lock().set_layer(bglayer_id);
     LAYER_MANAGER.lock().draw();

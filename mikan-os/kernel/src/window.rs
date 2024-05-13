@@ -3,6 +3,8 @@ use core::cmp;
 use alloc::{boxed::Box, vec::Vec};
 
 use crate::{
+    bitfield::BitField,
+    font,
     frame_buffer::FrameBuffer,
     frame_buffer_config::{FrameBufferConfig, PixelFormat},
     graphics::{PixelColor, PixelWriter, Rectangle, Vector2D},
@@ -124,5 +126,90 @@ impl PixelWriter for Window {
 
     fn vertical_resolution(&self) -> usize {
         self.height as usize
+    }
+}
+
+const CLOSE_BUTTON_WIDTH: usize = 16;
+const CLOSE_BUTTON_HEIGHT: usize = 14;
+
+const CLOSE_BUTTON: [&[u8; CLOSE_BUTTON_WIDTH]; CLOSE_BUTTON_HEIGHT] = [
+    b"...............@",
+    b".:::::::::::::$@",
+    b".:::::::::::::$@",
+    b".:::@@::::@@::$@",
+    b".::::@@::@@:::$@",
+    b".::::::@@:::::$@",
+    b".::::::@@:::::$@",
+    b".::::@@::@@:::$@",
+    b".:::@@::::@@::$@",
+    b".:::::::::::::$@",
+    b".:::::::::::::$@",
+    b".:::::::::::::$@",
+    b".$$$$$$$$$$$$$$@",
+    b"@@@@@@@@@@@@@@@@",
+];
+
+const fn to_color(c: u32) -> PixelColor {
+    PixelColor::new((c >> 16) as u8, (c >> 8) as u8, c as u8)
+}
+
+impl Window {
+    pub fn draw_window(&mut self, title: &[u8]) {
+        let win_w = self.width as i32;
+        let win_h = self.height as i32;
+
+        {
+            let mut fill_rect = |pos, size, c| {
+                self.fill_rectangle(pos, size, &to_color(c));
+            };
+
+            fill_rect(Vector2D::new(0, 0), Vector2D::new(win_w, 1), 0xc6c6c6);
+            fill_rect(Vector2D::new(1, 1), Vector2D::new(win_w - 2, 1), 0xffffff);
+            fill_rect(Vector2D::new(0, 0), Vector2D::new(1, win_h), 0xc6c6c6);
+            fill_rect(Vector2D::new(1, 1), Vector2D::new(1, win_h - 2), 0xffffff);
+            fill_rect(
+                Vector2D::new(win_w - 2, 1),
+                Vector2D::new(1, win_h - 2),
+                0x848484,
+            );
+            fill_rect(
+                Vector2D::new(win_w - 1, 0),
+                Vector2D::new(1, win_h),
+                0x000000,
+            );
+            fill_rect(
+                Vector2D::new(2, 2),
+                Vector2D::new(win_w - 4, win_h - 4),
+                0xc6c6c6,
+            );
+            fill_rect(Vector2D::new(3, 3), Vector2D::new(win_w - 6, 18), 0x000084);
+            fill_rect(
+                Vector2D::new(1, win_h - 2),
+                Vector2D::new(win_w - 2, 1),
+                0x848484,
+            );
+            fill_rect(
+                Vector2D::new(0, win_h - 1),
+                Vector2D::new(win_w, 1),
+                0x000000,
+            );
+        }
+
+        font::write_string(self, Vector2D::new(24, 4), title, &to_color(0xffffff));
+
+        for y in 0..CLOSE_BUTTON_HEIGHT {
+            for x in 0..CLOSE_BUTTON_WIDTH {
+                let c = to_color(match CLOSE_BUTTON[y][x] {
+                    b'@' => 0x000000,
+                    b'$' => 0x848484,
+                    b':' => 0xc6c6c6,
+                    _ => 0xffffff,
+                });
+                self.write(
+                    Vector2D::new(win_w - 5 - (CLOSE_BUTTON_WIDTH + x) as i32, 5 + y as i32),
+                    &c,
+                )
+            }
+        }
     }
 }
