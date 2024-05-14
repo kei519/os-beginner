@@ -86,7 +86,7 @@ impl LayerManager {
     /// 有効な ID を指定していない場合は `panic` する。
     pub fn r#move(&mut self, id: u32, new_position: Vector2D<i32>) {
         let layer = self.layer(id);
-        let window_size = layer.widow().size();
+        let window_size = layer.window().size();
         let old_pos = layer.pos;
 
         layer.r#move(new_position);
@@ -106,7 +106,18 @@ impl LayerManager {
     ///
     /// 有効な ID を指定していない場合は `panic` する。
     pub fn move_relative(&mut self, id: u32, pos_diff: Vector2D<i32>) {
-        self.find_layer_mut(id).unwrap().move_relative(pos_diff);
+        let layer = self.find_layer_mut(id).unwrap();
+        let window_size = layer.window().size();
+        let old_pos = layer.pos;
+        layer.move_relative(pos_diff);
+
+        // 過去いた領域を消すために上書きする
+        self.draw(&Rectangle {
+            pos: old_pos,
+            size: window_size,
+        });
+
+        self.draw_id(id);
     }
 
     /// 指定領域のレイヤーを画面に描画する。
@@ -134,7 +145,7 @@ impl LayerManager {
         // 借用の問題で、最初に指定領域を用意しておく
         let area = Rectangle {
             pos: self.layer(id).pos,
-            size: self.layer(id).widow().size(),
+            size: self.layer(id).window().size(),
         };
 
         for layer_id in &self.layer_stack {
@@ -210,6 +221,27 @@ impl LayerManager {
     fn find_layer_mut(&mut self, id: u32) -> Option<&mut Layer> {
         self.layers.get_mut(&id)
     }
+
+    /// 指定された位置のレイヤー ID を取得する。
+    pub fn find_layer_by_position(&self, pos: &Vector2D<i32>, exclude_id: u32) -> Option<u32> {
+        let pred = |&id| {
+            if id == exclude_id {
+                return None;
+            }
+            let layer = &self.layers[&id];
+            let win_pos = layer.pos();
+            let win_end_pos = win_pos + layer.window().size();
+
+            if (win_pos.x() <= pos.x() && pos.x() < win_end_pos.x())
+                && (win_pos.y() <= pos.y() && pos.y() < win_end_pos.y())
+            {
+                Some(id)
+            } else {
+                None
+            }
+        };
+        self.layer_stack.iter().rev().find_map(pred)
+    }
 }
 
 /// レイヤーを表す構造体。
@@ -232,8 +264,13 @@ impl Layer {
     }
 
     /// 紐づいているウィンドウへの排他参照を返す。
-    pub fn widow(&mut self) -> &mut Window {
+    pub fn window_mut(&mut self) -> &mut Window {
         &mut self.window
+    }
+
+    /// 紐づいているウィンドウへの共有参照を返す。
+    pub fn window(&self) -> &Window {
+        &self.window
     }
 
     /// レイヤーの場所を返す。

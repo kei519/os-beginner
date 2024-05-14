@@ -68,7 +68,7 @@ impl Console {
                     write_ascii(&mut **self.writer.lock(), pos, c, &self.fg_color);
                 } else {
                     write_ascii(
-                        LAYER_MANAGER.lock().layer(self.layer_id).widow(),
+                        LAYER_MANAGER.lock().layer(self.layer_id).window_mut(),
                         pos,
                         c,
                         &self.fg_color,
@@ -122,7 +122,7 @@ impl Console {
                 size: Vector2D::new(8 * self.column_num as i32, 16 * (self.row_num as i32 - 1)),
             };
             let mut layer_manager = LAYER_MANAGER.lock();
-            let window = layer_manager.layer(self.layer_id).widow();
+            let window = layer_manager.layer(self.layer_id).window_mut();
             window.r#move(Vector2D::new(0, 0), &mov_src);
             window.fill_rectangle(
                 Vector2D::new(0, 16 * (self.row_num as i32 - 1)),
@@ -145,7 +145,7 @@ impl Console {
     pub fn refresh(&mut self) {
         for row in 0..self.row_num {
             write_string(
-                LAYER_MANAGER.lock().layer(self.layer_id).widow(),
+                LAYER_MANAGER.lock().layer(self.layer_id).window_mut(),
                 Vector2D::new(0, 16 * row as i32),
                 &self.buffer[row * self.column_num..(row + 1) * self.column_num],
                 &self.fg_color,
