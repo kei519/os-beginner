@@ -27,7 +27,7 @@ extern "C" {
     #[link_name = "_ZN3usb4xhci12ProcessEventERNS0_10ControllerE"]
     fn xhci_process_event(xhc: *mut Controller) -> CxxError;
 
-    #[link_name = "_ZN3usb14HIDMouseDriver18SetDefaultObserverEPFvaaE"]
+    #[link_name = "_ZN3usb14HIDMouseDriver18SetDefaultObserverEPFvhaaE"]
     fn hid_mouse_driver_set_default_observer(observer: *const c_void);
 
     #[link_name = "_ZNK3usb4xhci4Port11IsConnectedEv"]
@@ -122,7 +122,7 @@ impl EventRing {
     }
 }
 
-type ObserverType = fn(c_schar, c_schar);
+type ObserverType = fn(c_uchar, c_schar, c_schar);
 
 #[repr(C)]
 struct Function {

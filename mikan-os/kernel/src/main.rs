@@ -113,7 +113,7 @@ macro_rules! printkln {
 static MOUSE_CURSOR: OnceMutex<MouseCursor> = OnceMutex::new();
 static MOUSE_LAYER_ID: AtomicU32 = AtomicU32::new(0);
 
-fn mouse_observer(displacement_x: i8, displacement_y: i8) {
+fn mouse_observer(buttons: u8, displacement_x: i8, displacement_y: i8) {
     let mut layer_maneger = LAYER_MANAGER.lock();
     let layer_id = MOUSE_LAYER_ID.load(Ordering::Acquire);
 
