@@ -67,6 +67,10 @@ impl FrameBuffer {
         })
     }
 
+    pub fn pixef_format(&self) -> PixelFormat {
+        self.pixel_format
+    }
+
     /// `src` の `src_area` 領域の要素を自身の `dst_pos` にコピーする。
     pub fn copy(
         &mut self,

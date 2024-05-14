@@ -2,7 +2,8 @@ use alloc::{collections::BTreeMap, vec::Vec};
 
 use crate::{
     frame_buffer::FrameBuffer,
-    graphics::{Rectangle, Vector2D},
+    frame_buffer_config::FrameBufferConfig,
+    graphics::{PixelWriter as _, Rectangle, Vector2D},
     sync::OnceMutex,
     window::Window,
 };
@@ -19,6 +20,8 @@ pub struct LayerManager {
     layer_stack: Vec<u32>,
     /// レイヤーに割り振った最新の ID。
     latest_id: u32,
+    /// バックバッファ。
+    back_buffer: FrameBuffer,
 }
 
 impl LayerManager {
@@ -26,11 +29,26 @@ impl LayerManager {
     ///
     /// * writer - ライター。
     pub fn new(screen: &'static OnceMutex<FrameBuffer>) -> Self {
+        // バックバッファの作成
+        let config = {
+            let screen = screen.lock();
+
+            FrameBufferConfig {
+                frame_buffer: 0,
+                pixels_per_scan_line: screen.pixels_per_scan_line(),
+                horizontal_resolution: screen.horizontal_resolution(),
+                vertical_resolution: screen.vertical_resolution(),
+                pixel_format: screen.pixef_format(),
+            }
+        };
+        let back_buffer = FrameBuffer::new(config).unwrap();
+
         Self {
             screen,
             layers: BTreeMap::new(),
             layer_stack: Vec::new(),
             latest_id: 0,
+            back_buffer,
         }
     }
 
@@ -97,8 +115,14 @@ impl LayerManager {
             self.layers
                 .get_mut(layer_id)
                 .unwrap()
-                .draw_to(&mut *self.screen.lock(), area)
+                .draw_to(&mut self.back_buffer, area)
         }
+
+        // バックバッファをフレームバッファにコピー
+        self.screen
+            .lock()
+            .copy(area.pos, &self.back_buffer, area)
+            .unwrap();
     }
 
     /// 指定されたレイヤーより上のレイヤーを描画する。
@@ -122,9 +146,15 @@ impl LayerManager {
                 self.layers
                     .get_mut(layer_id)
                     .unwrap()
-                    .draw_to(&mut *self.screen.lock(), &area)
+                    .draw_to(&mut self.back_buffer, &area)
             }
         }
+
+        // バックバッファをフレームバッファにコピー
+        self.screen
+            .lock()
+            .copy(area.pos, &self.back_buffer, &area)
+            .unwrap();
     }
 
     /// 指定されたレイヤを非表示にする。
