@@ -110,3 +110,7 @@ if [ $# -ne 1 ]; then
     exit 1
 fi
 '''
+
+[tasks.check]
+command = "cargo"
+args = ["check", "--manifest-path", "kernel/Cargo.toml", "--color", "always"]
