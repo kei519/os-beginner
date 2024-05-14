@@ -3,7 +3,6 @@ use core::cmp;
 use alloc::{boxed::Box, vec::Vec};
 
 use crate::{
-    bitfield::BitField,
     font,
     frame_buffer::FrameBuffer,
     frame_buffer_config::{FrameBufferConfig, PixelFormat},

@@ -15,7 +15,7 @@ pub struct FrameBuffer {
     /// ピクセルフォーマット。
     pixel_format: PixelFormat,
     /// バッファ。
-    buffer: Box<[u8]>,
+    _buffer: Box<[u8]>,
     /// ライター。
     writer: Box<dyn PixelWriter + Send>,
 }
@@ -62,7 +62,7 @@ impl FrameBuffer {
         let pixel_format = config.pixel_format;
         Ok(Self {
             pixel_format,
-            buffer,
+            _buffer: buffer,
             writer,
         })
     }

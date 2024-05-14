@@ -46,10 +46,10 @@ use layer::LayerManager;
 use mouse::MouseCursor;
 use pci::Device;
 use sync::{Mutex, OnceMutex};
-use uefi::{proto::network, table::boot::MemoryMap};
+use uefi::table::boot::MemoryMap;
 
 use crate::{
-    asmfunc::{cli, get_cs, load_idt, set_cs_ss, set_ds_all, sti, sti_hlt},
+    asmfunc::{cli, get_cs, load_idt, set_cs_ss, set_ds_all, sti},
     bitfield::BitField,
     graphics::draw_desktop,
     interrupt::{InterruptDescriptor, InterruptDescriptorAttribute, InterruptVector, MessageType},
@@ -125,7 +125,7 @@ fn mouse_observer(displacement_x: i8, displacement_y: i8) {
     );
     let mouse_pos = Vector2D::element_max(&newpos, &Vector2D::new(0, 0));
 
-    layer_maneger.layer(layer_id).r#move(mouse_pos);
+    layer_maneger.r#move(layer_id, mouse_pos);
     layer_maneger.draw();
 }
 
