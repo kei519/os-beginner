@@ -133,7 +133,9 @@ fn mouse_observer(buttons: u8, displacement_x: i8, displacement_y: i8) {
     let left_pressed = buttons.get_bit(0);
     if !previous_left_pressed && left_pressed {
         if let Some(id) = layer_maneger.find_layer_by_position(&mouse_position, layer_id) {
-            MOUSE_DRAG_LAYER_ID.store(id, Ordering::Release);
+            if layer_maneger.layer(id).is_draggable() {
+                MOUSE_DRAG_LAYER_ID.store(id, Ordering::Release);
+            }
         }
     } else if previous_left_pressed && left_pressed {
         let mouse_drag_layer_id = MOUSE_DRAG_LAYER_ID.load(Ordering::Acquire);
@@ -381,7 +383,7 @@ fn kernel_entry(
 
     // デッドロックを回避するために、`CONSOLE` の `wirter` 変更（これに伴って redraw される）は
     // ロックを解除してから行う
-    let (bglayer_id, main_window_id) = {
+    let (bglayer_id, console_id, main_window_id) = {
         let mut layer_manager = LAYER_MANAGER.lock();
         let frame_width = frame_buffer_config.horizontal_resolution as u32;
         let framw_height = frame_buffer_config.vertical_resolution as u32;
@@ -389,7 +391,6 @@ fn kernel_entry(
         let bgwindow = Window::new(frame_width, framw_height, frame_buffer_config.pixel_format);
         let bglayer_id = layer_manager.new_layer(bgwindow);
         draw_desktop(layer_manager.layer(bglayer_id).window_mut());
-        layer_manager.layer(bglayer_id).r#move(Vector2D::new(0, 0));
 
         let mut mouse_window = Window::new(
             MOUSE_CURSOR_WIDTH as u32,
@@ -405,20 +406,29 @@ fn kernel_entry(
 
         let mut main_window = Window::new(160, 52, frame_buffer_config.pixel_format);
         main_window.draw_window(b"Hello Window");
-
         let main_window_id = layer_manager.new_layer(main_window);
         layer_manager
             .layer(main_window_id)
-            .r#move(Vector2D::new(300, 100));
+            .r#move(Vector2D::new(300, 100))
+            .set_draggable(true);
+
+        let console = CONSOLE.lock();
+        let console_window = Window::new(
+            console.column_num() as u32 * 8,
+            console.row_num() as u32 * 16,
+            frame_buffer_config.pixel_format,
+        );
+        let console_id = layer_manager.new_layer(console_window);
 
         layer_manager.up_down(bglayer_id, 0);
-        layer_manager.up_down(mouse_layer_id, 1);
-        layer_manager.up_down(main_window_id, 1);
+        layer_manager.up_down(console_id, 1);
+        layer_manager.up_down(main_window_id, 2);
+        layer_manager.up_down(mouse_layer_id, 3);
         MOUSE_LAYER_ID.store(mouse_layer_id, Ordering::Release);
 
-        (bglayer_id, main_window_id)
+        (bglayer_id, console_id, main_window_id)
     };
-    CONSOLE.lock().set_layer(bglayer_id);
+    CONSOLE.lock().set_layer(console_id);
     LAYER_MANAGER.lock().draw_id(bglayer_id);
 
     let mut count = 0;

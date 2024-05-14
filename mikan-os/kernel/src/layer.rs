@@ -250,6 +250,9 @@ pub struct Layer {
     pos: Vector2D<i32>,
     /// 設定されているウィンドウ。
     window: Window,
+    /// ドラッグ可能かどうかを表すフラグ。
+    /// デフォルトは `false`。
+    dragable: bool,
 }
 
 impl Layer {
@@ -260,6 +263,7 @@ impl Layer {
         Self {
             window,
             pos: Default::default(),
+            dragable: false,
         }
     }
 
@@ -293,5 +297,16 @@ impl Layer {
     /// レイヤーを設定された位置に描画する。
     pub fn draw_to(&mut self, screen: &mut FrameBuffer, area: &Rectangle<i32>) {
         self.window.draw_to(screen, self.pos, area);
+    }
+
+    /// ドラッグ可能かどうかを設定する。
+    pub fn set_draggable(&mut self, dragable: bool) -> &mut Self {
+        self.dragable = dragable;
+        self
+    }
+
+    /// ドラッグ可能かどうかを返す。
+    pub fn is_draggable(&self) -> bool {
+        self.dragable
     }
 }

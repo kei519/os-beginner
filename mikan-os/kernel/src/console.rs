@@ -58,6 +58,14 @@ impl Console {
         }
     }
 
+    pub fn column_num(&self) -> usize {
+        self.column_num
+    }
+
+    pub fn row_num(&self) -> usize {
+        self.row_num
+    }
+
     pub fn put_string(&mut self, s: &[u8]) {
         for &c in s {
             if c == b'\n' {
@@ -143,9 +151,16 @@ impl Console {
     }
 
     pub fn refresh(&mut self) {
+        let mut layer_manager = LAYER_MANAGER.lock();
+        let window = layer_manager.layer(self.layer_id).window_mut();
+        window.fill_rectangle(
+            Vector2D::new(0, 0),
+            Vector2D::new(8 * self.column_num as i32, 16 * self.row_num as i32),
+            self.bg_color,
+        );
         for row in 0..self.row_num {
             write_string(
-                LAYER_MANAGER.lock().layer(self.layer_id).window_mut(),
+                window,
                 Vector2D::new(0, 16 * row as i32),
                 &self.buffer[row * self.column_num..(row + 1) * self.column_num],
                 &self.fg_color,
