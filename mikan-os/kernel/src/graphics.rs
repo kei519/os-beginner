@@ -266,6 +266,7 @@ impl<T: SubAssign> SubAssign for Vector2D<T> {
     }
 }
 
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub struct Rectangle<T> {
     pub pos: Vector2D<T>,
     pub size: Vector2D<T>,

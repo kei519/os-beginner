@@ -1,6 +1,11 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use crate::{frame_buffer::FrameBuffer, graphics::Vector2D, sync::OnceMutex, window::Window};
+use crate::{
+    frame_buffer::FrameBuffer,
+    graphics::{Rectangle, Vector2D},
+    sync::OnceMutex,
+    window::Window,
+};
 
 /// 全レイヤーを管理する構造体。
 pub struct LayerManager {
@@ -56,13 +61,25 @@ impl LayerManager {
         self.layers.get_mut(&id).unwrap()
     }
 
-    /// レイヤーを指定位置に移動させる。
+    /// レイヤーを指定位置に移動させて描画する。
     ///
     /// # Remarks
     ///
     /// 有効な ID を指定していない場合は `panic` する。
     pub fn r#move(&mut self, id: u32, new_position: Vector2D<i32>) {
-        self.find_layer_mut(id).unwrap().r#move(new_position);
+        let layer = self.layer(id);
+        let window_size = layer.widow().size();
+        let old_pos = layer.pos;
+
+        layer.r#move(new_position);
+
+        // 過去いた領域を消すために上書きする
+        self.draw(&Rectangle {
+            pos: old_pos,
+            size: window_size,
+        });
+
+        self.draw_id(id);
     }
 
     /// レイヤーを指定位置に相対的に移動させる。
@@ -74,13 +91,39 @@ impl LayerManager {
         self.find_layer_mut(id).unwrap().move_relative(pos_diff);
     }
 
-    /// レイヤーを画面に描画する。
-    pub fn draw(&mut self) {
+    /// 指定領域のレイヤーを画面に描画する。
+    pub fn draw(&mut self, area: &Rectangle<i32>) {
         for layer_id in &self.layer_stack {
             self.layers
                 .get_mut(layer_id)
                 .unwrap()
-                .draw_to(&mut *self.screen.lock())
+                .draw_to(&mut *self.screen.lock(), area)
+        }
+    }
+
+    /// 指定されたレイヤーより上のレイヤーを描画する。
+    ///
+    /// # Remarks
+    /// 有効な ID を指定していない場合は `panic` する。
+    pub fn draw_id(&mut self, id: u32) {
+        let mut draw = false;
+        // 借用の問題で、最初に指定領域を用意しておく
+        let area = Rectangle {
+            pos: self.layer(id).pos,
+            size: self.layer(id).widow().size(),
+        };
+
+        for layer_id in &self.layer_stack {
+            // 指定された ID 以降は、指定された ID と重なる領域を全て描画する
+            if *layer_id == id {
+                draw = true;
+            }
+            if draw {
+                self.layers
+                    .get_mut(layer_id)
+                    .unwrap()
+                    .draw_to(&mut *self.screen.lock(), &area)
+            }
         }
     }
 
@@ -181,7 +224,7 @@ impl Layer {
     }
 
     /// レイヤーを設定された位置に描画する。
-    pub fn draw_to(&mut self, screen: &mut FrameBuffer) {
-        self.window.draw_to(screen, self.pos);
+    pub fn draw_to(&mut self, screen: &mut FrameBuffer, area: &Rectangle<i32>) {
+        self.window.draw_to(screen, self.pos, area);
     }
 }

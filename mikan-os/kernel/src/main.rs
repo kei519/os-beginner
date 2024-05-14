@@ -126,7 +126,6 @@ fn mouse_observer(displacement_x: i8, displacement_y: i8) {
     let mouse_pos = Vector2D::element_max(&newpos, &Vector2D::new(0, 0));
 
     layer_maneger.r#move(layer_id, mouse_pos);
-    layer_maneger.draw();
 }
 
 fn switch_ehci2xhci(xhc_dev: &Device) {
@@ -396,13 +395,12 @@ fn kernel_entry(
         layer_manager.up_down(bglayer_id, 0);
         layer_manager.up_down(mouse_layer_id, 1);
         layer_manager.up_down(main_window_id, 1);
-        layer_manager.draw();
         MOUSE_LAYER_ID.store(mouse_layer_id, Ordering::Release);
 
         (bglayer_id, main_window_id)
     };
     CONSOLE.lock().set_layer(bglayer_id);
-    LAYER_MANAGER.lock().draw();
+    LAYER_MANAGER.lock().draw_id(bglayer_id);
 
     let mut count = 0;
     loop {
@@ -421,7 +419,7 @@ fn kernel_entry(
                 format!("{:010}", count).as_bytes(),
                 &PixelColor::new(0, 0, 0),
             );
-            layer_manager.draw();
+            layer_manager.draw_id(main_window_id);
         }
 
         cli();

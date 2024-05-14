@@ -50,36 +50,53 @@ impl Window {
         }
     }
 
-    /// ウィンドウの内容を指定されたフレームバッファへ転送する。
+    /// 指定された領域のウィンドウの内容を指定されたフレームバッファへ転送する。
     ///
     /// * writer - 描画に用いるライター。
     /// * position - 描画する位置。
-    pub fn draw_to(&mut self, dst: &mut FrameBuffer, position: Vector2D<i32>) {
+    /// * area - 転送する領域。
+    pub fn draw_to(&mut self, dst: &mut FrameBuffer, pos: Vector2D<i32>, area: &Rectangle<i32>) {
+        // 自身の領域
+        let window_area = Rectangle {
+            pos,
+            size: self.size(),
+        };
+        // `window_area` のこの部分だけ転送する
+        let intersection = *area & window_area;
+
         // 透明色が設定されていない場合はそのまま描画する
         if self.transparent_color.is_none() {
-            dst.copy(position, &self.shadow_buffer).unwrap();
+            dst.copy(
+                intersection.pos,
+                &self.shadow_buffer,
+                &Rectangle {
+                    pos: intersection.pos - pos,
+                    size: intersection.size,
+                },
+            )
+            .unwrap();
             return;
         }
 
         // 透明色が設定されている場合は、その色のピクセルは描画しない
         let tc = self.transparent_color.unwrap();
         // 描き込むフレームバッファからはみ出る分は描画しない
-        for y in cmp::max(0, 0 - position.y())
+        for y in cmp::max(0, 0 - intersection.pos.y())
             ..cmp::min(
-                self.height as i32,
-                dst.vertical_resolution() as i32 - position.y(),
+                intersection.size.y(),
+                dst.vertical_resolution() as i32 - intersection.pos.y(),
             )
         {
-            for x in cmp::max(0, 0 - position.x())
+            for x in cmp::max(0, 0 - intersection.pos.x())
                 ..cmp::min(
-                    self.width as i32,
-                    dst.horizontal_resolution() as i32 - position.x(),
+                    intersection.size.x(),
+                    dst.horizontal_resolution() as i32 - intersection.pos.x(),
                 )
             {
                 let pos_relative = Vector2D::new(x as i32, y as i32);
                 let c = self.at(pos_relative);
                 if *c != tc {
-                    dst.write(position + pos_relative, c);
+                    dst.write(pos + pos_relative, c);
                 }
             }
         }
@@ -97,6 +114,10 @@ impl Window {
     /// 指定された位置のピクセルへの排他参照を返す。
     pub fn at(&mut self, pos: Vector2D<i32>) -> &mut PixelColor {
         &mut self.data[(pos.y() * self.width as i32 + pos.x()) as usize]
+    }
+
+    pub fn size(&self) -> Vector2D<i32> {
+        Vector2D::new(self.width as i32, self.height as i32)
     }
 }
 

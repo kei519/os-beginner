@@ -32,7 +32,7 @@ impl FrameBuffer {
     /// シャドウバッファ等、本当のフレームバッファ以外に使う場合は、
     /// `config.frame_buffer` を `0` にしておくこと。
     pub fn new(mut config: FrameBufferConfig) -> Result<Self> {
-        let bits_per_pixel = bits_per_pixel(config.pixel_format);
+        let bits_per_pixel = bits_per_pixel(&config.pixel_format);
         if bits_per_pixel == 0 {
             return Err(make_error!(Code::UnknownDevice));
         }
@@ -67,41 +67,68 @@ impl FrameBuffer {
         })
     }
 
-    pub fn copy(&mut self, pos: Vector2D<i32>, src: &FrameBuffer) -> Result<()> {
-        use core::cmp::{max, min};
-
+    /// `src` の `src_area` 領域の要素を自身の `dst_pos` にコピーする。
+    pub fn copy(
+        &mut self,
+        dst_pos: Vector2D<i32>,
+        src: &FrameBuffer,
+        src_area: &Rectangle<i32>,
+    ) -> Result<()> {
         if self.pixel_format != src.pixel_format {
             return Err(make_error!(Code::UnknownPixelFormat));
         }
 
-        let bits_per_pixel = bits_per_pixel(self.pixel_format);
-        if bits_per_pixel == 0 {
+        let bytes_per_pixel = bytes_per_pixel(&self.pixel_format);
+        if bytes_per_pixel == 0 {
             return Err(make_error!(Code::UnknownPixelFormat));
         }
 
-        let dst_width = self.horizontal_resolution();
-        let dst_height = self.vertical_resolution();
-        let src_width = src.horizontal_resolution();
-        let src_height = src.vertical_resolution();
+        // [FrameBufferConfig] を要求してくるものが多いので、ここで用意しておく
+        let dst_config = FrameBufferConfig {
+            frame_buffer: self.frame_buffer(),
+            pixels_per_scan_line: self.pixels_per_scan_line(),
+            horizontal_resolution: self.horizontal_resolution(),
+            vertical_resolution: self.vertical_resolution(),
+            pixel_format: self.pixel_format,
+        };
+        let src_config = FrameBufferConfig {
+            frame_buffer: src.frame_buffer(),
+            pixels_per_scan_line: src.pixels_per_scan_line(),
+            horizontal_resolution: src.horizontal_resolution(),
+            vertical_resolution: src.vertical_resolution(),
+            pixel_format: src.pixel_format,
+        };
 
-        let copy_start_dst_x = max(pos.x(), 0) as usize;
-        let copy_start_dst_y = max(pos.y(), 0) as usize;
-        let copy_end_dst_x = min(pos.x() as usize + src_width, dst_width);
-        let copy_end_dst_y = min(pos.y() as usize + src_height, dst_height);
+        // `src_area` を `dst` 上に置いたときの領域
+        let src_area_shifted = Rectangle {
+            pos: dst_pos,
+            size: src_area.size,
+        };
+        // `src_area` を `dst` 上に置いたときに、同じように `src` を `dst` に置いたときの領域
+        let src_outline = Rectangle {
+            pos: dst_pos - src_area.pos,
+            size: frame_buffer_size(&src_config),
+        };
+        // `dst` の領域
+        let dst_outline = Rectangle {
+            pos: Vector2D::new(0, 0),
+            size: frame_buffer_size(&dst_config),
+        };
+        let copy_area = dst_outline & src_outline & src_area_shifted;
+        let src_start_pos = copy_area.pos - (dst_pos - src_area.pos);
 
-        let bytes_per_pixel = (bits_per_pixel + 7) / 8;
-        let bytes_per_copy_line = bytes_per_pixel * (copy_end_dst_x - copy_start_dst_x);
+        let mut dst_buf = frame_addr_at(copy_area.pos, &dst_config) as *mut u8;
+        let mut src_buf = frame_addr_at(src_start_pos, &src_config) as *const u8;
 
-        let dst_buf = self.frame_buffer()
-            + bytes_per_pixel * (self.pixels_per_scan_line() * copy_start_dst_y + copy_start_dst_x);
-        let mut dst_buf = dst_buf as *mut u8;
-        let mut src_buf = src.frame_buffer() as *const u8;
-
-        for _ in 0..copy_end_dst_y - copy_start_dst_y {
+        for _ in 0..copy_area.size.y() {
             unsafe {
-                core::ptr::copy_nonoverlapping(src_buf, dst_buf, bytes_per_copy_line);
-                dst_buf = dst_buf.add(bytes_per_pixel * self.pixels_per_scan_line());
-                src_buf = src_buf.add(bytes_per_pixel * src.pixels_per_scan_line());
+                core::ptr::copy_nonoverlapping(
+                    src_buf,
+                    dst_buf,
+                    bytes_per_pixel * copy_area.size.x() as usize,
+                );
+                dst_buf = dst_buf.add(bytes_per_scan_line(&dst_config));
+                src_buf = src_buf.add(bytes_per_scan_line(&src_config));
             }
         }
         Ok(())
@@ -182,7 +209,7 @@ impl PixelWriter for FrameBuffer {
 ///
 /// 今のところピクセル形式は32ビットしかないが、変わる可能性があることを明示するために
 /// 関数にしている。
-fn bits_per_pixel(format: PixelFormat) -> usize {
+fn bits_per_pixel(format: &PixelFormat) -> usize {
     match format {
         PixelFormat::Rgb => 32,
         PixelFormat::Bgr => 32,
@@ -193,6 +220,10 @@ fn bytes_per_pixel(format: &PixelFormat) -> usize {
     match format {
         PixelFormat::Rgb | PixelFormat::Bgr => 4,
     }
+}
+
+fn bytes_per_scan_line(config: &FrameBufferConfig) -> usize {
+    bytes_per_pixel(&config.pixel_format) * config.pixels_per_scan_line
 }
 
 fn frame_addr_at(pos: Vector2D<i32>, config: &FrameBufferConfig) -> *mut u8 {

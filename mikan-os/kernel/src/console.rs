@@ -80,7 +80,7 @@ impl Console {
         }
 
         if LAYER_MANAGER.is_initialized() {
-            LAYER_MANAGER.lock().draw();
+            LAYER_MANAGER.lock().draw_id(self.layer_id);
         }
     }
 
@@ -171,7 +171,7 @@ impl Write for Console {
         }
 
         if self.layer_id != 0 {
-            LAYER_MANAGER.lock().draw();
+            LAYER_MANAGER.lock().draw_id(self.layer_id);
         }
         Ok(())
     }
