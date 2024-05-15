@@ -3,7 +3,12 @@ use core::{
     mem::MaybeUninit,
 };
 
-use crate::error::{self, Error, Result};
+use crate::{
+    error::{self, Error, Result},
+    sync::OnceMutex,
+};
+
+pub static XHC: OnceMutex<Controller> = OnceMutex::new();
 
 extern "C" {
     #[link_name = "_ZN3usb4xhci10ControllerC2Em"]
@@ -144,9 +149,8 @@ impl HIDMouseDriver {
 }
 
 /// C++ 版の [Code][error::Code] に対応する列挙型。
-#[repr(C)]
 // 以下の構造体は C++ 側からしか使われないため、Rust 側では使わない
-#[allow(unused)]
+#[repr(C)]
 pub enum CxxCode {
     Success,
     Full,

@@ -1,6 +1,6 @@
 use uefi::table::boot::MemoryType;
 
-const UEFI_PAGE_SIZE: usize = 4096;
+pub const UEFI_PAGE_SIZE: usize = 4096;
 
 /// メモリ領域が使用可能かどうかを、メモリタイプから得る。
 pub fn is_available(memory_type: MemoryType) -> bool {

@@ -32,8 +32,6 @@ pub struct SegmentDescriptor {
 }
 
 impl SegmentDescriptor {
-    #![allow(unused)]
-
     /// システムセグメントを表すディスクリプタを作る。
     pub fn system_segment(
         base: u32,

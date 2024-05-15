@@ -1,11 +1,13 @@
-#![allow(unused)]
-
+use alloc::boxed::Box;
 use core::{
     ops::{Add, AddAssign, BitAnd, Sub, SubAssign},
     slice,
 };
 
-use crate::{frame_buffer_config::FrameBufferConfig, DESKTOP_BG_COLOR};
+use crate::{console::DESKTOP_BG_COLOR, frame_buffer_config::FrameBufferConfig, sync::OnceMutex};
+
+/// ピクセル描画を担う。
+pub static PIXEL_WRITER: OnceMutex<Box<dyn PixelWriter + Send>> = OnceMutex::new();
 
 #[derive(PartialEq, Eq, Clone, Default, Copy)]
 pub struct PixelColor {
@@ -283,10 +285,10 @@ where
         let self_end = self.pos + self.size;
         let rhs_end = rhs.pos + rhs.size;
 
-        if (self_end.x < rhs.pos.x
+        if self_end.x < rhs.pos.x
             || self_end.y < rhs.pos.y
             || rhs_end.x < self.pos.x
-            || rhs_end.y < self.pos.y)
+            || rhs_end.y < self.pos.y
         {
             return Self {
                 pos: Vector2D {

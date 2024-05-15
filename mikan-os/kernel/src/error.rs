@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use core::fmt::{self, Display};
 
 pub type Result<T> = core::result::Result<T, Error>;

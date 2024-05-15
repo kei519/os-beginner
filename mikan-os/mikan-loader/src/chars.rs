@@ -15,7 +15,6 @@ impl<'a> Str16Buf<'a> {
     }
 
     /// バッファをクリアし、再度使えるようにする。
-    #[allow(unused)]
     pub fn clear(&mut self) {
         if self.buf.len() == 0 {
             return;

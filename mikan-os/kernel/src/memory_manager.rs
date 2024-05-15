@@ -24,7 +24,7 @@ const GIB: usize = 1024 * MIB;
 pub const BYTES_PER_FRAME: usize = 4 * KIB;
 
 /// フレームを表す構造体。
-struct FrameId {
+pub struct FrameId {
     id: usize,
 }
 

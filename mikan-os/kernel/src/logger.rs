@@ -1,12 +1,9 @@
-#![allow(unused)]
-
+use alloc::{format, string::String};
 use core::{
     ffi::{c_char, CStr},
     mem::size_of,
     panic,
 };
-
-use alloc::{format, string::String};
 
 use crate::{printk, sync::RwLock};
 
@@ -19,7 +16,7 @@ pub enum LogLevel {
     Debug = 7,
 }
 
-static LOG_LEVEL: RwLock<LogLevel> = RwLock::new(LogLevel::Warn);
+pub static LOG_LEVEL: RwLock<LogLevel> = RwLock::new(LogLevel::Warn);
 
 pub fn set_log_level(level: LogLevel) {
     *LOG_LEVEL.write() = level;

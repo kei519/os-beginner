@@ -16,8 +16,6 @@ use crate::bitfield::BitField;
 pub struct DescriptorType(u8);
 
 impl DescriptorType {
-    #![allow(unused)]
-
     /// コード・データセグメントのディスクリプタタイプを作る。
     pub fn code_data_segment(accesed: bool, rw: bool, dc: bool, executable: bool) -> Self {
         let mut data = 0;
@@ -177,8 +175,6 @@ impl From<u8> for SystemSegmentType {
 pub struct CodeDataSegmentType(u8);
 
 impl CodeDataSegmentType {
-    #![allow(unused)]
-
     /// それぞれのビットが立っているかどうかを指定して、
     /// コード・データセグメントを作る。
     pub fn new(accessed: bool, rw: bool, dc: bool, executable: bool) -> Self {

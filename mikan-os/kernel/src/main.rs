@@ -3,60 +3,39 @@
 
 extern crate alloc;
 
-mod asmfunc;
-mod bitfield;
-mod console;
-mod error;
-mod font;
-mod font_data;
-mod frame_buffer;
-mod frame_buffer_config;
-mod graphics;
-mod interrupt;
-mod layer;
-mod logger;
-mod memory_manager;
-mod memory_map;
-mod mouse;
-mod paging;
-mod pci;
-mod segment;
-mod sync;
-mod timer;
-mod usb;
-mod window;
-mod x86_descriptor;
-
-use alloc::{boxed::Box, collections::VecDeque, format};
-use console::Console;
-use core::{
-    arch::asm,
-    mem::size_of,
-    panic::PanicInfo,
-    sync::atomic::{AtomicU32, AtomicU8, Ordering},
-};
-use frame_buffer::FrameBuffer;
-use frame_buffer_config::{FrameBufferConfig, PixelFormat};
-use graphics::{
-    BgrResv8BitPerColorPixelWriter, PixelColor, PixelWriter, RgbResv8BitPerColorPixelWriter,
-    Vector2D,
-};
-use interrupt::{notify_end_of_interrupt, InterruptFrame, Message};
-use layer::LayerManager;
-use mouse::MouseCursor;
-use pci::Device;
-use sync::{Mutex, OnceMutex};
+use alloc::{boxed::Box, format};
+use core::{arch::asm, mem::size_of, panic::PanicInfo, sync::atomic::Ordering};
 use uefi::table::boot::MemoryMap;
 
-use crate::{
+use kernel::{
     asmfunc::{cli, get_cs, load_idt, set_cs_ss, set_ds_all, sti},
-    bitfield::BitField,
-    graphics::draw_desktop,
-    interrupt::{InterruptDescriptor, InterruptDescriptorAttribute, InterruptVector, MessageType},
+    bitfield::BitField as _,
+    console::{Console, CONSOLE, DESKTOP_BG_COLOR, DESKTOP_FG_COLOR},
+    font,
+    frame_buffer::FrameBuffer,
+    frame_buffer_config::{FrameBufferConfig, PixelFormat},
+    graphics::{
+        draw_desktop, BgrResv8BitPerColorPixelWriter, PixelColor, PixelWriter,
+        RgbResv8BitPerColorPixelWriter, Vector2D, PIXEL_WRITER,
+    },
+    interrupt::{
+        notify_end_of_interrupt, InterruptDescriptor, InterruptDescriptorAttribute, InterruptFrame,
+        InterruptVector, Message, MessageType, IDT, MAIN_QUEUE,
+    },
+    layer::{LayerManager, LAYER_MANAGER, SCREEN},
+    log,
     logger::{set_log_level, LogLevel},
-    mouse::{MOUSE_CURSOR_HEIGHT, MOUSE_CURSOR_WIDTH, MOUSE_TRANSPARENT_COLOR},
-    usb::{Controller, HIDMouseDriver},
+    memory_manager,
+    mouse::{
+        self, MouseCursor, MOUSE_CURSOR, MOUSE_CURSOR_HEIGHT, MOUSE_CURSOR_WIDTH, MOUSE_LAYER_ID,
+        MOUSE_TRANSPARENT_COLOR,
+    },
+    paging,
+    pci::{self, Device},
+    printk, printkln, segment, timer,
+    usb::{Controller, HIDMouseDriver, XHC},
     window::Window,
+    x86_descriptor,
 };
 
 /// カーネル用スタック
@@ -71,83 +50,9 @@ impl KernelStack {
         }
     }
 }
-#[allow(unused)]
+
 #[no_mangle]
 static KERNEL_MAIN_STACK: KernelStack = KernelStack::new();
-
-/// ピクセル描画を担う。
-static PIXEL_WRITER: OnceMutex<Box<dyn PixelWriter + Send>> = OnceMutex::new();
-
-/// デスクトップ背景の色
-const DESKTOP_BG_COLOR: PixelColor = PixelColor::new(45, 118, 237);
-/// デスクトップ前景の色
-const DESKTOP_FG_COLOR: PixelColor = PixelColor::new(255, 255, 255);
-
-/// コンソール処理を担う。
-static CONSOLE: OnceMutex<Console> = OnceMutex::new();
-
-static LAYER_MANAGER: OnceMutex<LayerManager> = OnceMutex::new();
-
-/// 本当のフレームバッファを表す `FrameBuffer`。
-static SCREEN: OnceMutex<FrameBuffer> = OnceMutex::new();
-
-static IDT: Mutex<[InterruptDescriptor; 256]> =
-    Mutex::new([InterruptDescriptor::const_default(); 256]);
-
-#[macro_export]
-macro_rules! printk {
-    ($($arg:tt)*) => {
-        {
-            use core::fmt::Write;
-            write!($crate::CONSOLE.lock(), $($arg)*).unwrap();
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! printkln {
-    () => ($crate::printk!("\n"));
-    ($($arg:tt)*) => ($crate::printk!("{}\n", format_args!($($arg)*)));
-}
-
-static MOUSE_CURSOR: OnceMutex<MouseCursor> = OnceMutex::new();
-static MOUSE_LAYER_ID: AtomicU32 = AtomicU32::new(0);
-
-fn mouse_observer(buttons: u8, displacement_x: i8, displacement_y: i8) {
-    static MOUSE_DRAG_LAYER_ID: AtomicU32 = AtomicU32::new(0);
-    static PREVIOUS_BUTTONS: AtomicU8 = AtomicU8::new(0);
-
-    let mut layer_maneger = LAYER_MANAGER.lock();
-    let layer_id = MOUSE_LAYER_ID.load(Ordering::Acquire);
-
-    let oldpos = layer_maneger.layer(layer_id).pos();
-    let newpos = oldpos + Vector2D::new(displacement_x as i32, displacement_y as i32);
-    let newpos = Vector2D::element_min(&newpos, &layer_maneger.screen_size());
-    let mouse_position = Vector2D::element_max(&newpos, &Vector2D::new(0, 0));
-
-    let posdiff = mouse_position - oldpos;
-
-    layer_maneger.r#move(layer_id, mouse_position);
-
-    let previous_left_pressed = PREVIOUS_BUTTONS.load(Ordering::Acquire).get_bit(0);
-    let left_pressed = buttons.get_bit(0);
-    if !previous_left_pressed && left_pressed {
-        if let Some(id) = layer_maneger.find_layer_by_position(&mouse_position, layer_id) {
-            if layer_maneger.layer(id).is_draggable() {
-                MOUSE_DRAG_LAYER_ID.store(id, Ordering::Release);
-            }
-        }
-    } else if previous_left_pressed && left_pressed {
-        let mouse_drag_layer_id = MOUSE_DRAG_LAYER_ID.load(Ordering::Acquire);
-        if mouse_drag_layer_id != 0 {
-            layer_maneger.move_relative(mouse_drag_layer_id, posdiff)
-        }
-    } else if previous_left_pressed && !left_pressed {
-        MOUSE_DRAG_LAYER_ID.store(0, Ordering::Release);
-    }
-
-    PREVIOUS_BUTTONS.store(buttons, Ordering::Release);
-}
 
 fn switch_ehci2xhci(xhc_dev: &Device) {
     let mut intel_ehc_exist = false;
@@ -173,10 +78,6 @@ fn switch_ehci2xhci(xhc_dev: &Device) {
         ehci2xhci_ports
     );
 }
-
-static XHC: OnceMutex<Controller> = OnceMutex::new();
-
-static MAIN_QUEUE: Mutex<VecDeque<Message>> = Mutex::new(VecDeque::new());
 
 #[custom_attribute::interrupt]
 fn int_handler_xhci(_frame: &InterruptFrame) {
@@ -344,7 +245,7 @@ fn kernel_entry(
 
     XHC.init(xhc);
 
-    HIDMouseDriver::set_default_observer(mouse_observer);
+    HIDMouseDriver::set_default_observer(mouse::mouse_observer);
 
     {
         let mut xhc = XHC.lock();

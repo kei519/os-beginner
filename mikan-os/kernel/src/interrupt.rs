@@ -1,7 +1,15 @@
+use alloc::collections::VecDeque;
+
 use crate::{
     bitfield::BitField,
+    sync::Mutex,
     x86_descriptor::{DescriptorType, SystemSegmentType},
 };
+
+pub static IDT: Mutex<[InterruptDescriptor; 256]> =
+    Mutex::new([InterruptDescriptor::const_default(); 256]);
+
+pub static MAIN_QUEUE: Mutex<VecDeque<Message>> = Mutex::new(VecDeque::new());
 
 #[repr(packed)]
 #[derive(Debug, Clone, Copy)]
@@ -11,16 +19,11 @@ pub struct InterruptDescriptorAttribute {
 }
 
 impl InterruptDescriptorAttribute {
-    #![allow(unused)]
     pub const fn const_default() -> Self {
         Self { etc_1: 0, etc_2: 0 }
     }
 
-    pub fn new(
-        r#type: SystemSegmentType,
-        descriptor_privilege_level: u8,
-        present: bool,
-    ) -> Self {
+    pub fn new(r#type: SystemSegmentType, descriptor_privilege_level: u8, present: bool) -> Self {
         let mut etc_2 = 0;
         etc_2.set_bits(..4, DescriptorType::system_segment(r#type).into());
         etc_2.set_bits(5..7, descriptor_privilege_level);
@@ -109,8 +112,6 @@ pub struct InterruptFrame {
 }
 
 impl InterruptFrame {
-    #![allow(unused)]
-
     pub fn rip(&self) -> u64 {
         self.rip
     }

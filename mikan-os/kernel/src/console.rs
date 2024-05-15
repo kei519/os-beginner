@@ -1,18 +1,21 @@
-#![allow(unused)]
-
-use core::{
-    fmt::{self, Write},
-    ptr::{copy_nonoverlapping, write},
-};
+use core::fmt::{self, Write};
 
 use alloc::{boxed::Box, vec::Vec};
 
 use crate::{
     font::{write_ascii, write_string},
     graphics::{PixelColor, PixelWriter, Rectangle, Vector2D},
+    layer::LAYER_MANAGER,
     sync::OnceMutex,
-    LAYER_MANAGER,
 };
+
+/// コンソール処理を担う。
+pub static CONSOLE: OnceMutex<Console> = OnceMutex::new();
+
+/// デスクトップ背景の色
+pub const DESKTOP_BG_COLOR: PixelColor = PixelColor::new(45, 118, 237);
+/// デスクトップ前景の色
+pub const DESKTOP_FG_COLOR: PixelColor = PixelColor::new(255, 255, 255);
 
 pub struct Console {
     /// ピクセル描画用。
@@ -33,6 +36,22 @@ pub struct Console {
     column_num: usize,
     /// コンソールをレイヤー上に持つときのレイヤー ID。
     layer_id: u32,
+}
+
+#[macro_export]
+macro_rules! printk {
+    ($($arg:tt)*) => {
+        {
+            use core::fmt::Write;
+            write!($crate::console::CONSOLE.lock(), $($arg)*).unwrap();
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! printkln {
+    () => ($crate::printk!("\n"));
+    ($($arg:tt)*) => ($crate::printk!("{}\n", format_args!($($arg)*)));
 }
 
 impl Console {
@@ -70,7 +89,7 @@ impl Console {
         for &c in s {
             if c == b'\n' {
                 self.new_line();
-            } else if (self.cursor_column < self.column_num - 1) {
+            } else if self.cursor_column < self.column_num - 1 {
                 let pos = Vector2D::new(8 * self.cursor_column as i32, 16 * self.cursor_row as i32);
                 if self.layer_id == 0 {
                     write_ascii(&mut **self.writer.lock(), pos, c, &self.fg_color);

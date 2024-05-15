@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct Elf64Ehdr {
@@ -34,6 +32,7 @@ pub struct Elf64Phdr {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
+#[allow(unused)]
 pub enum ProgramType {
     Null = 0,
     Load = 1,
@@ -54,6 +53,7 @@ pub struct Elf64Dyn {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
+#[allow(unused)]
 pub enum DT {
     Null = 0,
     Rela = 7,

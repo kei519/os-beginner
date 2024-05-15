@@ -8,6 +8,11 @@ use crate::{
     window::Window,
 };
 
+pub static LAYER_MANAGER: OnceMutex<LayerManager> = OnceMutex::new();
+
+/// 本当のフレームバッファを表す `FrameBuffer`。
+pub static SCREEN: OnceMutex<FrameBuffer> = OnceMutex::new();
+
 /// 全レイヤーを管理する構造体。
 pub struct LayerManager {
     /// レイヤーを描画するライター。
@@ -53,7 +58,8 @@ impl LayerManager {
     }
 
     pub fn screen_size(&self) -> Vector2D<i32> {
-        use crate::PixelWriter;
+        use crate::graphics::PixelWriter as _;
+
         let screen = self.screen.lock();
         Vector2D::new(
             screen.horizontal_resolution() as i32,
@@ -213,7 +219,7 @@ impl LayerManager {
     }
 
     /// 指定された ID のレイヤーを探し、見つかったら共有参照を返す。
-    fn find_layer(&self, id: u32) -> Option<&Layer> {
+    pub fn find_layer(&self, id: u32) -> Option<&Layer> {
         self.layers.get(&id)
     }
 

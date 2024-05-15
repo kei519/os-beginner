@@ -1,18 +1,14 @@
-#![allow(unused)]
-
-use alloc::vec::{self, Vec};
+use alloc::vec::Vec;
 use core::{
-    cell::RefCell,
     cmp::min,
     fmt::{self, Display, LowerHex},
-    ptr::addr_of_mut,
 };
 
 use crate::{
     asmfunc::{io_in_32, io_out_32},
     bitfield::BitField,
     error::{self, Result},
-    make_error, printkln,
+    make_error,
     sync::RwLock,
 };
 
@@ -77,13 +73,7 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn new(
-        bus: u8,
-        device: u8,
-        function: u8,
-        header_type: u8,
-        class_code: ClassCode,
-    ) -> Self {
+    pub fn new(bus: u8, device: u8, function: u8, header_type: u8, class_code: ClassCode) -> Self {
         Self {
             bus,
             device,
@@ -265,10 +255,10 @@ impl Device {
 
     fn configure_msix_register(
         &mut self,
-        cap_addr: u8,
-        msg_addr: u32,
-        msg_data: u32,
-        num_vector_exponent: u32,
+        _cap_addr: u8,
+        _msg_addr: u32,
+        _msg_data: u32,
+        _num_vector_exponent: u32,
     ) -> Result<()> {
         Err(make_error!(error::Code::NotImplemented))
     }
@@ -364,8 +354,6 @@ const fn cals_bar_address(bar_index: u32) -> u8 {
 /// バス 0 から再帰的に PCI デバイスを探索し、[DEVICES] の先頭から詰めて書き込む。
 /// 発見したデバイスの数を [NUM_DEVICES] に設定する。
 pub fn scan_all_bus() -> Result<()> {
-    let mut num_device = 0;
-
     let header_type = read_header_type(0, 0, 0);
     if is_single_function_device(header_type) {
         return scan_bus(0);
