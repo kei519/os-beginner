@@ -1,0 +1,19 @@
+#!/bin/bash -e
+
+if [ $# -lt 1 ]; then
+	echo 'at least one arg is required'
+	exit 1
+fi
+
+UMOUNT_POINT=${@: -1:1}
+OPTION=${@: 1:$#-1}
+
+UMOUNT_POINT=$(cd $(dirname $UMOUNT_POINT) && pwd)/$(basename $UMOUNT_POINT)
+
+HOME=$(getent passwd ${SUDO_USER:-$USER} | cut -d: -f6)
+
+if [[ $UMOUNT_POINT == $HOME/* ]]; then
+	sudo /bin/umount $OPTION $UMOUNT_POINT
+else
+	echo 'you can umount only whne umount point is in your $HOME'
+fi

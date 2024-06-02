@@ -15,4 +15,7 @@ if [ ! -f $DISK_IMG ]; then
 fi
 
 mkdir -p $MOUNT_POINT
-sudo mount -o loop $DISK_IMG $MOUNT_POINT
+
+uid=$(id -u $(whoami))
+gid=$(id -g $(whoami))
+sudo mount -o uid=${uid},gid=${gid} $DISK_IMG $MOUNT_POINT

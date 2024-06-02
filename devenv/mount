@@ -1,0 +1,22 @@
+#!/bin/bash -e
+
+# check the number of the args
+if [ $# -lt 2 ]; then
+	echo 'at least two arguments are required'
+	exit 1
+fi
+
+DEVICE=${@: -2:1}
+MOUNT_POINT=${@: -1:1}
+OPTION=${@: 1:$#-2}
+
+DEVICE=$(cd $(dirname $DEVICE) && pwd)/$(basename $DEVICE)
+MOUNT_POINT=$(cd $(dirname $MOUNT_POINT) && pwd)/$(basename $MOUNT_POINT)
+
+HOME=$(getent passwd ${SUDO_USER:-$USER} | cut -d: -f6)
+
+if [[ $DEVICE == $HOME/* && $MOUNT_POINT == $HOME/* ]]; then
+	sudo /bin/mount $OPTION $DEVICE $MOUNT_POINT
+else
+	echo 'you can mount only when both the file and mount point are in your $HOME'
+fi
