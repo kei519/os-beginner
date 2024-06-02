@@ -54,12 +54,12 @@ impl FrameBuffer {
             }
         };
 
+        let pixel_format = config.pixel_format;
         let writer: Box<dyn PixelWriter + Send> = match config.pixel_format {
             PixelFormat::Rgb => Box::new(RgbResv8BitPerColorPixelWriter::new(config)),
             PixelFormat::Bgr => Box::new(BgrResv8BitPerColorPixelWriter::new(config)),
         };
 
-        let pixel_format = config.pixel_format;
         Ok(Self {
             pixel_format,
             _buffer: buffer,

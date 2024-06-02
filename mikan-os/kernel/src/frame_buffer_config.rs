@@ -6,7 +6,7 @@ pub enum PixelFormat {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct FrameBufferConfig {
     pub frame_buffer: usize,
     pub pixels_per_scan_line: usize,

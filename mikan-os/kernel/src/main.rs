@@ -103,9 +103,10 @@ fn kernel_entry(
     memory_manager::GLOBAL.init(memory_map, kernel_base, kernel_size);
 
     // ピクセルライターの生成
+    let fb_config = frame_buffer_config.clone();
     let pixel_writer: Box<dyn PixelWriter + Send> = match frame_buffer_config.pixel_format {
-        PixelFormat::Rgb => Box::new(RgbResv8BitPerColorPixelWriter::new(frame_buffer_config)),
-        PixelFormat::Bgr => Box::new(BgrResv8BitPerColorPixelWriter::new(frame_buffer_config)),
+        PixelFormat::Rgb => Box::new(RgbResv8BitPerColorPixelWriter::new(fb_config)),
+        PixelFormat::Bgr => Box::new(BgrResv8BitPerColorPixelWriter::new(fb_config)),
     };
     PIXEL_WRITER.init(pixel_writer);
 
@@ -286,17 +287,19 @@ fn kernel_entry(
     // ロックを解除してから行う
     let (bglayer_id, console_id, main_window_id) = {
         let mut layer_manager = LAYER_MANAGER.lock();
-        let frame_width = frame_buffer_config.horizontal_resolution as u32;
-        let framw_height = frame_buffer_config.vertical_resolution as u32;
+        let screen = SCREEN.lock();
+        let frame_width = screen.horizontal_resolution() as u32;
+        let frame_height = screen.vertical_resolution() as u32;
+        let pixel_format = screen.pixef_format();
 
-        let bgwindow = Window::new(frame_width, framw_height, frame_buffer_config.pixel_format);
+        let bgwindow = Window::new(frame_width, frame_height, pixel_format);
         let bglayer_id = layer_manager.new_layer(bgwindow);
         draw_desktop(layer_manager.layer(bglayer_id).window_mut());
 
         let mut mouse_window = Window::new(
             MOUSE_CURSOR_WIDTH as u32,
             MOUSE_CURSOR_HEIGHT as u32,
-            frame_buffer_config.pixel_format,
+            pixel_format,
         );
         mouse_window.set_transparent_color(Some(MOUSE_TRANSPARENT_COLOR));
         mouse::draw_mouse_cursor(&mut mouse_window, &Vector2D::new(0, 0));
@@ -305,7 +308,7 @@ fn kernel_entry(
             .layer(mouse_layer_id)
             .move_relative(Vector2D::new(200, 200));
 
-        let mut main_window = Window::new(160, 52, frame_buffer_config.pixel_format);
+        let mut main_window = Window::new(160, 52, pixel_format);
         main_window.draw_window(b"Hello Window");
         let main_window_id = layer_manager.new_layer(main_window);
         layer_manager
@@ -317,7 +320,7 @@ fn kernel_entry(
         let console_window = Window::new(
             console.column_num() as u32 * 8,
             console.row_num() as u32 * 16,
-            frame_buffer_config.pixel_format,
+            pixel_format,
         );
         let console_id = layer_manager.new_layer(console_window);
 
