@@ -10,7 +10,7 @@ use uefi::table::boot::MemoryMap;
 use kernel::{
     asmfunc::{cli, get_cs, load_idt, set_cs_ss, set_ds_all, sti},
     bitfield::BitField as _,
-    console::{Console, CONSOLE, DESKTOP_BG_COLOR, DESKTOP_FG_COLOR},
+    console::{self, CONSOLE, DESKTOP_BG_COLOR},
     font,
     frame_buffer::FrameBuffer,
     frame_buffer_config::FrameBufferConfig,
@@ -101,20 +101,9 @@ fn kernel_entry(
 
     let fb_config = frame_buffer_config.clone();
     graphics::init(fb_config);
+    console::init(&frame_buffer_config);
 
-    // コンソールの生成
-    CONSOLE.init(Console::new(
-        &PIXEL_WRITER,
-        &DESKTOP_FG_COLOR,
-        &DESKTOP_BG_COLOR,
-        (frame_buffer_config.vertical_resolution - 50) / 16,
-        frame_buffer_config.horizontal_resolution / 8,
-    ));
-
-    // welcome 文
     printk!("Welcome to MikanOS!\n");
-
-    // ログレベルの設定
     set_log_level(LogLevel::Warn);
 
     // タイマーの初期化

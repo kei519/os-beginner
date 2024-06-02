@@ -4,7 +4,8 @@ use alloc::{boxed::Box, vec::Vec};
 
 use crate::{
     font::{write_ascii, write_string},
-    graphics::{PixelColor, PixelWriter, Rectangle, Vector2D},
+    frame_buffer_config::FrameBufferConfig,
+    graphics::{PixelColor, PixelWriter, Rectangle, Vector2D, PIXEL_WRITER},
     layer::LAYER_MANAGER,
     sync::OnceMutex,
 };
@@ -16,6 +17,16 @@ pub static CONSOLE: OnceMutex<Console> = OnceMutex::new();
 pub const DESKTOP_BG_COLOR: PixelColor = PixelColor::new(45, 118, 237);
 /// デスクトップ前景の色
 pub const DESKTOP_FG_COLOR: PixelColor = PixelColor::new(255, 255, 255);
+
+pub fn init(config: &FrameBufferConfig) {
+    CONSOLE.init(Console::new(
+        &PIXEL_WRITER,
+        &DESKTOP_FG_COLOR,
+        &DESKTOP_BG_COLOR,
+        (config.vertical_resolution - 50) / 16,
+        config.horizontal_resolution / 8,
+    ));
+}
 
 pub struct Console {
     /// ピクセル描画用。
