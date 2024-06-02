@@ -3,7 +3,7 @@
 
 extern crate alloc;
 
-use alloc::{boxed::Box, format};
+use alloc::format;
 use core::{arch::asm, mem::size_of, panic::PanicInfo, sync::atomic::Ordering};
 use uefi::table::boot::MemoryMap;
 
@@ -13,11 +13,8 @@ use kernel::{
     console::{Console, CONSOLE, DESKTOP_BG_COLOR, DESKTOP_FG_COLOR},
     font,
     frame_buffer::FrameBuffer,
-    frame_buffer_config::{FrameBufferConfig, PixelFormat},
-    graphics::{
-        draw_desktop, BgrResv8BitPerColorPixelWriter, PixelColor, PixelWriter,
-        RgbResv8BitPerColorPixelWriter, Vector2D, PIXEL_WRITER,
-    },
+    frame_buffer_config::FrameBufferConfig,
+    graphics::{self, draw_desktop, PixelColor, PixelWriter, Vector2D, PIXEL_WRITER},
     interrupt::{
         notify_end_of_interrupt, InterruptDescriptor, InterruptDescriptorAttribute, InterruptFrame,
         InterruptVector, Message, MessageType, IDT, MAIN_QUEUE,
@@ -102,15 +99,8 @@ fn kernel_entry(
     // メモリアロケータの初期化
     memory_manager::GLOBAL.init(memory_map, kernel_base, kernel_size);
 
-    // ピクセルライターの生成
     let fb_config = frame_buffer_config.clone();
-    let pixel_writer: Box<dyn PixelWriter + Send> = match frame_buffer_config.pixel_format {
-        PixelFormat::Rgb => Box::new(RgbResv8BitPerColorPixelWriter::new(fb_config)),
-        PixelFormat::Bgr => Box::new(BgrResv8BitPerColorPixelWriter::new(fb_config)),
-    };
-    PIXEL_WRITER.init(pixel_writer);
-
-    draw_desktop(&mut **PIXEL_WRITER.lock());
+    graphics::init(fb_config);
 
     // コンソールの生成
     CONSOLE.init(Console::new(
