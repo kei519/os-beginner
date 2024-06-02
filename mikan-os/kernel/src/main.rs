@@ -29,7 +29,7 @@ use kernel::{
     },
     paging,
     pci::{self, Device},
-    printk, printkln, segment, timer,
+    printk, printkln, segment,
     usb::{Controller, HIDMouseDriver, XHC},
     window::Window,
     x86_descriptor,
@@ -105,9 +105,6 @@ fn kernel_entry(
 
     printk!("Welcome to MikanOS!\n");
     set_log_level(LogLevel::Warn);
-
-    // タイマーの初期化
-    timer::initialize_lapic_timer();
 
     // セグメントの設定
     segment::setup_segments();
