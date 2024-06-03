@@ -114,3 +114,7 @@ fi
 [tasks.check]
 command = "cargo"
 args = ["check", "--manifest-path", "kernel/Cargo.toml", "--color", "always"]
+
+[tasks.clippy]
+command = "cargo"
+args = ["clippy", "--manifest-path", "kernel/Cargo.toml", "--color", "always"]
