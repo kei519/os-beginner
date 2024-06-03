@@ -32,7 +32,16 @@ args = [
     "mikan-loader/target/x86_64-unknown-uefi/release/mikan-loader.efi",
     "kernel/target/x86_64-unknown-none/release/kernel",
 ]
-dependencies = ["build"]
+dependencies = ["build", "check-ovmf_vars"]
+
+[tasks.check-ovmf_vars]
+script='''
+#!/bin/bash
+
+if [ ! -e "../devenv/OVMF_VARS.fd" ]; then
+	cp ../devenv/OVMF_VARS-template ../devenv/OVMF_VARS.fd
+fi
+'''
 
 [tasks.clean]
 dependencies = ["clean-file"]

@@ -9,4 +9,4 @@ if [ -n "$PIDS" ]; then
 fi
 
 # recover OVMF_VARS.fd
-git checkout HEAD $DIR/../devenv/OVMF_VARS.fd
+rm $DIR/../devenv/OVMF_VARS.fd
