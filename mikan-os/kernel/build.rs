@@ -48,10 +48,10 @@ fn get_cpp_files(dir_path: &str) -> io::Result<Vec<PathBuf>> {
         if file.file_type()?.is_dir() {
             let dir_path = Path::new(dir_path).join(file.file_name().to_str().unwrap());
             ret.append(&mut get_cpp_files(dir_path.to_str().unwrap())?);
-        } else if file.file_type()?.is_file() {
-            if file.file_name().to_str().unwrap().ends_with(".cpp") {
-                ret.push(file.path());
-            }
+        } else if file.file_type()?.is_file()
+            && file.file_name().to_str().unwrap().ends_with(".cpp")
+        {
+            ret.push(file.path());
         }
     }
     Ok(ret)

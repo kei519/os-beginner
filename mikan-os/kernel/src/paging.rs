@@ -60,7 +60,7 @@ pub fn setup_indentity_page_table() {
 
         for i_pd in 0..page_directory[0].len() {
             page_directory[i_pdpt][i_pd] =
-                i_pdpt as u64 * PAGE_SIZE_1G + i_pd as u64 * PAGE_SIZE_2M | 0x083;
+                (i_pdpt as u64 * PAGE_SIZE_1G + i_pd as u64 * PAGE_SIZE_2M) | 0x083;
         }
     }
 

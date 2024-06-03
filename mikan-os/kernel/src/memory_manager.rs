@@ -1,5 +1,6 @@
 use core::{
     alloc::{GlobalAlloc, Layout},
+    cmp::Ordering,
     mem::size_of,
     ptr,
 };
@@ -55,6 +56,7 @@ impl FrameId {
 type MapLineType = usize;
 
 /// [BitmapMemoryManager] で管理できる最大の物理メモリのサイズ。
+#[allow(clippy::manual_bits)]
 const BITS_PER_MAP_LINE: usize = 8 * size_of::<MapLineType>();
 
 /// [MAX_PHYSICAL_MEMORY] のメモリを管理するのに必要なフレーム数。
@@ -235,20 +237,22 @@ unsafe impl GlobalAlloc for BitmapMemoryManager {
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
         let old_num_frames = get_num_frames(layout.size());
         let new_num_frames = get_num_frames(new_size);
-        if new_num_frames == old_num_frames {
-            ptr
-        } else if new_num_frames < old_num_frames {
-            let de_size = (old_num_frames - new_num_frames) * BYTES_PER_FRAME;
-            let de_ptr = ptr.add(de_size);
-            let de_layout = Layout::from_size_align_unchecked(de_size, layout.align());
-            self.dealloc(de_ptr, de_layout);
-            ptr
-        } else {
-            let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
-            let new_ptr = self.alloc(new_layout);
-            ptr::copy_nonoverlapping(ptr, new_ptr, layout.size());
-            self.dealloc(ptr, layout);
-            new_ptr
+        match new_num_frames.cmp(&old_num_frames) {
+            Ordering::Equal => ptr,
+            Ordering::Less => {
+                let de_size = (old_num_frames - new_num_frames) * BYTES_PER_FRAME;
+                let de_ptr = ptr.add(de_size);
+                let de_layout = Layout::from_size_align_unchecked(de_size, layout.align());
+                self.dealloc(de_ptr, de_layout);
+                ptr
+            }
+            Ordering::Greater => {
+                let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
+                let new_ptr = self.alloc(new_layout);
+                ptr::copy_nonoverlapping(ptr, new_ptr, layout.size());
+                self.dealloc(ptr, layout);
+                new_ptr
+            }
         }
     }
 }

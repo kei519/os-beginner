@@ -184,13 +184,13 @@ pub enum CxxCode {
     EndpointNotInCharge,
 }
 
-impl Into<error::Code> for CxxCode {
+impl From<CxxCode> for error::Code {
     /// C++ 版の [CxxCode] から Rust 版の [Code][error::Code] に変換する。
     ///
     /// # Note
     /// この関数は、[CxxCode::Success] は変換できない。
-    fn into(self) -> error::Code {
-        match self {
+    fn from(value: CxxCode) -> Self {
+        match value {
             CxxCode::Success => panic!("CxxCode::Success cannot be converted into error::Code"),
             CxxCode::Full => error::Code::Full,
             CxxCode::Empty => error::Code::Empty,
@@ -233,15 +233,15 @@ pub struct CxxError {
     file: *const c_char,
 }
 
-impl Into<Result<()>> for CxxError {
+impl From<CxxError> for Result<()> {
     /// C++ 版の [CxxError] から Rust 版の [Result] に変換する。
-    fn into(self) -> Result<()> {
-        match self.code {
+    fn from(value: CxxError) -> Self {
+        match value.code {
             CxxCode::Success => Ok(()),
             _ => Err(Error::new(
-                self.code.into(),
-                unsafe { CStr::from_ptr(self.file) }.to_str().unwrap(),
-                self.line as u32,
+                value.code.into(),
+                unsafe { CStr::from_ptr(value.file) }.to_str().unwrap(),
+                value.line as u32,
             )),
         }
     }

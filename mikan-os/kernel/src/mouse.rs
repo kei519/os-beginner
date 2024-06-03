@@ -113,9 +113,9 @@ impl MouseCursor {
     }
 
     fn erase_mouse_cursor(&mut self) {
-        for dy in 0..MOUSE_CURSOR_HEIGHT {
-            for dx in 0..MOUSE_CURSOR_WIDTH {
-                if MOUSE_CURSOR_SHAPE[dy][dx] != b' ' {
+        for (dy, row) in MOUSE_CURSOR_SHAPE.iter().enumerate() {
+            for (dx, &b) in row.iter().enumerate() {
+                if b != b' ' {
                     self.pixel_writer.lock().write(
                         self.position + Vector2D::new(dx as i32, dy as i32),
                         &self.erase_color,
@@ -127,15 +127,13 @@ impl MouseCursor {
 }
 
 pub fn draw_mouse_cursor(writer: &mut dyn PixelWriter, pos: &Vector2D<i32>) {
-    for dy in 0..MOUSE_CURSOR_HEIGHT {
-        for dx in 0..MOUSE_CURSOR_WIDTH {
+    for (dy, row) in MOUSE_CURSOR_SHAPE.iter().enumerate() {
+        for (dx, &b) in row.iter().enumerate() {
             let pos = *pos + Vector2D::new(dx as i32, dy as i32);
-            if MOUSE_CURSOR_SHAPE[dy][dx] == b'@' {
-                writer.write(pos, &PixelColor::new(0, 0, 0));
-            } else if MOUSE_CURSOR_SHAPE[dy][dx] == b'.' {
-                writer.write(pos, &PixelColor::new(255, 255, 255));
-            } else {
-                writer.write(pos, &MOUSE_TRANSPARENT_COLOR);
+            match b {
+                b'@' => writer.write(pos, &PixelColor::new(0, 0, 0)),
+                b'.' => writer.write(pos, &PixelColor::new(255, 255, 255)),
+                _ => writer.write(pos, &MOUSE_TRANSPARENT_COLOR),
             }
         }
     }

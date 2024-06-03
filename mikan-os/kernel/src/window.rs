@@ -93,7 +93,7 @@ impl Window {
                     dst.horizontal_resolution() as i32 - intersection.pos.x(),
                 )
             {
-                let pos_relative = Vector2D::new(x as i32, y as i32);
+                let pos_relative = Vector2D::new(x, y);
                 let c = self.at(pos_relative);
                 if *c != tc {
                     dst.write(pos + pos_relative, c);
@@ -217,9 +217,9 @@ impl Window {
 
         font::write_string(self, Vector2D::new(24, 4), title, &to_color(0xffffff));
 
-        for y in 0..CLOSE_BUTTON_HEIGHT {
-            for x in 0..CLOSE_BUTTON_WIDTH {
-                let c = to_color(match CLOSE_BUTTON[y][x] {
+        for (y, row) in CLOSE_BUTTON.iter().enumerate() {
+            for (x, &b) in row.iter().enumerate() {
+                let c = to_color(match b {
                     b'@' => 0x000000,
                     b'$' => 0x848484,
                     b':' => 0xc6c6c6,

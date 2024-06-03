@@ -164,7 +164,7 @@ impl<T> RwLock<T> {
     pub fn read(&self) -> ReadGuard<'_, T> {
         let mut c = self.counter.load(Relaxed);
         loop {
-            if c < UNUSED || c > BORROW_MAX {
+            if !(UNUSED..=BORROW_MAX).contains(&c) {
                 spin_loop();
                 c = self.counter.load(Relaxed);
                 continue;
@@ -279,7 +279,7 @@ impl<T> OnceRwLock<T> {
     pub fn read(&self) -> ReadGuard<'_, T> {
         let mut c = self.counter.load(Relaxed);
         loop {
-            if c < UNUSED || c > BORROW_MAX {
+            if !(UNUSED..=BORROW_MAX).contains(&c) {
                 spin_loop();
                 c = self.counter.load(Relaxed);
                 continue;

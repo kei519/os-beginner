@@ -43,9 +43,9 @@ impl PixelColor {
     /// 32 bit 情報から [PixelColor] へ変換する。
     pub fn to_color(c: u32) -> Self {
         Self {
-            r: (c >> 16) as u8 & 0xff,
-            g: (c >> 8) as u8 & 0xff,
-            b: c as u8 & 0xff,
+            r: (c >> 16) as u8,
+            g: (c >> 8) as u8,
+            b: c as u8,
         }
     }
 }

@@ -51,8 +51,12 @@ macro_rules! log {
 ///
 /// また、本来は `AL` レジスタが引数に使用されているベクターレジスタの数を保存しているが、
 /// `AL` レジスタを取得するのは大変なため、浮動小数点数は非対応。
+///
+/// # Safety
+///
+/// この関数は C++ 側から呼ばれることを想定しているため、Rust 側では使わないこと。
 #[export_name = "_Z3Log8LogLevelPKcz"]
-pub extern "sysv64" fn log_cpp(
+pub unsafe extern "sysv64" fn log_cpp(
     level: LogLevel,
     format: *const c_char,
     arg1: u64,
@@ -117,6 +121,7 @@ pub extern "sysv64" fn log_cpp(
                             str.push_str(&format!("{:0}", arg as i64));
                         }
                     } else {
+                        #[allow(clippy::collapsible_if)]
                         if digit != 0 {
                             str.push_str(&format!("{:digit$}", arg as i64));
                         } else {
@@ -133,6 +138,7 @@ pub extern "sysv64" fn log_cpp(
                             str.push_str(&format!("{:0x}", arg as i64));
                         }
                     } else {
+                        #[allow(clippy::collapsible_if)]
                         if digit != 0 {
                             str.push_str(&format!("{:digit$x}", arg as i64));
                         } else {
@@ -149,6 +155,7 @@ pub extern "sysv64" fn log_cpp(
                             str.push_str(&format!("{:0}", arg));
                         }
                     } else {
+                        #[allow(clippy::collapsible_if)]
                         if digit != 0 {
                             str.push_str(&format!("{:digit$}", arg));
                         } else {
@@ -184,6 +191,7 @@ pub extern "sysv64" fn log_cpp(
             digit = 0;
             num_read += 1;
         } else {
+            #[allow(clippy::collapsible_if)]
             if c == '%' {
                 arg_maybe_needed = true;
             } else {

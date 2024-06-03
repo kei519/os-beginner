@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box, vec};
 
 use crate::{
     error::{Code, Result},
@@ -43,8 +43,7 @@ impl FrameBuffer {
             if config.frame_buffer != 0 {
                 [].into()
             } else {
-                let mut buffer = Vec::with_capacity(buffer_len);
-                buffer.resize(buffer_len, 0);
+                let buffer = vec![0; buffer_len];
 
                 // 必要なところをシャドウのものに変更しておく
                 config.frame_buffer = buffer.as_ptr() as _;
@@ -121,8 +120,8 @@ impl FrameBuffer {
         let copy_area = dst_outline & src_outline & src_area_shifted;
         let src_start_pos = copy_area.pos - (dst_pos - src_area.pos);
 
-        let mut dst_buf = frame_addr_at(copy_area.pos, &dst_config) as *mut u8;
-        let mut src_buf = frame_addr_at(src_start_pos, &src_config) as *const u8;
+        let mut dst_buf = frame_addr_at(copy_area.pos, &dst_config);
+        let mut src_buf = frame_addr_at(src_start_pos, &src_config);
 
         for _ in 0..copy_area.size.y() {
             unsafe {

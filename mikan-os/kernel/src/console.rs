@@ -103,13 +103,13 @@ impl Console {
             } else if self.cursor_column < self.column_num - 1 {
                 let pos = Vector2D::new(8 * self.cursor_column as i32, 16 * self.cursor_row as i32);
                 if self.layer_id == 0 {
-                    write_ascii(&mut **self.writer.lock(), pos, c, &self.fg_color);
+                    write_ascii(&mut **self.writer.lock(), pos, c, self.fg_color);
                 } else {
                     write_ascii(
                         LAYER_MANAGER.lock().layer(self.layer_id).window_mut(),
                         pos,
                         c,
-                        &self.fg_color,
+                        self.fg_color,
                     )
                 }
                 self.buffer[self.cursor_row * self.column_num + self.cursor_column] = c;
@@ -136,7 +136,7 @@ impl Console {
             writer.fill_rectangle(
                 Vector2D::new(0, 0),
                 Vector2D::new(8 * self.column_num as i32, 16 * self.row_num as i32),
-                &self.bg_color,
+                self.bg_color,
             );
 
             for row in 0..self.row_num - 1 {
@@ -151,7 +151,7 @@ impl Console {
                     &mut **writer,
                     Vector2D::new(0, 16 * row as i32),
                     &self.buffer[row * self.column_num..(row + 1) * self.column_num],
-                    &self.fg_color,
+                    self.fg_color,
                 );
             }
         } else {
@@ -165,7 +165,7 @@ impl Console {
             window.fill_rectangle(
                 Vector2D::new(0, 16 * (self.row_num as i32 - 1)),
                 Vector2D::new(8 * self.column_num as i32, 16),
-                &self.bg_color,
+                self.bg_color,
             );
         }
     }
@@ -193,7 +193,7 @@ impl Console {
                 window,
                 Vector2D::new(0, 16 * row as i32),
                 &self.buffer[row * self.column_num..(row + 1) * self.column_num],
-                &self.fg_color,
+                self.fg_color,
             );
         }
     }
