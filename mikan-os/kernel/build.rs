@@ -1,58 +1,24 @@
-use std::{
-    io,
-    path::{Path, PathBuf},
-};
+use cmake::Config;
 
-fn main() -> io::Result<()> {
+fn main() {
     if cfg!(feature = "not-check") {
-        let files = get_cpp_files("src/usb")?;
-        cc::Build::new()
-            .cpp(true)
-            .compiler("clang++")
-            .no_default_flags(true)
-            .cpp_set_stdlib("c++")
-            .include("src")
-            .include("src/cxx")
-            .include("src/usb")
-            .include("src/usb/xhci")
-            .include("../../devenv/x86_64-elf/include")
-            .include("../../devenv/x86_64-elf/include/c++/v1")
-            .opt_level(2)
-            .extra_warnings(false)
-            .target("x86_64-elf")
-            .flag_if_supported("-ffreestanding")
-            .flag_if_supported("-mno-red-zone")
-            .flag_if_supported("-fno-exceptions")
-            .flag_if_supported("-fno-rtti")
-            .std("c++17")
-            .files(files)
-            .file("src/cxx/logger.cpp")
-            .file("src/cxx/newlib_support.c")
-            .file("src/cxx/libcxx_support.cpp")
-            .compile("usb");
+        let dst = Config::new("./")
+            .define("CMAKE_C_COMPILER", "clang")
+            .define("CMAKE_CXX_COMPILER", "clang++")
+            .build_target("usb")
+            .build();
 
-        println!("cargo:rerun-if-changed=src");
-        println!("cargo:rerun-if-changed=build.rs");
+        println!(
+            "cargo:rustc-link-search=native={}",
+            dst.join("build").display()
+        );
+        println!("cargo:rustc-link-lib=static=usb");
+
+        // C++ のファイルの内容も .rlib にキャッシュ？されるらしく、
+        // そのコンパイル時にライブラリが必要になるため書いている
+        // ただ、あんまり良くわかっていない
+        println!("cargo:rustc-link-search=native=../../devenv/x86_64-elf/lib");
+        println!("cargo:rustc-link-lib=static=c");
+        println!("cargo:rustc-link-lib=static=c++abi");
     }
-
-    Ok(())
-}
-
-fn get_cpp_files(dir_path: &str) -> io::Result<Vec<PathBuf>> {
-    let mut ret = vec![];
-
-    let files = std::fs::read_dir(dir_path)?;
-
-    for entry in files {
-        let file = entry?;
-        if file.file_type()?.is_dir() {
-            let dir_path = Path::new(dir_path).join(file.file_name().to_str().unwrap());
-            ret.append(&mut get_cpp_files(dir_path.to_str().unwrap())?);
-        } else if file.file_type()?.is_file()
-            && file.file_name().to_str().unwrap().ends_with(".cpp")
-        {
-            ret.push(file.path());
-        }
-    }
-    Ok(ret)
 }
