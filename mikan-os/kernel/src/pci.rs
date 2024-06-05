@@ -8,7 +8,9 @@ use crate::{
     asmfunc::{io_in_32, io_out_32},
     bitfield::BitField,
     error::{self, Result},
-    make_error,
+    log,
+    logger::LogLevel,
+    make_error, pci,
     sync::RwLock,
 };
 
@@ -16,6 +18,33 @@ use crate::{
 const CONFIG_ADDRESS: u16 = 0x0cf8;
 /// CONFIG_DATA レジスタの IO ポートアドレス
 const CONFIG_DATA: u16 = 0x0cfc;
+
+pub fn init() -> Result<()> {
+    if let Err(error) = pci::scan_all_bus() {
+        log!(LogLevel::Error, "scan_all_bus: {:}", error);
+        return Err(error);
+    }
+
+    {
+        let devices = pci::DEVICES.read();
+        for device in &*devices {
+            let dev = device;
+            let vendor_id = dev.read_vendor_id();
+            log!(
+                LogLevel::Debug,
+                "{}.{}.{}: vend {:04x}, class {:08x}, head {:02x}",
+                dev.bus(),
+                dev.device(),
+                dev.function(),
+                vendor_id,
+                dev.class_code(),
+                dev.header_type()
+            );
+        }
+    }
+
+    Ok(())
+}
 
 /// PCI デバイスのクラスコード。
 #[derive(Clone, Copy, Debug)]

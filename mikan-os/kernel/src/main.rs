@@ -9,13 +9,12 @@ use uefi::table::boot::MemoryMap;
 
 use kernel::{
     asmfunc::{cli, sti},
-    bitfield::BitField as _,
     console::{self, CONSOLE, DESKTOP_BG_COLOR},
     font,
     frame_buffer::FrameBuffer,
     frame_buffer_config::FrameBufferConfig,
     graphics::{self, draw_desktop, PixelColor, PixelWriter, Vector2D, PIXEL_WRITER},
-    interrupt::{self, InterruptVector, MessageType, MAIN_QUEUE},
+    interrupt::{self, MessageType, MAIN_QUEUE},
     layer::{LayerManager, LAYER_MANAGER, SCREEN},
     log,
     logger::{set_log_level, LogLevel},
@@ -24,11 +23,10 @@ use kernel::{
         self, MouseCursor, MOUSE_CURSOR, MOUSE_CURSOR_HEIGHT, MOUSE_CURSOR_WIDTH, MOUSE_LAYER_ID,
         MOUSE_TRANSPARENT_COLOR,
     },
-    paging,
-    pci::{self, Device},
-    printk, printkln, segment,
-    usb::{Controller, HIDMouseDriver, XHC},
+    paging, pci, printk, printkln, segment,
+    usb::HIDMouseDriver,
     window::Window,
+    xhci::{self, XHC},
 };
 
 /// カーネル用スタック
@@ -46,31 +44,6 @@ impl KernelStack {
 
 #[no_mangle]
 static KERNEL_MAIN_STACK: KernelStack = KernelStack::new();
-
-fn switch_ehci2xhci(xhc_dev: &Device) {
-    let mut intel_ehc_exist = false;
-    let devices = pci::DEVICES.read();
-    for device in &*devices {
-        if device.class_code().r#match(0x0c, 0x03, 0x20) && device.read_vendor_id() == 0x8086 {
-            intel_ehc_exist = true;
-            break;
-        }
-    }
-    if !intel_ehc_exist {
-        return;
-    }
-
-    let superspeed_ports = xhc_dev.read_conf_reg(0xdc);
-    xhc_dev.write_conf_reg(0xd8, superspeed_ports);
-    let ehci2xhci_ports = xhc_dev.read_conf_reg(0xd4);
-    xhc_dev.write_conf_reg(0xd0, ehci2xhci_ports);
-    log!(
-        LogLevel::Debug,
-        "switch_ehci2xhci: SS = {:02x}, xHCI = {:02x}",
-        superspeed_ports,
-        ehci2xhci_ports
-    );
-}
 
 // この呼び出しの前にスタック領域を変更するため、でかい構造体をそのまま渡せなくなる
 // それを避けるために参照で渡す
@@ -98,6 +71,11 @@ fn kernel_entry(
     paging::init();
     interrupt::init();
 
+    if pci::init().is_err() {
+        return;
+    }
+    xhci::init();
+
     // マウスカーソルの生成
     MOUSE_CURSOR.init(MouseCursor::new(
         &PIXEL_WRITER,
@@ -105,108 +83,7 @@ fn kernel_entry(
         Vector2D::new(300, 200),
     ));
 
-    // デバイス一覧の表示
-    let result = pci::scan_all_bus();
-    log!(LogLevel::Debug, "scan_all_bus: {:?}", result);
-
-    let mut xhc_dev = None;
-    {
-        let devices = pci::DEVICES.read();
-        let mut intel_found = false;
-        for device in &*devices {
-            let dev = device;
-            let vendor_id = dev.read_vendor_id();
-            log!(
-                LogLevel::Debug,
-                "{}.{}.{}: vend {:04x}, class {:08x}, head {:02x}",
-                dev.bus(),
-                dev.device(),
-                dev.function(),
-                vendor_id,
-                dev.class_code(),
-                dev.header_type()
-            );
-
-            // Intel 製を優先して xHC を探す
-            if device.class_code().r#match(0x0c, 0x03, 0x30) {
-                if intel_found {
-                    continue;
-                }
-
-                if 0x8086 == vendor_id {
-                    intel_found = true;
-                }
-                xhc_dev = Some(*device);
-            }
-        }
-
-        if xhc_dev.is_some() {
-            let xhc_dev = xhc_dev.unwrap();
-            log!(
-                LogLevel::Info,
-                "xHC has been found: {}.{}.{}",
-                xhc_dev.bus(),
-                xhc_dev.device(),
-                xhc_dev.function()
-            );
-        }
-    }
-    let mut xhc_dev = xhc_dev.unwrap();
-
-    let bsp_local_apic_id = (unsafe { *(0xfee0_0020 as *const u32) } >> 24) as u8;
-    xhc_dev
-        .configure_msi_fixed_destination(
-            bsp_local_apic_id,
-            pci::MSITriggerMode::Level,
-            pci::MSIDeliverMode::Fixed,
-            InterruptVector::XHCI as u8,
-            0,
-        )
-        .unwrap();
-    let xhc_dev = xhc_dev;
-
-    // xHC の BAR から情報を得る
-    let xhc_bar = xhc_dev.read_bar(0);
-    log!(LogLevel::Debug, "ReadBar: {:#x?}", xhc_bar);
-    let xhc_mmio_base = xhc_bar.unwrap().get_bits(4..) << 4;
-    log!(LogLevel::Debug, "xHC mmio_base = {:08x}", xhc_mmio_base);
-
-    let mut xhc = Controller::new(xhc_mmio_base);
-
-    if xhc_dev.read_vendor_id() == 0x8086 {
-        switch_ehci2xhci(&xhc_dev);
-    }
-
-    let result = xhc.initialize();
-    log!(LogLevel::Debug, "xhc.initialize: {:?}", result);
-
-    log!(LogLevel::Info, "xHC starting");
-    xhc.run().unwrap();
-
-    XHC.init(xhc);
-
     HIDMouseDriver::set_default_observer(mouse::mouse_observer);
-
-    {
-        let mut xhc = XHC.lock();
-
-        for i in 1..=xhc.max_ports() {
-            let mut port = xhc.port_at(i);
-            log!(
-                LogLevel::Debug,
-                "Port {}: IsConnected={}",
-                i,
-                port.is_connected()
-            );
-
-            if port.is_connected() {
-                if let Err(err) = xhc.configure_port(&mut port) {
-                    log!(LogLevel::Error, "failed to configure port: {}", err);
-                    continue;
-                }
-            }
-        }
-    }
 
     let screen = match FrameBuffer::new(frame_buffer_config) {
         Ok(s) => s,

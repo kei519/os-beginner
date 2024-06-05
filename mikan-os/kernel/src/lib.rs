@@ -25,3 +25,4 @@ pub mod timer;
 pub mod usb;
 pub mod window;
 pub mod x86_descriptor;
+pub mod xhci;

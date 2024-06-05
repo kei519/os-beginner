@@ -3,12 +3,7 @@ use core::{
     mem::MaybeUninit,
 };
 
-use crate::{
-    error::{self, Error, Result},
-    sync::OnceMutex,
-};
-
-pub static XHC: OnceMutex<Controller> = OnceMutex::new();
+use crate::error::{self, Error, Result};
 
 extern "C" {
     #[link_name = "_ZN3usb4xhci10ControllerC2Em"]
