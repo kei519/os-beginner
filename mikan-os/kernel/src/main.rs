@@ -4,26 +4,20 @@
 extern crate alloc;
 
 use alloc::format;
-use core::{arch::asm, panic::PanicInfo, sync::atomic::Ordering};
+use core::{arch::asm, panic::PanicInfo};
 use uefi::table::boot::MemoryMap;
 
 use kernel::{
     asmfunc::{cli, sti},
-    console::{self, CONSOLE, DESKTOP_BG_COLOR},
+    console::{self, CONSOLE},
     font,
     frame_buffer_config::FrameBufferConfig,
-    graphics::{self, PixelColor, PixelWriter, Vector2D, PIXEL_WRITER},
+    graphics::{self, PixelColor, PixelWriter, Vector2D},
     interrupt::{self, MessageType, MAIN_QUEUE},
     layer::{self, LAYER_MANAGER, SCREEN},
     log,
     logger::{set_log_level, LogLevel},
-    memory_manager,
-    mouse::{
-        self, MouseCursor, MOUSE_CURSOR, MOUSE_CURSOR_HEIGHT, MOUSE_CURSOR_WIDTH, MOUSE_LAYER_ID,
-        MOUSE_TRANSPARENT_COLOR,
-    },
-    paging, pci, printk, printkln, segment,
-    usb::HIDMouseDriver,
+    memory_manager, mouse, paging, pci, printk, printkln, segment,
     window::Window,
     xhci::{self, XHC},
 };
@@ -92,34 +86,9 @@ fn kernel_entry(
     }
     xhci::init();
 
-    // マウスカーソルの生成
-    MOUSE_CURSOR.init(MouseCursor::new(
-        &PIXEL_WRITER,
-        DESKTOP_BG_COLOR,
-        Vector2D::new(300, 200),
-    ));
-
-    HIDMouseDriver::set_default_observer(mouse::mouse_observer);
-
     layer::init(frame_buffer_config);
     let main_window_id = initialize_main_window();
-
-    let mut mouse_window = Window::new(
-        MOUSE_CURSOR_WIDTH as u32,
-        MOUSE_CURSOR_HEIGHT as u32,
-        SCREEN.lock().pixel_format(),
-    );
-    {
-        let mut layer_manager = LAYER_MANAGER.lock();
-        mouse_window.set_transparent_color(Some(MOUSE_TRANSPARENT_COLOR));
-        mouse::draw_mouse_cursor(&mut mouse_window, &Vector2D::new(0, 0));
-        let mouse_layer_id = layer_manager.new_layer(mouse_window);
-        layer_manager
-            .layer(mouse_layer_id)
-            .move_relative(Vector2D::new(200, 200));
-        layer_manager.up_down(mouse_layer_id, 3);
-        MOUSE_LAYER_ID.store(mouse_layer_id, Ordering::Release);
-    }
+    mouse::init();
 
     // FIXME: 最初に登録されるレイヤーは背景ウィンドウなので、`layer_id` 1 を表示すれば
     //        必ず全て表示されるが、ハードコードは良くなさそう

@@ -3,13 +3,43 @@ use core::sync::atomic::{AtomicU32, AtomicU8, Ordering};
 
 use crate::{
     bitfield::BitField as _,
-    graphics::{PixelColor, PixelWriter, Vector2D},
-    layer::LAYER_MANAGER,
+    console::DESKTOP_BG_COLOR,
+    graphics::{PixelColor, PixelWriter, Vector2D, PIXEL_WRITER},
+    layer::{LAYER_MANAGER, SCREEN},
     sync::OnceMutex,
+    usb::HIDMouseDriver,
+    window::Window,
 };
 
 pub static MOUSE_CURSOR: OnceMutex<MouseCursor> = OnceMutex::new();
 pub static MOUSE_LAYER_ID: AtomicU32 = AtomicU32::new(0);
+
+pub fn init() {
+    // マウスカーソルの生成
+    MOUSE_CURSOR.init(MouseCursor::new(
+        &PIXEL_WRITER,
+        DESKTOP_BG_COLOR,
+        Vector2D::new(300, 200),
+    ));
+
+    HIDMouseDriver::set_default_observer(mouse_observer);
+
+    let mut mouse_window = Window::new(
+        MOUSE_CURSOR_WIDTH as u32,
+        MOUSE_CURSOR_HEIGHT as u32,
+        SCREEN.lock().pixel_format(),
+    );
+
+    let mut layer_manager = LAYER_MANAGER.lock();
+    mouse_window.set_transparent_color(Some(MOUSE_TRANSPARENT_COLOR));
+    draw_mouse_cursor(&mut mouse_window, &Vector2D::new(0, 0));
+    let mouse_layer_id = layer_manager.new_layer(mouse_window);
+    layer_manager
+        .layer(mouse_layer_id)
+        .move_relative(Vector2D::new(200, 200));
+    layer_manager.up_down(mouse_layer_id, 3);
+    MOUSE_LAYER_ID.store(mouse_layer_id, Ordering::Release);
+}
 
 pub fn mouse_observer(buttons: u8, displacement_x: i8, displacement_y: i8) {
     static MOUSE_DRAG_LAYER_ID: AtomicU32 = AtomicU32::new(0);
