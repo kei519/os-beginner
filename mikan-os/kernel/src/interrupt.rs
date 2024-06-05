@@ -1,15 +1,45 @@
 use alloc::collections::VecDeque;
+use core::mem;
 
 use crate::{
+    asmfunc,
     bitfield::BitField,
     sync::Mutex,
-    x86_descriptor::{DescriptorType, SystemSegmentType},
+    x86_descriptor::{self, DescriptorType, SystemSegmentType},
 };
 
 pub static IDT: Mutex<[InterruptDescriptor; 256]> =
     Mutex::new([InterruptDescriptor::const_default(); 256]);
 
 pub static MAIN_QUEUE: Mutex<VecDeque<Message>> = Mutex::new(VecDeque::new());
+
+pub fn init() {
+    let cs = asmfunc::get_cs();
+    {
+        let mut idt = IDT.lock();
+        idt[InterruptVector::XHCI as usize].set_idt_entry(
+            InterruptDescriptorAttribute::new(
+                x86_descriptor::SystemSegmentType::InterruptGate,
+                0,
+                true,
+            ),
+            int_handler_xhci,
+            cs,
+        );
+        asmfunc::load_idt(
+            (mem::size_of::<InterruptDescriptor>() * idt.len()) as u16 - 1,
+            idt.as_ptr() as u64,
+        )
+    }
+}
+
+#[custom_attribute::interrupt]
+fn int_handler_xhci(_frame: &InterruptFrame) {
+    MAIN_QUEUE
+        .lock()
+        .push_back(Message::new(MessageType::InteruptXHCI));
+    notify_end_of_interrupt();
+}
 
 #[repr(packed)]
 #[derive(Debug, Clone, Copy)]

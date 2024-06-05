@@ -4,21 +4,18 @@
 extern crate alloc;
 
 use alloc::format;
-use core::{arch::asm, mem::size_of, panic::PanicInfo, sync::atomic::Ordering};
+use core::{arch::asm, panic::PanicInfo, sync::atomic::Ordering};
 use uefi::table::boot::MemoryMap;
 
 use kernel::{
-    asmfunc::{cli, get_cs, load_idt, sti},
+    asmfunc::{cli, sti},
     bitfield::BitField as _,
     console::{self, CONSOLE, DESKTOP_BG_COLOR},
     font,
     frame_buffer::FrameBuffer,
     frame_buffer_config::FrameBufferConfig,
     graphics::{self, draw_desktop, PixelColor, PixelWriter, Vector2D, PIXEL_WRITER},
-    interrupt::{
-        notify_end_of_interrupt, InterruptDescriptor, InterruptDescriptorAttribute, InterruptFrame,
-        InterruptVector, Message, MessageType, IDT, MAIN_QUEUE,
-    },
+    interrupt::{self, InterruptVector, MessageType, MAIN_QUEUE},
     layer::{LayerManager, LAYER_MANAGER, SCREEN},
     log,
     logger::{set_log_level, LogLevel},
@@ -32,7 +29,6 @@ use kernel::{
     printk, printkln, segment,
     usb::{Controller, HIDMouseDriver, XHC},
     window::Window,
-    x86_descriptor,
 };
 
 /// カーネル用スタック
@@ -76,14 +72,6 @@ fn switch_ehci2xhci(xhc_dev: &Device) {
     );
 }
 
-#[custom_attribute::interrupt]
-fn int_handler_xhci(_frame: &InterruptFrame) {
-    MAIN_QUEUE
-        .lock()
-        .push_back(Message::new(MessageType::InteruptXHCI));
-    notify_end_of_interrupt();
-}
-
 // この呼び出しの前にスタック領域を変更するため、でかい構造体をそのまま渡せなくなる
 // それを避けるために参照で渡す
 #[custom_attribute::kernel_entry(KERNEL_MAIN_STACK, STACK_SIZE = 1024 * 1024)]
@@ -108,6 +96,7 @@ fn kernel_entry(
 
     segment::init();
     paging::init();
+    interrupt::init();
 
     // マウスカーソルの生成
     MOUSE_CURSOR.init(MouseCursor::new(
@@ -163,24 +152,6 @@ fn kernel_entry(
         }
     }
     let mut xhc_dev = xhc_dev.unwrap();
-
-    let cs = get_cs();
-    {
-        let mut idt = IDT.lock();
-        idt[InterruptVector::XHCI as usize].set_idt_entry(
-            InterruptDescriptorAttribute::new(
-                x86_descriptor::SystemSegmentType::InterruptGate,
-                0,
-                true,
-            ),
-            int_handler_xhci,
-            cs,
-        );
-        load_idt(
-            (size_of::<InterruptDescriptor>() * idt.len()) as u16 - 1,
-            idt.as_ptr() as u64,
-        )
-    }
 
     let bsp_local_apic_id = (unsafe { *(0xfee0_0020 as *const u32) } >> 24) as u8;
     xhc_dev
