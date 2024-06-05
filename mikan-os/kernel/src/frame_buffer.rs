@@ -66,7 +66,7 @@ impl FrameBuffer {
         })
     }
 
-    pub fn pixef_format(&self) -> PixelFormat {
+    pub fn pixel_format(&self) -> PixelFormat {
         self.pixel_format
     }
 

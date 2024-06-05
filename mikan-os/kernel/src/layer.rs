@@ -82,7 +82,7 @@ impl LayerManager {
                 pixels_per_scan_line: screen.pixels_per_scan_line(),
                 horizontal_resolution: screen.horizontal_resolution(),
                 vertical_resolution: screen.vertical_resolution(),
-                pixel_format: screen.pixef_format(),
+                pixel_format: screen.pixel_format(),
             }
         };
         let back_buffer = FrameBuffer::new(config).unwrap();

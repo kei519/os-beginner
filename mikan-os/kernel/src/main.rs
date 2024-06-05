@@ -48,7 +48,7 @@ static KERNEL_MAIN_STACK: KernelStack = KernelStack::new();
 fn initialize_main_window() -> u32 {
     let mut layer_manager = LAYER_MANAGER.lock();
 
-    let mut main_window = Window::new(160, 52, SCREEN.lock().pixef_format());
+    let mut main_window = Window::new(160, 52, SCREEN.lock().pixel_format());
     main_window.draw_window(b"Hello Window");
     let main_window_id = layer_manager.new_layer(main_window);
     layer_manager
@@ -107,7 +107,7 @@ fn kernel_entry(
     let mut mouse_window = Window::new(
         MOUSE_CURSOR_WIDTH as u32,
         MOUSE_CURSOR_HEIGHT as u32,
-        SCREEN.lock().pixef_format(),
+        SCREEN.lock().pixel_format(),
     );
     {
         let mut layer_manager = LAYER_MANAGER.lock();
