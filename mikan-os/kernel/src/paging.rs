@@ -13,6 +13,10 @@ static PDP_TABLE: Mutex<PageTable<u64, 512>> = Mutex::new(PageTable::<_, 512>::n
 static PAGE_DIRECTORY: Mutex<PageTable<[u64; 512], PAGE_DIRECTORY_COUNT>> =
     Mutex::new(PageTable::<_, PAGE_DIRECTORY_COUNT>::new([0; 512]));
 
+pub fn init() {
+    setup_indentity_page_table();
+}
+
 #[repr(align(4096))]
 struct PageTable<T, const N: usize> {
     table: [T; N],

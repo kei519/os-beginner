@@ -107,8 +107,7 @@ fn kernel_entry(
     set_log_level(LogLevel::Warn);
 
     segment::init();
-    // ページングの設定
-    paging::setup_indentity_page_table();
+    paging::init();
 
     // マウスカーソルの生成
     MOUSE_CURSOR.init(MouseCursor::new(
