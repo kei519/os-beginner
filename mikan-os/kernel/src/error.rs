@@ -75,13 +75,19 @@ impl Display for Code {
 #[derive(Debug, Clone, Copy)]
 pub struct Error {
     code: Code,
+    msg: &'static str,
     line: u32,
     file: &'static str,
 }
 
 impl Error {
-    pub const fn new(code: Code, file: &'static str, line: u32) -> Self {
-        Self { code, line, file }
+    pub const fn new(code: Code, msg: &'static str, file: &'static str, line: u32) -> Self {
+        Self {
+            code,
+            msg,
+            line,
+            file,
+        }
     }
 
     pub const fn cause(&self) -> Code {
@@ -99,13 +105,20 @@ impl Error {
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} in {} at {}", self.code, self.file, self.line)
+        write!(f, "{} in {} at {}", self.code, self.file, self.line)?;
+        if !self.msg.is_empty() {
+            write!(f, ":\n    {}", self.msg)?;
+        }
+        Ok(())
     }
 }
 
 #[macro_export]
 macro_rules! make_error {
+    ($code:expr, $msg:expr) => {
+        $crate::error::Error::new($code, $msg, file!(), line!())
+    };
     ($code:expr) => {
-        $crate::error::Error::new($code, file!(), line!())
+        make_error!($code, "")
     };
 }

@@ -236,6 +236,7 @@ impl From<CxxError> for Result<()> {
             CxxCode::Success => Ok(()),
             _ => Err(Error::new(
                 value.code.into(),
+                "",
                 unsafe { CStr::from_ptr(value.file) }.to_str().unwrap(),
                 value.line as u32,
             )),
