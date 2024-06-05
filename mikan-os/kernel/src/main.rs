@@ -44,6 +44,23 @@ impl KernelStack {
 #[no_mangle]
 static KERNEL_MAIN_STACK: KernelStack = KernelStack::new();
 
+/// メインウィンドウの初期化を行う。
+fn initialize_main_window() -> u32 {
+    let mut layer_manager = LAYER_MANAGER.lock();
+
+    let mut main_window = Window::new(160, 52, SCREEN.lock().pixef_format());
+    main_window.draw_window(b"Hello Window");
+    let main_window_id = layer_manager.new_layer(main_window);
+    layer_manager
+        .layer(main_window_id)
+        .r#move(Vector2D::new(300, 100))
+        .set_draggable(true);
+
+    layer_manager.up_down(main_window_id, 2);
+
+    main_window_id
+}
+
 // この呼び出しの前にスタック領域を変更するため、でかい構造体をそのまま渡せなくなる
 // それを避けるために参照で渡す
 #[custom_attribute::kernel_entry(KERNEL_MAIN_STACK, STACK_SIZE = 1024 * 1024)]
@@ -85,38 +102,25 @@ fn kernel_entry(
     HIDMouseDriver::set_default_observer(mouse::mouse_observer);
 
     layer::init(frame_buffer_config);
+    let main_window_id = initialize_main_window();
 
-    let main_window_id = {
+    let mut mouse_window = Window::new(
+        MOUSE_CURSOR_WIDTH as u32,
+        MOUSE_CURSOR_HEIGHT as u32,
+        SCREEN.lock().pixef_format(),
+    );
+    {
         let mut layer_manager = LAYER_MANAGER.lock();
-        let screen = SCREEN.lock();
-        let pixel_format = screen.pixef_format();
-
-        let mut mouse_window = Window::new(
-            MOUSE_CURSOR_WIDTH as u32,
-            MOUSE_CURSOR_HEIGHT as u32,
-            pixel_format,
-        );
         mouse_window.set_transparent_color(Some(MOUSE_TRANSPARENT_COLOR));
         mouse::draw_mouse_cursor(&mut mouse_window, &Vector2D::new(0, 0));
         let mouse_layer_id = layer_manager.new_layer(mouse_window);
         layer_manager
             .layer(mouse_layer_id)
             .move_relative(Vector2D::new(200, 200));
-
-        let mut main_window = Window::new(160, 52, pixel_format);
-        main_window.draw_window(b"Hello Window");
-        let main_window_id = layer_manager.new_layer(main_window);
-        layer_manager
-            .layer(main_window_id)
-            .r#move(Vector2D::new(300, 100))
-            .set_draggable(true);
-
-        layer_manager.up_down(main_window_id, 2);
         layer_manager.up_down(mouse_layer_id, 3);
         MOUSE_LAYER_ID.store(mouse_layer_id, Ordering::Release);
+    }
 
-        main_window_id
-    };
     // FIXME: 最初に登録されるレイヤーは背景ウィンドウなので、`layer_id` 1 を表示すれば
     //        必ず全て表示されるが、ハードコードは良くなさそう
     LAYER_MANAGER.lock().draw_id(1);
