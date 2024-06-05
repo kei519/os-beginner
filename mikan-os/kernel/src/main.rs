@@ -10,6 +10,7 @@ use uefi::table::boot::MemoryMap;
 use kernel::{
     asmfunc::{cli, sti},
     console::{self, CONSOLE},
+    error::Result,
     font,
     frame_buffer_config::FrameBufferConfig,
     graphics::{self, PixelColor, PixelWriter, Vector2D},
@@ -64,12 +65,17 @@ fn kernel_entry(
     kernel_base: usize,
     kernel_size: usize,
 ) {
+    // メモリアロケータの初期化
+    memory_manager::GLOBAL.init(memory_map, kernel_base, kernel_size);
     // 参照元は今後使用される可能性のあるメモリ領域にあるため、コピーしておく
     let frame_buffer_config = frame_buffer_config.clone();
 
-    // メモリアロケータの初期化
-    memory_manager::GLOBAL.init(memory_map, kernel_base, kernel_size);
+    if let Err(err) = main(frame_buffer_config) {
+        printkln!("{}", err);
+    }
+}
 
+fn main(frame_buffer_config: FrameBufferConfig) -> Result<()> {
     let fb_config = frame_buffer_config.clone();
     graphics::init(fb_config);
     console::init(&frame_buffer_config);
@@ -81,9 +87,7 @@ fn kernel_entry(
     paging::init();
     interrupt::init();
 
-    if pci::init().is_err() {
-        return;
-    }
+    pci::init()?;
     xhci::init();
 
     layer::init(frame_buffer_config);

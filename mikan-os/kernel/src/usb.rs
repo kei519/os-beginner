@@ -146,7 +146,8 @@ impl HIDMouseDriver {
 /// C++ 版の [Code][error::Code] に対応する列挙型。
 // 以下の構造体は C++ 側からしか使われないため、Rust 側では使わない
 #[repr(C)]
-pub enum CxxCode {
+#[allow(unused)]
+enum CxxCode {
     Success,
     Full,
     Empty,
@@ -222,7 +223,7 @@ impl From<CxxCode> for error::Code {
 
 /// C++ 版の [Error] に対応する構造体。
 #[repr(C)]
-pub struct CxxError {
+struct CxxError {
     code: CxxCode,
     line: c_int,
     file: *const c_char,
