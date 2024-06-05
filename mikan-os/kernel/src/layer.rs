@@ -1,9 +1,10 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
 use crate::{
+    console::CONSOLE,
     frame_buffer::FrameBuffer,
     frame_buffer_config::FrameBufferConfig,
-    graphics::{PixelWriter as _, Rectangle, Vector2D},
+    graphics::{self, PixelWriter as _, Rectangle, Vector2D},
     sync::OnceMutex,
     window::Window,
 };
@@ -12,6 +13,44 @@ pub static LAYER_MANAGER: OnceMutex<LayerManager> = OnceMutex::new();
 
 /// 本当のフレームバッファを表す `FrameBuffer`。
 pub static SCREEN: OnceMutex<FrameBuffer> = OnceMutex::new();
+
+pub fn init(fb_config: FrameBufferConfig) {
+    let frame_width = fb_config.horizontal_resolution as u32;
+    let frame_height = fb_config.vertical_resolution as u32;
+    let pixel_format = fb_config.pixel_format;
+
+    let screen = match FrameBuffer::new(fb_config) {
+        Ok(s) => s,
+        Err(e) => {
+            panic!(
+                "failed to initialize frame buffer: {} as {}:{}",
+                e,
+                e.file(),
+                e.line()
+            );
+        }
+    };
+    SCREEN.init(screen);
+
+    let mut layer_manager = LayerManager::new(&SCREEN);
+
+    let bgwindow = Window::new(frame_width, frame_height, pixel_format);
+    let bglayer_id = layer_manager.new_layer(bgwindow);
+    graphics::draw_desktop(layer_manager.layer(bglayer_id).window_mut());
+    layer_manager.up_down(bglayer_id, 0);
+
+    let mut console = CONSOLE.lock();
+    let console_window = Window::new(
+        console.column_num() as u32 * 8,
+        console.row_num() as u32 * 16,
+        pixel_format,
+    );
+    let console_id = layer_manager.new_layer(console_window);
+    layer_manager.up_down(console_id, 1);
+
+    LAYER_MANAGER.init(layer_manager);
+    console.set_layer(console_id);
+}
 
 /// 全レイヤーを管理する構造体。
 pub struct LayerManager {

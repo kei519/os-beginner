@@ -11,11 +11,10 @@ use kernel::{
     asmfunc::{cli, sti},
     console::{self, CONSOLE, DESKTOP_BG_COLOR},
     font,
-    frame_buffer::FrameBuffer,
     frame_buffer_config::FrameBufferConfig,
-    graphics::{self, draw_desktop, PixelColor, PixelWriter, Vector2D, PIXEL_WRITER},
+    graphics::{self, PixelColor, PixelWriter, Vector2D, PIXEL_WRITER},
     interrupt::{self, MessageType, MAIN_QUEUE},
-    layer::{LayerManager, LAYER_MANAGER, SCREEN},
+    layer::{self, LAYER_MANAGER, SCREEN},
     log,
     logger::{set_log_level, LogLevel},
     memory_manager,
@@ -85,32 +84,12 @@ fn kernel_entry(
 
     HIDMouseDriver::set_default_observer(mouse::mouse_observer);
 
-    let screen = match FrameBuffer::new(frame_buffer_config) {
-        Ok(s) => s,
-        Err(e) => {
-            panic!(
-                "failed to initialize frame buffer: {} as {}:{}",
-                e,
-                e.file(),
-                e.line()
-            );
-        }
-    };
-    SCREEN.init(screen);
-    LAYER_MANAGER.init(LayerManager::new(&SCREEN));
+    layer::init(frame_buffer_config);
 
-    // デッドロックを回避するために、`CONSOLE` の `wirter` 変更（これに伴って redraw される）は
-    // ロックを解除してから行う
-    let (bglayer_id, console_id, main_window_id) = {
+    let main_window_id = {
         let mut layer_manager = LAYER_MANAGER.lock();
         let screen = SCREEN.lock();
-        let frame_width = screen.horizontal_resolution() as u32;
-        let frame_height = screen.vertical_resolution() as u32;
         let pixel_format = screen.pixef_format();
-
-        let bgwindow = Window::new(frame_width, frame_height, pixel_format);
-        let bglayer_id = layer_manager.new_layer(bgwindow);
-        draw_desktop(layer_manager.layer(bglayer_id).window_mut());
 
         let mut mouse_window = Window::new(
             MOUSE_CURSOR_WIDTH as u32,
@@ -132,24 +111,15 @@ fn kernel_entry(
             .r#move(Vector2D::new(300, 100))
             .set_draggable(true);
 
-        let console = CONSOLE.lock();
-        let console_window = Window::new(
-            console.column_num() as u32 * 8,
-            console.row_num() as u32 * 16,
-            pixel_format,
-        );
-        let console_id = layer_manager.new_layer(console_window);
-
-        layer_manager.up_down(bglayer_id, 0);
-        layer_manager.up_down(console_id, 1);
         layer_manager.up_down(main_window_id, 2);
         layer_manager.up_down(mouse_layer_id, 3);
         MOUSE_LAYER_ID.store(mouse_layer_id, Ordering::Release);
 
-        (bglayer_id, console_id, main_window_id)
+        main_window_id
     };
-    CONSOLE.lock().set_layer(console_id);
-    LAYER_MANAGER.lock().draw_id(bglayer_id);
+    // FIXME: 最初に登録されるレイヤーは背景ウィンドウなので、`layer_id` 1 を表示すれば
+    //        必ず全て表示されるが、ハードコードは良くなさそう
+    LAYER_MANAGER.lock().draw_id(1);
 
     let mut count = 0;
     loop {

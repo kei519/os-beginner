@@ -332,6 +332,7 @@ where
     }
 }
 
+/// デスクトップ背景を描画する。
 pub fn draw_desktop(writer: &mut dyn PixelWriter) {
     let frame_width = writer.horizontal_resolution() as i32;
     let frame_height = writer.vertical_resolution() as i32;
