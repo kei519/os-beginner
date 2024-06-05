@@ -8,7 +8,7 @@ use core::{arch::asm, mem::size_of, panic::PanicInfo, sync::atomic::Ordering};
 use uefi::table::boot::MemoryMap;
 
 use kernel::{
-    asmfunc::{cli, get_cs, load_idt, set_cs_ss, set_ds_all, sti},
+    asmfunc::{cli, get_cs, load_idt, sti},
     bitfield::BitField as _,
     console::{self, CONSOLE, DESKTOP_BG_COLOR},
     font,
@@ -106,14 +106,7 @@ fn kernel_entry(
     printk!("Welcome to MikanOS!\n");
     set_log_level(LogLevel::Warn);
 
-    // セグメントの設定
-    segment::setup_segments();
-
-    const KERNEL_CS: u16 = 1 << 3;
-    const KERNEL_SS: u16 = 2 << 3;
-    set_ds_all(0);
-    set_cs_ss(KERNEL_CS, KERNEL_SS);
-
+    segment::init();
     // ページングの設定
     paging::setup_indentity_page_table();
 

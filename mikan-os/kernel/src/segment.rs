@@ -1,7 +1,7 @@
 use core::mem::size_of;
 
 use crate::{
-    asmfunc::load_gdt,
+    asmfunc::{self, load_gdt},
     bitfield::BitField,
     sync::Mutex,
     x86_descriptor::{DescriptorType, DescriptorTypeEnum, SystemSegmentType},
@@ -17,6 +17,15 @@ pub fn setup_segments() {
         (size_of::<SegmentDescriptor>() * gdt.len()) as u16,
         gdt.as_ptr() as u64,
     );
+}
+
+pub fn init() {
+    setup_segments();
+
+    const KERNEL_CS: u16 = 1 << 3;
+    const KERNEL_SS: u16 = 2 << 3;
+    asmfunc::set_ds_all(0);
+    asmfunc::set_cs_ss(KERNEL_CS, KERNEL_SS);
 }
 
 /// セグメントディスクリプタを表す。
