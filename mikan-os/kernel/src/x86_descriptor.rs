@@ -1,4 +1,4 @@
-use crate::bitfield::BitField;
+use crate::bitfield::BitField as _;
 
 /// ディスクリプタの種類を（ビットフィールドとして）表す。
 /// 内部は [SystemSegmentType] もしくは [CodeDataSegmentType] が入っている。

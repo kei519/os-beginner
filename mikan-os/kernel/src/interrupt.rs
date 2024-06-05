@@ -3,7 +3,7 @@ use core::mem;
 
 use crate::{
     asmfunc,
-    bitfield::BitField,
+    bitfield::BitField as _,
     sync::Mutex,
     x86_descriptor::{self, DescriptorType, SystemSegmentType},
 };

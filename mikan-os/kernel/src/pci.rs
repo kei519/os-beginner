@@ -6,7 +6,7 @@ use core::{
 
 use crate::{
     asmfunc::{io_in_32, io_out_32},
-    bitfield::BitField,
+    bitfield::BitField as _,
     error::{self, Result},
     log,
     logger::LogLevel,

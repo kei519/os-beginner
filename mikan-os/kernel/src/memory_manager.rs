@@ -8,7 +8,7 @@ use core::{
 use uefi::table::boot::MemoryMap;
 
 use crate::{
-    bitfield::BitField,
+    bitfield::BitField as _,
     memory_map,
     sync::{Mutex, RwLock},
 };

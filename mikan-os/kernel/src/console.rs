@@ -53,7 +53,7 @@ pub struct Console {
 macro_rules! printk {
     ($($arg:tt)*) => {
         {
-            use core::fmt::Write;
+            use core::fmt::Write as _;
             write!($crate::console::CONSOLE.lock(), $($arg)*).unwrap();
         }
     };

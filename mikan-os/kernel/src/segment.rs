@@ -2,7 +2,7 @@ use core::mem::size_of;
 
 use crate::{
     asmfunc::{self, load_gdt},
-    bitfield::BitField,
+    bitfield::BitField as _,
     sync::Mutex,
     x86_descriptor::{DescriptorType, DescriptorTypeEnum, SystemSegmentType},
 };
