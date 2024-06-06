@@ -9,7 +9,7 @@ use uefi::table::boot::MemoryMap;
 
 use kernel::{
     asmfunc::{cli, sti},
-    console::{self, FirstConsole, CONSOLE},
+    console::{self, PanicConsole},
     error::Result,
     font,
     frame_buffer_config::FrameBufferConfig,
@@ -140,11 +140,10 @@ fn main() -> Result<()> {
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    // 前の改行の有無をチェックし、なければ改行を追加する
-    if !CONSOLE.lock().is_head() {
-        printkln!();
-    }
-    printkln!("{}", info);
+    use core::fmt::Write as _;
+    cli();
+    // エラーのたびに新しいインスタンスを作るので、最後に発生したエラーが表示される
+    write!(&mut PanicConsole::new(), "{}", info).unwrap();
     halt()
 }
 

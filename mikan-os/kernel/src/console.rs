@@ -1,10 +1,15 @@
-use core::fmt::{self, Write};
+use core::{
+    fmt::{self, Write},
+    slice,
+};
 
 use alloc::{boxed::Box, vec};
 
 use crate::{
+    bitfield::BitField as _,
     font::write_ascii,
-    graphics::{PixelColor, PixelWrite, Rectangle, Vector2D},
+    font_data,
+    graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, FB_CONFIG},
     layer::LAYER_MANAGER,
     sync::OnceMutex,
     window::Window,
@@ -169,6 +174,110 @@ impl Write for Console {
         }
 
         LAYER_MANAGER.lock().draw_id(self.layer_id);
+        Ok(())
+    }
+}
+
+/// panic 時に呼び出すことを想定したコンソール。
+/// [FB_CONFIG] さえ初期化されていれば呼び出せる。
+#[derive()]
+pub struct PanicConsole {
+    row_pos: usize,
+    col_pos: usize,
+    col_num: usize,
+    row_num: usize,
+    frame_buffer: usize,
+    pixels_per_scan_line: usize,
+}
+
+impl PanicConsole {
+    pub fn new() -> Self {
+        // [FB_CONFIG] も初期化されていない場合はどうしようもない。
+        if !FB_CONFIG.is_initialized() {
+            panic!();
+        }
+
+        let fb_config = FB_CONFIG.lock();
+        let col_num = fb_config.horizontal_resolution / 8;
+        let row_num = fb_config.vertical_resolution / 16;
+        let frame_buffer = fb_config.frame_buffer;
+        let pixels_per_scan_line = fb_config.pixels_per_scan_line;
+
+        Self {
+            row_pos: 0,
+            col_pos: 0,
+            col_num,
+            row_num,
+            frame_buffer,
+            pixels_per_scan_line,
+        }
+    }
+}
+
+impl Default for PanicConsole {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Write for PanicConsole {
+    /// 最低限の実装。
+    /// 画面に収まる文字しか表示しない。
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        // ASCII 以外は表示できないので終了
+        if !s.is_ascii() {
+            return Err(fmt::Error);
+        }
+
+        let fb = unsafe {
+            slice::from_raw_parts_mut(
+                self.frame_buffer as *mut u32,
+                self.pixels_per_scan_line * self.row_num * 16,
+            )
+        };
+
+        for &c in s.as_bytes() {
+            // 表示できる行数を超えている場合も終了
+            if self.row_pos == self.row_num {
+                return Ok(());
+            }
+
+            // 改行文字が来たら、最後まで埋めて改行
+            if c == b'\n' {
+                for dy in 0..16 {
+                    let head =
+                        (self.row_pos * 16 + dy) * self.pixels_per_scan_line + self.col_pos * 8;
+                    let end = (self.row_pos * 16 + dy + 1) * self.pixels_per_scan_line;
+                    for b in fb[head..end].iter_mut() {
+                        *b = 0;
+                    }
+                }
+                self.col_pos = 0;
+                self.row_pos += 1;
+                continue;
+            }
+
+            // 右いっぱいまで来たら改行
+            if self.col_pos == self.col_num {
+                self.col_pos = 0;
+                self.row_pos += 1;
+            }
+
+            let base_addr = self.row_pos * 16 * self.pixels_per_scan_line + self.col_pos * 8;
+            let font = font_data::get_font(c);
+            for (dy, &b) in font.iter().enumerate() {
+                for dx in 0..8 {
+                    fb[base_addr + dy * self.pixels_per_scan_line + dx] =
+                        if b.get_bit(7 - dx as u32) {
+                            u32::MAX
+                        } else {
+                            0
+                        };
+                }
+            }
+            self.col_pos += 1;
+        }
+
         Ok(())
     }
 }
