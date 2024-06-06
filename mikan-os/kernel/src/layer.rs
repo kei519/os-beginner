@@ -1,7 +1,6 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
 use crate::{
-    console::CONSOLE,
     frame_buffer::FrameBuffer,
     frame_buffer_config::FrameBufferConfig,
     graphics::{self, PixelWrite as _, Rectangle, Vector2D},
@@ -39,17 +38,7 @@ pub fn init(fb_config: FrameBufferConfig) {
     graphics::draw_desktop(layer_manager.layer(bglayer_id).window_mut());
     layer_manager.up_down(bglayer_id, 0);
 
-    let mut console = CONSOLE.lock();
-    let console_window = Window::new(
-        console.column_num() as u32 * 8,
-        console.row_num() as u32 * 16,
-        pixel_format,
-    );
-    let console_id = layer_manager.new_layer(console_window);
-    layer_manager.up_down(console_id, 1);
-
     LAYER_MANAGER.init(layer_manager);
-    console.set_layer(console_id);
 }
 
 /// 全レイヤーを管理する構造体。

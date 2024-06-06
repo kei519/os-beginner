@@ -8,6 +8,7 @@ use crate::{
     graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, PIXEL_WRITER},
     layer::LAYER_MANAGER,
     sync::OnceMutex,
+    window::Window,
 };
 
 /// コンソール処理を担う。
@@ -26,6 +27,21 @@ pub fn init(config: &FrameBufferConfig) {
         (config.vertical_resolution - 50) / 16,
         config.horizontal_resolution / 8,
     ));
+
+    let mut console = CONSOLE.lock();
+    let console_id = {
+        let mut layer_manager = LAYER_MANAGER.lock();
+        let console_window = Window::new(
+            console.column_num() as u32 * 8,
+            console.row_num() as u32 * 16,
+            config.pixel_format,
+        );
+        let console_id = layer_manager.new_layer(console_window);
+        layer_manager.up_down(console_id, 1);
+        console_id
+    };
+
+    console.set_layer(console_id);
 }
 
 pub struct Console {

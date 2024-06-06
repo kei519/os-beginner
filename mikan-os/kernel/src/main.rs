@@ -13,7 +13,7 @@ use kernel::{
     error::Result,
     font,
     frame_buffer_config::FrameBufferConfig,
-    graphics::{self, PixelColor, PixelWrite, Vector2D},
+    graphics::{PixelColor, PixelWrite, Vector2D},
     interrupt::{self, MessageType},
     layer::{self, LAYER_MANAGER, SCREEN},
     log,
@@ -77,8 +77,8 @@ fn kernel_entry(
 
 fn main(frame_buffer_config: FrameBufferConfig) -> Result<()> {
     let fb_config = frame_buffer_config.clone();
-    graphics::init(fb_config);
-    console::init(&frame_buffer_config);
+    layer::init(frame_buffer_config);
+    console::init(&fb_config);
 
     printk!("Welcome to MikanOS!\n");
     set_log_level(LogLevel::Warn);
@@ -90,7 +90,6 @@ fn main(frame_buffer_config: FrameBufferConfig) -> Result<()> {
     pci::init()?;
     xhci::init();
 
-    layer::init(frame_buffer_config);
     let main_window_id = initialize_main_window();
     mouse::init();
 

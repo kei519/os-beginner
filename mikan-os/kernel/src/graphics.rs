@@ -4,27 +4,10 @@ use core::{
     slice,
 };
 
-use crate::{
-    console::DESKTOP_BG_COLOR,
-    frame_buffer_config::{FrameBufferConfig, PixelFormat},
-    sync::OnceMutex,
-};
+use crate::{console::DESKTOP_BG_COLOR, frame_buffer_config::FrameBufferConfig, sync::OnceMutex};
 
 /// ピクセル描画を担う。
 pub static PIXEL_WRITER: OnceMutex<Box<dyn PixelWrite + Send>> = OnceMutex::new();
-
-/// グラフィック設定を初期化する。
-///
-/// * `config` - フレームバッファの情報。
-pub fn init(config: FrameBufferConfig) {
-    let pixel_writer: Box<dyn PixelWrite + Send> = match config.pixel_format {
-        PixelFormat::Rgb => Box::new(RgbResv8BitPerColorPixelWriter::new(config)),
-        PixelFormat::Bgr => Box::new(BgrResv8BitPerColorPixelWriter::new(config)),
-    };
-    PIXEL_WRITER.init(pixel_writer);
-
-    draw_desktop(&mut **PIXEL_WRITER.lock());
-}
 
 #[derive(PartialEq, Eq, Clone, Default, Copy)]
 pub struct PixelColor {
