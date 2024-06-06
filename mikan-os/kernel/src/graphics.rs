@@ -11,13 +11,13 @@ use crate::{
 };
 
 /// ピクセル描画を担う。
-pub static PIXEL_WRITER: OnceMutex<Box<dyn PixelWriter + Send>> = OnceMutex::new();
+pub static PIXEL_WRITER: OnceMutex<Box<dyn PixelWrite + Send>> = OnceMutex::new();
 
 /// グラフィック設定を初期化する。
 ///
 /// * `config` - フレームバッファの情報。
 pub fn init(config: FrameBufferConfig) {
-    let pixel_writer: Box<dyn PixelWriter + Send> = match config.pixel_format {
+    let pixel_writer: Box<dyn PixelWrite + Send> = match config.pixel_format {
         PixelFormat::Rgb => Box::new(RgbResv8BitPerColorPixelWriter::new(config)),
         PixelFormat::Bgr => Box::new(BgrResv8BitPerColorPixelWriter::new(config)),
     };
@@ -51,7 +51,7 @@ impl PixelColor {
 }
 
 /// ピクセルを塗るための色々を提供する。
-pub trait PixelWriter {
+pub trait PixelWrite {
     /// ピクセルを塗る手段を提供する。
     fn write(&mut self, pos: Vector2D<i32>, color: &PixelColor);
 
@@ -116,7 +116,7 @@ impl RgbResv8BitPerColorPixelWriter {
     }
 }
 
-impl PixelWriter for RgbResv8BitPerColorPixelWriter {
+impl PixelWrite for RgbResv8BitPerColorPixelWriter {
     fn write(&mut self, pos: Vector2D<i32>, color: &PixelColor) {
         let pixel = self.pixel_at(pos);
         pixel[0] = color.r;
@@ -166,7 +166,7 @@ impl BgrResv8BitPerColorPixelWriter {
     }
 }
 
-impl PixelWriter for BgrResv8BitPerColorPixelWriter {
+impl PixelWrite for BgrResv8BitPerColorPixelWriter {
     fn write(&mut self, pos: Vector2D<i32>, color: &PixelColor) {
         let pixel = self.pixel_at(pos);
         pixel[0] = color.b;
@@ -333,7 +333,7 @@ where
 }
 
 /// デスクトップ背景を描画する。
-pub fn draw_desktop(writer: &mut dyn PixelWriter) {
+pub fn draw_desktop(writer: &mut dyn PixelWrite) {
     let frame_width = writer.horizontal_resolution() as i32;
     let frame_height = writer.vertical_resolution() as i32;
 

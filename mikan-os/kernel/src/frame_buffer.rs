@@ -4,7 +4,7 @@ use crate::{
     error::{Code, Result},
     frame_buffer_config::{FrameBufferConfig, PixelFormat},
     graphics::{
-        BgrResv8BitPerColorPixelWriter, PixelWriter, Rectangle, RgbResv8BitPerColorPixelWriter,
+        BgrResv8BitPerColorPixelWriter, PixelWrite, Rectangle, RgbResv8BitPerColorPixelWriter,
         Vector2D,
     },
     make_error,
@@ -17,7 +17,7 @@ pub struct FrameBuffer {
     /// バッファ。
     _buffer: Box<[u8]>,
     /// ライター。
-    writer: Box<dyn PixelWriter + Send>,
+    writer: Box<dyn PixelWrite + Send>,
 }
 
 impl FrameBuffer {
@@ -54,7 +54,7 @@ impl FrameBuffer {
         };
 
         let pixel_format = config.pixel_format;
-        let writer: Box<dyn PixelWriter + Send> = match config.pixel_format {
+        let writer: Box<dyn PixelWrite + Send> = match config.pixel_format {
             PixelFormat::Rgb => Box::new(RgbResv8BitPerColorPixelWriter::new(config)),
             PixelFormat::Bgr => Box::new(BgrResv8BitPerColorPixelWriter::new(config)),
         };
@@ -178,7 +178,7 @@ impl FrameBuffer {
     }
 }
 
-impl PixelWriter for FrameBuffer {
+impl PixelWrite for FrameBuffer {
     fn write(&mut self, pos: crate::graphics::Vector2D<i32>, color: &crate::graphics::PixelColor) {
         self.writer.write(pos, color)
     }

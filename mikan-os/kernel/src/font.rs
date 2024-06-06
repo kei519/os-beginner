@@ -1,9 +1,9 @@
 use crate::{
     font_data::get_font,
-    graphics::{PixelColor, PixelWriter, Vector2D},
+    graphics::{PixelColor, PixelWrite, Vector2D},
 };
 
-pub fn write_ascii(writer: &mut dyn PixelWriter, pos: Vector2D<i32>, c: u8, color: &PixelColor) {
+pub fn write_ascii(writer: &mut dyn PixelWrite, pos: Vector2D<i32>, c: u8, color: &PixelColor) {
     let font = get_font(c);
     for (dy, &row) in font.iter().enumerate() {
         for dx in 0..8 {
@@ -14,12 +14,7 @@ pub fn write_ascii(writer: &mut dyn PixelWriter, pos: Vector2D<i32>, c: u8, colo
     }
 }
 
-pub fn write_string(
-    writer: &mut dyn PixelWriter,
-    pos: Vector2D<i32>,
-    s: &[u8],
-    color: &PixelColor,
-) {
+pub fn write_string(writer: &mut dyn PixelWrite, pos: Vector2D<i32>, s: &[u8], color: &PixelColor) {
     for (i, &c) in s.iter().enumerate() {
         write_ascii(
             writer,

@@ -4,7 +4,7 @@ use core::sync::atomic::{AtomicU32, AtomicU8, Ordering};
 use crate::{
     bitfield::BitField as _,
     console::DESKTOP_BG_COLOR,
-    graphics::{PixelColor, PixelWriter, Vector2D, PIXEL_WRITER},
+    graphics::{PixelColor, PixelWrite, Vector2D, PIXEL_WRITER},
     layer::{LAYER_MANAGER, SCREEN},
     sync::OnceMutex,
     usb::HIDMouseDriver,
@@ -112,14 +112,14 @@ const MOUSE_CURSOR_SHAPE: [&[u8; MOUSE_CURSOR_WIDTH]; MOUSE_CURSOR_HEIGHT] = [
 ];
 
 pub struct MouseCursor {
-    pixel_writer: &'static OnceMutex<Box<dyn PixelWriter + Send>>,
+    pixel_writer: &'static OnceMutex<Box<dyn PixelWrite + Send>>,
     erase_color: PixelColor,
     position: Vector2D<i32>,
 }
 
 impl MouseCursor {
     pub fn new(
-        writer: &'static OnceMutex<Box<dyn PixelWriter + Send>>,
+        writer: &'static OnceMutex<Box<dyn PixelWrite + Send>>,
         erase_color: PixelColor,
         initial_position: Vector2D<i32>,
     ) -> Self {
@@ -156,7 +156,7 @@ impl MouseCursor {
     }
 }
 
-pub fn draw_mouse_cursor(writer: &mut dyn PixelWriter, pos: &Vector2D<i32>) {
+pub fn draw_mouse_cursor(writer: &mut dyn PixelWrite, pos: &Vector2D<i32>) {
     for (dy, row) in MOUSE_CURSOR_SHAPE.iter().enumerate() {
         for (dx, &b) in row.iter().enumerate() {
             let pos = *pos + Vector2D::new(dx as i32, dy as i32);

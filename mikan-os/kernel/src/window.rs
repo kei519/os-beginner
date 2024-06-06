@@ -6,7 +6,7 @@ use crate::{
     font,
     frame_buffer::FrameBuffer,
     frame_buffer_config::{FrameBufferConfig, PixelFormat},
-    graphics::{PixelColor, PixelWriter, Rectangle, Vector2D},
+    graphics::{PixelColor, PixelWrite, Rectangle, Vector2D},
 };
 
 /// ウィンドウを管理する構造体。
@@ -121,7 +121,7 @@ impl Window {
     }
 }
 
-impl PixelWriter for Window {
+impl PixelWrite for Window {
     /// 保持しているバッファ内に書き込みを行う。
     ///
     /// # Remarks

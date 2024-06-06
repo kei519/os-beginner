@@ -13,7 +13,7 @@ use kernel::{
     error::Result,
     font,
     frame_buffer_config::FrameBufferConfig,
-    graphics::{self, PixelColor, PixelWriter, Vector2D},
+    graphics::{self, PixelColor, PixelWrite, Vector2D},
     interrupt::{self, MessageType},
     layer::{self, LAYER_MANAGER, SCREEN},
     log,

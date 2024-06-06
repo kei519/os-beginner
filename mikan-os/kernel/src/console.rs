@@ -5,7 +5,7 @@ use alloc::{boxed::Box, vec::Vec};
 use crate::{
     font::{write_ascii, write_string},
     frame_buffer_config::FrameBufferConfig,
-    graphics::{PixelColor, PixelWriter, Rectangle, Vector2D, PIXEL_WRITER},
+    graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, PIXEL_WRITER},
     layer::LAYER_MANAGER,
     sync::OnceMutex,
 };
@@ -30,7 +30,7 @@ pub fn init(config: &FrameBufferConfig) {
 
 pub struct Console {
     /// ピクセル描画用。
-    writer: &'static OnceMutex<Box<dyn PixelWriter + Send>>,
+    writer: &'static OnceMutex<Box<dyn PixelWrite + Send>>,
     /// 前面色。
     fg_color: &'static PixelColor,
     /// 背景色。
@@ -67,7 +67,7 @@ macro_rules! printkln {
 
 impl Console {
     pub fn new(
-        writer: &'static OnceMutex<Box<dyn PixelWriter + Send>>,
+        writer: &'static OnceMutex<Box<dyn PixelWrite + Send>>,
         fg_color: &'static PixelColor,
         bg_color: &'static PixelColor,
         row_num: usize,

@@ -4,7 +4,7 @@ use crate::{
     console::CONSOLE,
     frame_buffer::FrameBuffer,
     frame_buffer_config::FrameBufferConfig,
-    graphics::{self, PixelWriter as _, Rectangle, Vector2D},
+    graphics::{self, PixelWrite as _, Rectangle, Vector2D},
     sync::OnceMutex,
     window::Window,
 };
@@ -97,7 +97,7 @@ impl LayerManager {
     }
 
     pub fn screen_size(&self) -> Vector2D<i32> {
-        use crate::graphics::PixelWriter as _;
+        use crate::graphics::PixelWrite as _;
 
         let screen = self.screen.lock();
         Vector2D::new(
