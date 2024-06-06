@@ -14,7 +14,7 @@ use kernel::{
     font,
     frame_buffer_config::FrameBufferConfig,
     graphics::{self, PixelColor, PixelWriter, Vector2D},
-    interrupt::{self, MessageType, MAIN_QUEUE},
+    interrupt::{self, MessageType},
     layer::{self, LAYER_MANAGER, SCREEN},
     log,
     logger::{set_log_level, LogLevel},
@@ -119,18 +119,12 @@ fn main(frame_buffer_config: FrameBufferConfig) -> Result<()> {
         }
 
         cli();
-        let msg = {
-            let mut main_queue = MAIN_QUEUE.lock();
-
-            if main_queue.len() == 0 {
-                // 待機中ロックがかかったままになるため、明示的にドロップしておく
-                drop(main_queue);
+        let msg = match interrupt::pop_main_queue() {
+            Some(msg) => msg,
+            None => {
                 sti();
                 continue;
             }
-
-            main_queue.pop_front().unwrap()
-            // 割り込みを許可する前に MAIN_QUEUE のロック解除
         };
         sti();
 

@@ -11,7 +11,15 @@ use crate::{
 static IDT: Mutex<[InterruptDescriptor; 256]> =
     Mutex::new([InterruptDescriptor::const_default(); 256]);
 
-pub static MAIN_QUEUE: Mutex<VecDeque<Message>> = Mutex::new(VecDeque::new());
+static MAIN_QUEUE: Mutex<VecDeque<Message>> = Mutex::new(VecDeque::new());
+
+pub fn pop_main_queue() -> Option<Message> {
+    MAIN_QUEUE.lock().pop_front()
+}
+
+fn push_main_queue(msg: Message) {
+    MAIN_QUEUE.lock().push_back(msg)
+}
 
 pub fn init() {
     let cs = asmfunc::get_cs();
@@ -35,9 +43,7 @@ pub fn init() {
 
 #[custom_attribute::interrupt]
 fn int_handler_xhci(_frame: &InterruptFrame) {
-    MAIN_QUEUE
-        .lock()
-        .push_back(Message::new(MessageType::InteruptXHCI));
+    push_main_queue(Message::new(MessageType::InteruptXHCI));
     notify_end_of_interrupt();
 }
 
