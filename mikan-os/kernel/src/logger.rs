@@ -16,7 +16,7 @@ pub enum LogLevel {
     Debug = 7,
 }
 
-pub static LOG_LEVEL: RwLock<LogLevel> = RwLock::new(LogLevel::Warn);
+static LOG_LEVEL: RwLock<LogLevel> = RwLock::new(LogLevel::Warn);
 
 pub fn set_log_level(level: LogLevel) {
     *LOG_LEVEL.write() = level;
