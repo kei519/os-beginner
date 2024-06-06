@@ -2,7 +2,7 @@ use alloc::{collections::BTreeMap, vec::Vec};
 
 use crate::{
     frame_buffer::FrameBuffer,
-    frame_buffer_config::FrameBufferConfig,
+    frame_buffer_config::{FrameBufferConfig, PixelFormat},
     graphics::{self, PixelWrite as _, Rectangle, Vector2D},
     sync::OnceMutex,
     window::Window,
@@ -93,6 +93,10 @@ impl LayerManager {
             screen.horizontal_resolution() as i32,
             screen.vertical_resolution() as i32,
         )
+    }
+
+    pub fn pixel_format(&self) -> PixelFormat {
+        self.screen.lock().pixel_format()
     }
 
     /// 新しいレイヤーを作成し、そのレイヤーの ID を返す。

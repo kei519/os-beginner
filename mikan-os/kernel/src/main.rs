@@ -76,9 +76,8 @@ fn kernel_entry(
 }
 
 fn main(frame_buffer_config: FrameBufferConfig) -> Result<()> {
-    let fb_config = frame_buffer_config.clone();
     layer::init(frame_buffer_config);
-    console::init(&fb_config);
+    console::init();
 
     printk!("Welcome to MikanOS!\n");
     set_log_level(LogLevel::Warn);
