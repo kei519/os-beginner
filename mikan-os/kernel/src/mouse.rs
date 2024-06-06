@@ -1,29 +1,16 @@
-use alloc::boxed::Box;
 use core::sync::atomic::{AtomicU32, AtomicU8, Ordering};
 
 use crate::{
     bitfield::BitField as _,
-    console::DESKTOP_BG_COLOR,
-    graphics::{PixelColor, PixelWrite, Vector2D, PIXEL_WRITER},
+    graphics::{PixelColor, PixelWrite, Vector2D},
     layer::{LAYER_MANAGER, SCREEN},
-    sync::OnceMutex,
     usb::HIDMouseDriver,
     window::Window,
 };
 
-pub static MOUSE_CURSOR: OnceMutex<MouseCursor> = OnceMutex::new();
 pub static MOUSE_LAYER_ID: AtomicU32 = AtomicU32::new(0);
 
 pub fn init() {
-    // マウスカーソルの生成
-    MOUSE_CURSOR.init(MouseCursor::new(
-        &PIXEL_WRITER,
-        DESKTOP_BG_COLOR,
-        Vector2D::new(300, 200),
-    ));
-
-    HIDMouseDriver::set_default_observer(mouse_observer);
-
     let mut mouse_window = Window::new(
         MOUSE_CURSOR_WIDTH as u32,
         MOUSE_CURSOR_HEIGHT as u32,
@@ -39,6 +26,8 @@ pub fn init() {
         .move_relative(Vector2D::new(200, 200));
     layer_manager.up_down(mouse_layer_id, 3);
     MOUSE_LAYER_ID.store(mouse_layer_id, Ordering::Release);
+
+    HIDMouseDriver::set_default_observer(mouse_observer);
 }
 
 pub fn mouse_observer(buttons: u8, displacement_x: i8, displacement_y: i8) {
@@ -110,51 +99,6 @@ const MOUSE_CURSOR_SHAPE: [&[u8; MOUSE_CURSOR_WIDTH]; MOUSE_CURSOR_HEIGHT] = [
     b"         @.@   ",
     b"         @@@   ",
 ];
-
-pub struct MouseCursor {
-    pixel_writer: &'static OnceMutex<Box<dyn PixelWrite + Send>>,
-    erase_color: PixelColor,
-    position: Vector2D<i32>,
-}
-
-impl MouseCursor {
-    pub fn new(
-        writer: &'static OnceMutex<Box<dyn PixelWrite + Send>>,
-        erase_color: PixelColor,
-        initial_position: Vector2D<i32>,
-    ) -> Self {
-        let mut ret = Self {
-            pixel_writer: writer,
-            erase_color,
-            position: initial_position,
-        };
-        ret.draw_mouse_cursor();
-        ret
-    }
-
-    pub fn move_relative(&mut self, displacement: Vector2D<i32>) {
-        self.erase_mouse_cursor();
-        self.position += displacement;
-        self.draw_mouse_cursor();
-    }
-
-    fn draw_mouse_cursor(&mut self) {
-        draw_mouse_cursor(&mut **self.pixel_writer.lock(), &self.position)
-    }
-
-    fn erase_mouse_cursor(&mut self) {
-        for (dy, row) in MOUSE_CURSOR_SHAPE.iter().enumerate() {
-            for (dx, &b) in row.iter().enumerate() {
-                if b != b' ' {
-                    self.pixel_writer.lock().write(
-                        self.position + Vector2D::new(dx as i32, dy as i32),
-                        &self.erase_color,
-                    )
-                }
-            }
-        }
-    }
-}
 
 pub fn draw_mouse_cursor(writer: &mut dyn PixelWrite, pos: &Vector2D<i32>) {
     for (dy, row) in MOUSE_CURSOR_SHAPE.iter().enumerate() {
