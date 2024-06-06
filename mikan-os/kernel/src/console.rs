@@ -3,9 +3,9 @@ use core::fmt::{self, Write};
 use alloc::{boxed::Box, vec::Vec};
 
 use crate::{
-    font::{write_ascii, write_string},
+    font::write_ascii,
     frame_buffer_config::FrameBufferConfig,
-    graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, PIXEL_WRITER},
+    graphics::{PixelColor, PixelWrite, Rectangle, Vector2D},
     layer::LAYER_MANAGER,
     sync::OnceMutex,
     window::Window,
@@ -20,33 +20,35 @@ pub const DESKTOP_BG_COLOR: PixelColor = PixelColor::new(45, 118, 237);
 pub const DESKTOP_FG_COLOR: PixelColor = PixelColor::new(255, 255, 255);
 
 pub fn init(config: &FrameBufferConfig) {
+    let row_num = (config.vertical_resolution - 50) / 16;
+    let column_num = config.horizontal_resolution / 8;
+
+    let mut layer_manager = LAYER_MANAGER.lock();
+    let mut console_window = Window::new(
+        column_num as u32 * 8,
+        row_num as u32 * 16,
+        config.pixel_format,
+    );
+    console_window.fill_rectangle(
+        Vector2D::new(0, 0),
+        Vector2D::new(8 * column_num as i32, 16 * row_num as i32),
+        &DESKTOP_BG_COLOR,
+    );
+    let console_id = layer_manager.new_layer(console_window);
+    layer_manager.up_down(console_id, 1);
+
     CONSOLE.init(Console::new(
-        &PIXEL_WRITER,
+        console_id,
         &DESKTOP_FG_COLOR,
         &DESKTOP_BG_COLOR,
-        (config.vertical_resolution - 50) / 16,
-        config.horizontal_resolution / 8,
+        row_num,
+        column_num,
     ));
-
-    let mut console = CONSOLE.lock();
-    let console_id = {
-        let mut layer_manager = LAYER_MANAGER.lock();
-        let console_window = Window::new(
-            console.column_num() as u32 * 8,
-            console.row_num() as u32 * 16,
-            config.pixel_format,
-        );
-        let console_id = layer_manager.new_layer(console_window);
-        layer_manager.up_down(console_id, 1);
-        console_id
-    };
-
-    console.set_layer(console_id);
 }
 
 pub struct Console {
-    /// ピクセル描画用。
-    writer: &'static OnceMutex<Box<dyn PixelWrite + Send>>,
+    /// コンソールのレイヤー ID。
+    layer_id: u32,
     /// 前面色。
     fg_color: &'static PixelColor,
     /// 背景色。
@@ -61,8 +63,6 @@ pub struct Console {
     row_num: usize,
     /// 列のサイズ。
     column_num: usize,
-    /// コンソールをレイヤー上に持つときのレイヤー ID。
-    layer_id: u32,
 }
 
 #[macro_export]
@@ -83,7 +83,7 @@ macro_rules! printkln {
 
 impl Console {
     pub fn new(
-        writer: &'static OnceMutex<Box<dyn PixelWrite + Send>>,
+        layer_id: u32,
         fg_color: &'static PixelColor,
         bg_color: &'static PixelColor,
         row_num: usize,
@@ -92,7 +92,7 @@ impl Console {
         let mut buf = Box::new(Vec::with_capacity(row_num * column_num));
         buf.resize(row_num * column_num, 0u8);
         Self {
-            writer,
+            layer_id,
             fg_color,
             bg_color,
             buffer: buf.into_boxed_slice(),
@@ -100,7 +100,6 @@ impl Console {
             cursor_column: 0,
             row_num,
             column_num,
-            layer_id: 0,
         }
     }
 
@@ -118,24 +117,18 @@ impl Console {
                 self.new_line();
             } else if self.cursor_column < self.column_num - 1 {
                 let pos = Vector2D::new(8 * self.cursor_column as i32, 16 * self.cursor_row as i32);
-                if self.layer_id == 0 {
-                    write_ascii(&mut **self.writer.lock(), pos, c, self.fg_color);
-                } else {
-                    write_ascii(
-                        LAYER_MANAGER.lock().layer(self.layer_id).window_mut(),
-                        pos,
-                        c,
-                        self.fg_color,
-                    )
-                }
+                write_ascii(
+                    LAYER_MANAGER.lock().layer(self.layer_id).window_mut(),
+                    pos,
+                    c,
+                    self.fg_color,
+                );
                 self.buffer[self.cursor_row * self.column_num + self.cursor_column] = c;
                 self.cursor_column += 1;
             }
         }
 
-        if LAYER_MANAGER.is_initialized() {
-            LAYER_MANAGER.lock().draw_id(self.layer_id);
-        }
+        LAYER_MANAGER.lock().draw_id(self.layer_id);
     }
 
     pub fn new_line(&mut self) {
@@ -147,71 +140,23 @@ impl Console {
         }
 
         // 背景の描画
-        if self.layer_id == 0 {
-            let mut writer = self.writer.lock();
-            writer.fill_rectangle(
-                Vector2D::new(0, 0),
-                Vector2D::new(8 * self.column_num as i32, 16 * self.row_num as i32),
-                self.bg_color,
-            );
-
-            for row in 0..self.row_num - 1 {
-                unsafe {
-                    core::ptr::copy_nonoverlapping(
-                        self.buffer[(row + 1) * self.column_num..].as_ptr(),
-                        self.buffer[row * self.column_num..].as_mut_ptr(),
-                        self.column_num,
-                    )
-                };
-                write_string(
-                    &mut **writer,
-                    Vector2D::new(0, 16 * row as i32),
-                    &self.buffer[row * self.column_num..(row + 1) * self.column_num],
-                    self.fg_color,
-                );
-            }
-        } else {
-            let mov_src = Rectangle {
-                pos: Vector2D::new(0, 16),
-                size: Vector2D::new(8 * self.column_num as i32, 16 * (self.row_num as i32 - 1)),
-            };
-            let mut layer_manager = LAYER_MANAGER.lock();
-            let window = layer_manager.layer(self.layer_id).window_mut();
-            window.r#move(Vector2D::new(0, 0), &mov_src);
-            window.fill_rectangle(
-                Vector2D::new(0, 16 * (self.row_num as i32 - 1)),
-                Vector2D::new(8 * self.column_num as i32, 16),
-                self.bg_color,
-            );
-        }
+        let mov_src = Rectangle {
+            pos: Vector2D::new(0, 16),
+            size: Vector2D::new(8 * self.column_num as i32, 16 * (self.row_num as i32 - 1)),
+        };
+        let mut layer_manager = LAYER_MANAGER.lock();
+        let window = layer_manager.layer(self.layer_id).window_mut();
+        window.r#move(Vector2D::new(0, 0), &mov_src);
+        window.fill_rectangle(
+            Vector2D::new(0, 16 * (self.row_num as i32 - 1)),
+            Vector2D::new(8 * self.column_num as i32, 16),
+            self.bg_color,
+        );
     }
 
     /// 行の先頭であるかを返す。
     pub fn is_head(&self) -> bool {
         self.cursor_column == 0
-    }
-
-    pub fn set_layer(&mut self, layer_id: u32) {
-        self.layer_id = layer_id;
-        self.refresh();
-    }
-
-    pub fn refresh(&mut self) {
-        let mut layer_manager = LAYER_MANAGER.lock();
-        let window = layer_manager.layer(self.layer_id).window_mut();
-        window.fill_rectangle(
-            Vector2D::new(0, 0),
-            Vector2D::new(8 * self.column_num as i32, 16 * self.row_num as i32),
-            self.bg_color,
-        );
-        for row in 0..self.row_num {
-            write_string(
-                window,
-                Vector2D::new(0, 16 * row as i32),
-                &self.buffer[row * self.column_num..(row + 1) * self.column_num],
-                self.fg_color,
-            );
-        }
     }
 }
 
@@ -231,9 +176,7 @@ impl Write for Console {
             }
         }
 
-        if self.layer_id != 0 {
-            LAYER_MANAGER.lock().draw_id(self.layer_id);
-        }
+        LAYER_MANAGER.lock().draw_id(self.layer_id);
         Ok(())
     }
 }
