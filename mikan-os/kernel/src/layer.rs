@@ -3,7 +3,7 @@ use alloc::{collections::BTreeMap, vec::Vec};
 use crate::{
     frame_buffer::FrameBuffer,
     frame_buffer_config::{FrameBufferConfig, PixelFormat},
-    graphics::{self, PixelWrite as _, Rectangle, Vector2D},
+    graphics::{self, PixelWrite as _, Rectangle, Vector2D, FB_CONFIG},
     sync::OnceMutex,
     window::Window,
 };
@@ -13,7 +13,8 @@ pub static LAYER_MANAGER: OnceMutex<LayerManager> = OnceMutex::new();
 /// 本当のフレームバッファを表す `FrameBuffer`。
 pub static SCREEN: OnceMutex<FrameBuffer> = OnceMutex::new();
 
-pub fn init(fb_config: FrameBufferConfig) {
+pub fn init() {
+    let fb_config = FB_CONFIG.lock().clone();
     let frame_width = fb_config.horizontal_resolution as u32;
     let frame_height = fb_config.vertical_resolution as u32;
     let pixel_format = fb_config.pixel_format;

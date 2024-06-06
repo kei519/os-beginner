@@ -9,11 +9,11 @@ use uefi::table::boot::MemoryMap;
 
 use kernel::{
     asmfunc::{cli, sti},
-    console::{self, CONSOLE},
+    console::{self, FirstConsole, CONSOLE},
     error::Result,
     font,
     frame_buffer_config::FrameBufferConfig,
-    graphics::{PixelColor, PixelWrite, Vector2D},
+    graphics::{PixelColor, PixelWrite, Vector2D, FB_CONFIG},
     interrupt::{self, MessageType},
     layer::{self, LAYER_MANAGER, SCREEN},
     log,
@@ -67,16 +67,15 @@ fn kernel_entry(
 ) {
     // メモリアロケータの初期化
     memory_manager::GLOBAL.init(memory_map, kernel_base, kernel_size);
-    // 参照元は今後使用される可能性のあるメモリ領域にあるため、コピーしておく
-    let frame_buffer_config = frame_buffer_config.clone();
+    FB_CONFIG.init(frame_buffer_config.clone());
 
-    if let Err(err) = main(frame_buffer_config) {
+    if let Err(err) = main() {
         printkln!("{}", err);
     }
 }
 
-fn main(frame_buffer_config: FrameBufferConfig) -> Result<()> {
-    layer::init(frame_buffer_config);
+fn main() -> Result<()> {
+    layer::init();
     console::init();
 
     printk!("Welcome to MikanOS!\n");
