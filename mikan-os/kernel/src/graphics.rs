@@ -1,13 +1,9 @@
-use alloc::boxed::Box;
 use core::{
     ops::{Add, AddAssign, BitAnd, Sub, SubAssign},
     slice,
 };
 
-use crate::{console::DESKTOP_BG_COLOR, frame_buffer_config::FrameBufferConfig, sync::OnceMutex};
-
-/// ピクセル描画を担う。
-pub static PIXEL_WRITER: OnceMutex<Box<dyn PixelWrite + Send>> = OnceMutex::new();
+use crate::{console::DESKTOP_BG_COLOR, frame_buffer_config::FrameBufferConfig};
 
 #[derive(PartialEq, Eq, Clone, Default, Copy)]
 pub struct PixelColor {
