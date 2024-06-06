@@ -8,7 +8,7 @@ use crate::{
     x86_descriptor::{self, DescriptorType, SystemSegmentType},
 };
 
-pub static IDT: Mutex<[InterruptDescriptor; 256]> =
+static IDT: Mutex<[InterruptDescriptor; 256]> =
     Mutex::new([InterruptDescriptor::const_default(); 256]);
 
 pub static MAIN_QUEUE: Mutex<VecDeque<Message>> = Mutex::new(VecDeque::new());
