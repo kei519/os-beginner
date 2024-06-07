@@ -8,7 +8,7 @@ use core::{arch::asm, panic::PanicInfo};
 use uefi::table::boot::MemoryMap;
 
 use kernel::{
-    asmfunc::{cli, sti},
+    asmfunc::{cli, sti, sti_hlt},
     console::{self, PanicConsole},
     error::Result,
     font,
@@ -18,7 +18,8 @@ use kernel::{
     layer::{self, LAYER_MANAGER, SCREEN},
     log,
     logger::{set_log_level, LogLevel},
-    memory_manager, mouse, paging, pci, printk, printkln, segment, timer,
+    memory_manager, mouse, paging, pci, printk, printkln, segment,
+    timer::{self, TIMER_MANAGER},
     window::Window,
     xhci::{self, XHC},
 };
@@ -97,9 +98,10 @@ fn main() -> Result<()> {
 
     timer::init();
 
-    let mut count = 0;
     loop {
-        count += 1;
+        cli();
+        let tick = TIMER_MANAGER.lock().current_tick();
+        sti();
         {
             let mut layer_manager = LAYER_MANAGER.lock();
             let window = layer_manager.layer(main_window_id).window_mut();
@@ -111,7 +113,7 @@ fn main() -> Result<()> {
             font::write_string(
                 window,
                 Vector2D::new(24, 28),
-                format!("{:010}", count).as_bytes(),
+                format!("{:010}", tick).as_bytes(),
                 &PixelColor::new(0, 0, 0),
             );
             layer_manager.draw_id(main_window_id);
@@ -121,7 +123,7 @@ fn main() -> Result<()> {
         let msg = match interrupt::pop_main_queue() {
             Some(msg) => msg,
             None => {
-                sti();
+                sti_hlt();
                 continue;
             }
         };

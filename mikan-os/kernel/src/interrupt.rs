@@ -5,6 +5,7 @@ use crate::{
     asmfunc,
     bitfield::BitField as _,
     sync::Mutex,
+    timer,
     x86_descriptor::{self, DescriptorType, SystemSegmentType},
 };
 
@@ -58,7 +59,7 @@ fn int_handler_xhci(_frame: &InterruptFrame) {
 
 #[custom_attribute::interrupt]
 fn int_handler_lapic_timer(_frame: &InterruptFrame) {
-    push_main_queue(Message::new(MessageType::InterruptLAPICTimer));
+    timer::lapic_timer_on_interrupt();
     notify_end_of_interrupt();
 }
 
