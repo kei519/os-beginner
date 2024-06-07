@@ -19,7 +19,7 @@ use kernel::{
     log,
     logger::{set_log_level, LogLevel},
     memory_manager, mouse, paging, pci, printk, printkln, segment,
-    timer::{self, TIMER_MANAGER},
+    timer::{self, Timer, TIMER_MANAGER},
     window::Window,
     xhci::{self, XHC},
 };
@@ -98,6 +98,12 @@ fn main() -> Result<()> {
 
     timer::init();
 
+    {
+        let mut manager = TIMER_MANAGER.lock_wait();
+        manager.add_timer(Timer::new(200, 2));
+        manager.add_timer(Timer::new(600, -1));
+    }
+
     loop {
         let tick = TIMER_MANAGER.lock_wait().current_tick();
         {
@@ -137,6 +143,18 @@ fn main() -> Result<()> {
                 }
             }
             Message::InterruptLAPICTimer => printkln!("Timer interrupt"),
+            Message::TimerTimeout(timer) => {
+                printkln!(
+                    "Timer: timeout = {}, value = {}",
+                    timer.timeout(),
+                    timer.value()
+                );
+                if timer.value() > 0 {
+                    TIMER_MANAGER
+                        .lock_wait()
+                        .add_timer(Timer::new(timer.timeout() + 100, timer.value() + 1));
+                }
+            }
         }
     }
 }

@@ -5,7 +5,7 @@ use crate::{
     asmfunc,
     bitfield::BitField as _,
     sync::Mutex,
-    timer,
+    timer::{self, Timer},
     x86_descriptor::{self, DescriptorType, SystemSegmentType},
 };
 
@@ -18,7 +18,7 @@ pub fn pop_main_queue() -> Option<Message> {
     MAIN_QUEUE.lock_wait().pop_front()
 }
 
-fn push_main_queue(msg: Message) {
+pub fn push_main_queue(msg: Message) {
     MAIN_QUEUE.lock_wait().push_back(msg)
 }
 
@@ -186,9 +186,10 @@ impl InterruptFrame {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 #[repr(u32)]
 pub enum Message {
     InterruptXHCI,
     InterruptLAPICTimer,
+    TimerTimeout(Timer),
 }
