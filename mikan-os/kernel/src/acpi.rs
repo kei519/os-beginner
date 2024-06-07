@@ -1,13 +1,16 @@
 //! ACPI テーブル定義や操作用プログラムを集めたファイル。
 
-use core::str;
+use core::{marker::PhantomData, mem, ops::Index, ptr, str};
 
 use crate::{
     error::{Code, Result},
     log,
     logger::LogLevel,
     make_error,
+    sync::OnceMutex,
 };
+
+pub static FADT: OnceMutex<&'static FADT> = OnceMutex::new();
 
 /// RSDP（Root System Description Pointer）
 #[repr(packed)]
@@ -28,10 +31,29 @@ impl RSDP {
     pub fn init(&self) -> Result<()> {
         if !self.is_valid() {
             log!(LogLevel::Error, "RSDP is not valid");
-            Err(make_error!(Code::InvalidFormat))
-        } else {
-            Ok(())
+            return Err(make_error!(Code::InvalidFormat));
         }
+
+        let xsdt = self.xsdt();
+        if !xsdt.header.is_valid(b"XSDT") {
+            log!(LogLevel::Error, "XSDT is not valid");
+            return Err(make_error!(Code::InvalidFormat));
+        }
+
+        for i in 0..xsdt.count() {
+            let entry = &xsdt[i];
+            if entry.is_valid(b"FACP") {
+                FADT.init(unsafe { &*(entry as *const _ as *const FADT) });
+                break;
+            }
+        }
+
+        if !FADT.is_initialized() {
+            log!(LogLevel::Error, "FADT is not found");
+            return Err(make_error!(Code::InvalidFormat));
+        }
+
+        Ok(())
     }
 
     pub fn is_valid(&self) -> bool {
@@ -63,6 +85,99 @@ impl RSDP {
         }
         true
     }
+
+    pub fn xsdt(&self) -> &'static XSDT {
+        let ptr = unsafe { ptr::read_unaligned(ptr::addr_of!(self.xsdt_addr)) };
+        unsafe { &*(ptr as *const XSDT) }
+    }
+}
+
+#[repr(packed)]
+#[derive(Debug)]
+pub struct DescriptionHeader {
+    pub sig: [u8; 4],
+    pub len: u32,
+    pub revision: u8,
+    pub checksum: u8,
+    pub oem_id: [u8; 6],
+    pub oem_table_id: [u8; 8],
+    pub oem_revision: u32,
+    pub creator_id: u32,
+    pub creator_revision: u32,
+}
+
+impl DescriptionHeader {
+    pub fn is_valid(&self, expected_sig: &[u8; 4]) -> bool {
+        if &self.sig != expected_sig {
+            log!(
+                LogLevel::Debug,
+                "invalid signature: {}",
+                str::from_utf8(expected_sig).unwrap()
+            );
+            return false;
+        }
+        match sum_bytes(self, self.len as usize) {
+            0 => {}
+            sum => {
+                log!(
+                    LogLevel::Debug,
+                    "sum of {} bytes must be 0: {}",
+                    self.len(),
+                    sum
+                );
+                return false;
+            }
+        }
+        true
+    }
+
+    fn len(&self) -> u32 {
+        unsafe { ptr::read_unaligned(ptr::addr_of!(self.len)) }
+    }
+}
+
+/// XSDT（Extended System Descriptor Table）
+///
+/// XSDT 自体の情報を表すヘッダのあとに、各データ構造へのアドレスが並ぶ。
+#[repr(packed)]
+pub struct XSDT {
+    pub header: DescriptionHeader,
+    /// 実際は [DescriptionHeader] へのアドレスが `self.header.len()` に対応した数だけ並んでいる。
+    addrs: PhantomData<()>,
+}
+
+impl XSDT {
+    /// XSDT が持つデータへのポインタの数。
+    pub fn count(&self) -> usize {
+        (self.header.len() as usize - mem::size_of::<DescriptionHeader>()) / mem::size_of::<u64>()
+    }
+}
+
+impl Index<usize> for XSDT {
+    type Output = DescriptionHeader;
+    fn index(&self, index: usize) -> &Self::Output {
+        if index >= self.count() {
+            panic!("out of index");
+        }
+
+        unsafe {
+            let entry_addr_ptr =
+                ptr::addr_of!(self.addrs).byte_add(index * mem::size_of::<u64>()) as *const u64;
+            let entry_addr = ptr::read_unaligned(entry_addr_ptr) as usize;
+
+            &*(entry_addr as *const DescriptionHeader)
+        }
+    }
+}
+
+#[repr(packed)]
+pub struct FADT {
+    pub header: DescriptionHeader,
+    pub reserved1: [u8; 76 - mem::size_of::<DescriptionHeader>()],
+    pub pm_tmr_blk: u32,
+    pub reserved2: [u8; 112 - 80],
+    pub flags: u32,
+    pub reserved3: [u8; 276 - 116],
 }
 
 fn sum_bytes<T>(data: &T, bytes: usize) -> u8 {
