@@ -116,7 +116,7 @@ impl Console {
 
         for &c in s {
             if c == b'\n' {
-                self.new_line();
+                self.new_line(window);
             } else if self.cursor_column < self.column_num - 1 {
                 let pos = Vector2D::new(8 * self.cursor_column as i32, 16 * self.cursor_row as i32);
                 write_ascii(window, pos, c, self.fg_color);
@@ -128,7 +128,7 @@ impl Console {
         layer_manager.draw_id(self.layer_id);
     }
 
-    pub fn new_line(&mut self) {
+    fn new_line(&mut self, window: &mut Window) {
         self.cursor_column = 0;
 
         if self.cursor_row < self.row_num - 1 {
@@ -141,8 +141,6 @@ impl Console {
             pos: Vector2D::new(0, 16),
             size: Vector2D::new(8 * self.column_num as i32, 16 * (self.row_num as i32 - 1)),
         };
-        let mut layer_manager = LAYER_MANAGER.lock();
-        let window = layer_manager.layer(self.layer_id).window_mut();
         window.r#move(Vector2D::new(0, 0), &mov_src);
         window.fill_rectangle(
             Vector2D::new(0, 16 * (self.row_num as i32 - 1)),
