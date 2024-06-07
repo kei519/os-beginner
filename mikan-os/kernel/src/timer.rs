@@ -40,7 +40,9 @@ pub fn stop_lapic_timer() {
 }
 
 pub fn lapic_timer_on_interrupt() {
-    TIMER_MANAGER.lock_wait().tick();
+    if let Some(mut manager) = TIMER_MANAGER.lock() {
+        manager.tick();
+    }
 }
 
 #[derive(Debug, Default)]

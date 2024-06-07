@@ -99,9 +99,7 @@ fn main() -> Result<()> {
     timer::init();
 
     loop {
-        cli();
         let tick = TIMER_MANAGER.lock_wait().current_tick();
-        sti();
         {
             let mut layer_manager = LAYER_MANAGER.lock_wait();
             let window = layer_manager.layer(main_window_id).window_mut();
