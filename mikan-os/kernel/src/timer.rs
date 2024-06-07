@@ -1,6 +1,9 @@
+use core::sync::atomic::{AtomicU64, Ordering};
+
 use alloc::collections::BinaryHeap;
 
 use crate::{
+    acpi,
     interrupt::{self, InterruptVector, Message},
     sync::OnceMutex,
 };
@@ -21,12 +24,31 @@ const DIVIDE_CONFIG: *mut u32 = 0xfee0_03e0 as *mut u32;
 
 pub static TIMER_MANAGER: OnceMutex<TimerManager> = OnceMutex::new();
 
+/// LAPIC タイマーの周波数。
+pub static LAPIC_TIMER_FREQ: AtomicU64 = AtomicU64::new(0);
+
+/// 1秒間に [TIMER_MANAGER] の `tick()` が発生する回数。
+const TIMER_FREQ: u64 = 100;
+
 pub fn init() {
     TIMER_MANAGER.init(TimerManager::new());
     unsafe {
         *DIVIDE_CONFIG = 0b1011; // divide 1:1
+        *LVT_TIMER = 0b001 << 16; // masked, one-shot
+    }
+
+    // 100 ミリ秒の時間経過で LAPIC タイマのカウンタがどれだけ増えるか確認する
+    start_lapic_timer();
+    acpi::wait_milli_seconds(100);
+    let elapsed = lapic_timer_elapsed();
+    stop_lapic_timer();
+
+    LAPIC_TIMER_FREQ.store(elapsed as u64 * 10, Ordering::Relaxed);
+
+    unsafe {
+        *DIVIDE_CONFIG = 0b1011; // divide 1:1
         *LVT_TIMER = (0b010 << 16) | InterruptVector::LAPICTimer as u32; // not-masked, periodic
-        *INITIAL_COUNT = 0x100_0000;
+        *INITIAL_COUNT = (LAPIC_TIMER_FREQ.load(Ordering::Relaxed) / TIMER_FREQ) as u32;
     }
 }
 

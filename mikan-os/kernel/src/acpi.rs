@@ -3,6 +3,8 @@
 use core::{marker::PhantomData, mem, ops::Index, ptr, str};
 
 use crate::{
+    asmfunc,
+    bitfield::BitField as _,
     error::{Code, Result},
     log,
     logger::LogLevel,
@@ -11,6 +13,8 @@ use crate::{
 };
 
 pub static FADT: OnceMutex<&'static FADT> = OnceMutex::new();
+
+const PM_TIMER_FREQ: u32 = 3579545;
 
 /// RSDP（Root System Description Pointer）
 #[repr(packed)]
@@ -178,6 +182,33 @@ pub struct FADT {
     pub reserved2: [u8; 112 - 80],
     pub flags: u32,
     pub reserved3: [u8; 276 - 116],
+}
+
+impl FADT {
+    fn pm_tmr_blk(&self) -> u32 {
+        unsafe { ptr::read_unaligned(ptr::addr_of!(self.pm_tmr_blk)) }
+    }
+
+    fn flags(&self) -> u32 {
+        unsafe { ptr::read_unaligned(ptr::addr_of!(self.flags)) }
+    }
+}
+
+/// `msec` ミリ秒待機する。
+pub fn wait_milli_seconds(msec: u64) {
+    let fadt = FADT.lock_wait();
+    let pm_timer_32 = fadt.flags().get_bit(8);
+    let pm_tmr_blk = fadt.pm_tmr_blk() as u16;
+
+    let start = asmfunc::io_in_32(pm_tmr_blk);
+    let end = start + PM_TIMER_FREQ * msec as u32 / 1000;
+    let end = if pm_timer_32 { end } else { end.get_bits(..24) };
+
+    if end < start {
+        // overflow
+        while asmfunc::io_in_32(pm_tmr_blk) >= start {}
+    }
+    while asmfunc::io_in_32(pm_tmr_blk) < end {}
 }
 
 fn sum_bytes<T>(data: &T, bytes: usize) -> u8 {
