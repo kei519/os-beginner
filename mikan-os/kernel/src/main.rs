@@ -14,7 +14,7 @@ use kernel::{
     font,
     frame_buffer_config::FrameBufferConfig,
     graphics::{PixelColor, PixelWrite, Vector2D, FB_CONFIG},
-    interrupt::{self, MessageType},
+    interrupt::{self, Message},
     layer::{self, LAYER_MANAGER, SCREEN},
     log,
     logger::{set_log_level, LogLevel},
@@ -127,8 +127,8 @@ fn main() -> Result<()> {
         };
         sti();
 
-        match msg.r#type() {
-            MessageType::InteruptXHCI => {
+        match msg {
+            Message::InterruptXHCI => {
                 let mut xhc = XHC.lock_wait();
                 while xhc.primary_event_ring().has_front() {
                     if let Err(err) = xhc.process_event() {
@@ -136,7 +136,7 @@ fn main() -> Result<()> {
                     }
                 }
             }
-            MessageType::InterruptLAPICTimer => printkln!("Timer interrupt"),
+            Message::InterruptLAPICTimer => printkln!("Timer interrupt"),
         }
     }
 }

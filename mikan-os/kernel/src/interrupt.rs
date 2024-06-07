@@ -53,7 +53,7 @@ pub fn init() {
 
 #[custom_attribute::interrupt]
 fn int_handler_xhci(_frame: &InterruptFrame) {
-    push_main_queue(Message::new(MessageType::InteruptXHCI));
+    push_main_queue(Message::InterruptXHCI);
     notify_end_of_interrupt();
 }
 
@@ -188,22 +188,7 @@ impl InterruptFrame {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(u32)]
-pub enum MessageType {
-    InteruptXHCI,
+pub enum Message {
+    InterruptXHCI,
     InterruptLAPICTimer,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct Message {
-    r#type: MessageType,
-}
-
-impl Message {
-    pub fn new(r#type: MessageType) -> Self {
-        Self { r#type }
-    }
-
-    pub fn r#type(&self) -> MessageType {
-        self.r#type
-    }
 }
