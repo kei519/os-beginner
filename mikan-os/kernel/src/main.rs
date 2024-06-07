@@ -8,6 +8,7 @@ use core::{arch::asm, panic::PanicInfo};
 use uefi::table::boot::MemoryMap;
 
 use kernel::{
+    acpi::RSDP,
     asmfunc::{cli, sti, sti_hlt},
     console::{self, PanicConsole},
     error::Result,
@@ -65,17 +66,18 @@ fn kernel_entry(
     memory_map: &'static MemoryMap,
     kernel_base: usize,
     kernel_size: usize,
+    acpi_table: &RSDP,
 ) {
     // メモリアロケータの初期化
     memory_manager::GLOBAL.init(memory_map, kernel_base, kernel_size);
     FB_CONFIG.init(frame_buffer_config.clone());
 
-    if let Err(err) = main() {
+    if let Err(err) = main(acpi_table) {
         printkln!("{}", err);
     }
 }
 
-fn main() -> Result<()> {
+fn main(acpi_table: &RSDP) -> Result<()> {
     layer::init();
     console::init();
 
@@ -96,6 +98,7 @@ fn main() -> Result<()> {
     //        必ず全て表示されるが、ハードコードは良くなさそう
     LAYER_MANAGER.lock_wait().draw_id(1);
 
+    acpi_table.init()?;
     timer::init();
 
     {

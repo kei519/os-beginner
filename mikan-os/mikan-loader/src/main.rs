@@ -9,6 +9,7 @@ use crate::chars::*;
 use crate::elf::Elf64Ehdr;
 use core::{
     arch::asm,
+    ffi::c_void,
     fmt::Write,
     mem::{size_of, transmute},
     ptr::{copy_nonoverlapping, write_bytes},
@@ -36,7 +37,7 @@ use uefi::{
         },
         runtime::Time,
     },
-    CStr16,
+    CStr16, Guid,
 };
 
 /// メモリマップを渡されたファイルに保存する。
@@ -481,7 +482,7 @@ fn efi_main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status
     }
 
     // UEFI のブートサービスを終了する
-    let _ = system_table.exit_boot_services(MemoryType(0));
+    let (system_table, _) = system_table.exit_boot_services(MemoryType(0));
 
     let frame_buffer = graphics_info.frame_buffer_base;
     let pixels_per_scan_line = graphics_info.pixel_info.stride();
@@ -505,15 +506,38 @@ fn efi_main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status
         pixel_format,
     };
 
+    // ACPI テーブルの取得
+    // cf. https://github.com/tianocore/edk2/blob/948f23417010309a5557d46195eae258f6105025/MdePkg/MdePkg.dec#L380
+    const ACPI_TABLE_GUID: Guid = Guid::new(
+        [0x71, 0xe8, 0x68, 0x88],
+        [0xf1, 0xe4],
+        [0xd3, 0x11],
+        0xbc,
+        0x22,
+        [0x00, 0x80, 0xc7, 0x3c, 0x88, 0x81],
+    );
+    let acpi_table = system_table
+        .config_table()
+        .iter()
+        .find(|table| table.guid == ACPI_TABLE_GUID)
+        .map(|table| table.address)
+        .unwrap_or_else(|| halt());
+
     // カーネルの呼び出し
     // ELF ファイルの 24 byte 目から 64 bit でエントリーポイントの番地が書いてある
-    let entry_point: extern "sysv64" fn(&FrameBufferConfig, &MemoryMap, usize, usize) =
-        unsafe { transmute(kernel_ehdr.entry) };
+    let entry_point: extern "sysv64" fn(
+        &FrameBufferConfig,
+        &MemoryMap,
+        usize,
+        usize,
+        *const c_void,
+    ) = unsafe { transmute(kernel_ehdr.entry) };
     entry_point(
         &config,
         &memmap,
         kernel_first_addr,
         kernel_last_addr - kernel_first_addr,
+        acpi_table,
     );
 
     halt()
