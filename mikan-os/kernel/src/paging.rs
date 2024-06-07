@@ -53,9 +53,9 @@ impl<T, const N: usize> IndexMut<usize> for PageTable<T, N> {
 }
 
 pub fn setup_indentity_page_table() {
-    let mut pml4_table = PML4_TABLE.lock();
-    let mut pdp_table = PDP_TABLE.lock();
-    let mut page_directory = PAGE_DIRECTORY.lock();
+    let mut pml4_table = PML4_TABLE.lock_wait();
+    let mut pdp_table = PDP_TABLE.lock_wait();
+    let mut page_directory = PAGE_DIRECTORY.lock_wait();
 
     pml4_table[0] = pdp_table.as_ptr() as u64 | 0x003;
 

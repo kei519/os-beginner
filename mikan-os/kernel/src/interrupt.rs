@@ -15,17 +15,17 @@ static IDT: Mutex<[InterruptDescriptor; 256]> =
 static MAIN_QUEUE: Mutex<VecDeque<Message>> = Mutex::new(VecDeque::new());
 
 pub fn pop_main_queue() -> Option<Message> {
-    MAIN_QUEUE.lock().pop_front()
+    MAIN_QUEUE.lock_wait().pop_front()
 }
 
 fn push_main_queue(msg: Message) {
-    MAIN_QUEUE.lock().push_back(msg)
+    MAIN_QUEUE.lock_wait().push_back(msg)
 }
 
 pub fn init() {
     let cs = asmfunc::get_cs();
     {
-        let mut idt = IDT.lock();
+        let mut idt = IDT.lock_wait();
         idt[InterruptVector::XHCI as usize].set_idt_entry(
             InterruptDescriptorAttribute::new(
                 x86_descriptor::SystemSegmentType::InterruptGate,

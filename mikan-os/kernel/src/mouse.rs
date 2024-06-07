@@ -14,10 +14,10 @@ pub fn init() {
     let mut mouse_window = Window::new(
         MOUSE_CURSOR_WIDTH as u32,
         MOUSE_CURSOR_HEIGHT as u32,
-        SCREEN.lock().pixel_format(),
+        SCREEN.lock_wait().pixel_format(),
     );
 
-    let mut layer_manager = LAYER_MANAGER.lock();
+    let mut layer_manager = LAYER_MANAGER.lock_wait();
     mouse_window.set_transparent_color(Some(MOUSE_TRANSPARENT_COLOR));
     draw_mouse_cursor(&mut mouse_window, &Vector2D::new(0, 0));
     let mouse_layer_id = layer_manager.new_layer(mouse_window);
@@ -34,7 +34,7 @@ pub fn mouse_observer(buttons: u8, displacement_x: i8, displacement_y: i8) {
     static MOUSE_DRAG_LAYER_ID: AtomicU32 = AtomicU32::new(0);
     static PREVIOUS_BUTTONS: AtomicU8 = AtomicU8::new(0);
 
-    let mut layer_maneger = LAYER_MANAGER.lock();
+    let mut layer_maneger = LAYER_MANAGER.lock_wait();
     let layer_id = MOUSE_LAYER_ID.load(Ordering::Acquire);
 
     let oldpos = layer_maneger.layer(layer_id).pos();

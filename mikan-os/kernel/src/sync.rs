@@ -24,14 +24,25 @@ impl<T> Mutex<T> {
         }
     }
 
-    pub fn lock(&self) -> MutexGuard<'_, T> {
-        while self.lock.swap(true, Acquire) {
-            spin_loop();
+    /// ロックを取得できれば取得した [MutexGuard] を返す。
+    pub fn lock(&self) -> Option<MutexGuard<'_, T>> {
+        if self.lock.swap(true, Acquire) {
+            None
+        } else {
+            Some(MutexGuard {
+                data: unsafe { &mut *self.data.get() },
+                lock: &self.lock,
+            })
         }
+    }
 
-        MutexGuard {
-            data: unsafe { &mut *self.data.get() },
-            lock: &self.lock,
+    /// ロックを取得できるまで待機する。
+    pub fn lock_wait(&self) -> MutexGuard<'_, T> {
+        loop {
+            match self.lock() {
+                Some(guard) => return guard,
+                None => spin_loop(),
+            }
         }
     }
 }
@@ -85,20 +96,39 @@ impl<T> OnceMutex<T> {
         ret
     }
 
-    pub fn lock(&self) -> MutexGuard<'_, T> {
-        while self.lock.swap(true, Acquire) {
-            spin_loop();
+    /// ロックを取得できれば取得した [MutexGuard] を返す。
+    pub fn lock(&self) -> Option<MutexGuard<'_, T>> {
+        if self.lock.swap(true, Acquire) {
+            None
+        } else {
+            Some(MutexGuard {
+                data: unsafe { (*self.data.get()).assume_init_mut() },
+                lock: &self.lock,
+            })
         }
+    }
 
-        MutexGuard {
-            data: unsafe { (*self.data.get()).assume_init_mut() },
-            lock: &self.lock,
+    /// ロックを取得できるまで待機する。
+    pub fn lock_wait(&self) -> MutexGuard<'_, T> {
+        loop {
+            match self.lock() {
+                Some(guard) => return guard,
+                None => spin_loop(),
+            }
         }
     }
 
     pub fn lock_checked(&self) -> Option<MutexGuard<'_, T>> {
         if self.is_initialized() {
-            Some(self.lock())
+            self.lock()
+        } else {
+            None
+        }
+    }
+
+    pub fn lock_checked_wait(&self) -> Option<MutexGuard<'_, T>> {
+        if self.is_initialized() {
+            Some(self.lock_wait())
         } else {
             None
         }

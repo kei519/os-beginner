@@ -10,7 +10,7 @@ use crate::{
 static GDT: Mutex<[SegmentDescriptor; 3]> = Mutex::new([SegmentDescriptor::default(); 3]);
 
 pub fn setup_segments() {
-    let mut gdt = GDT.lock();
+    let mut gdt = GDT.lock_wait();
     gdt[1] = SegmentDescriptor::code_segment(0, 0xfffff, false, true, false, 0);
     gdt[2] = SegmentDescriptor::data_segment(0, 0xfffff, false, true, true, 0);
     load_gdt(

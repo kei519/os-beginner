@@ -42,9 +42,9 @@ static KERNEL_MAIN_STACK: KernelStack = KernelStack::new();
 
 /// メインウィンドウの初期化を行う。
 fn initialize_main_window() -> u32 {
-    let mut layer_manager = LAYER_MANAGER.lock();
+    let mut layer_manager = LAYER_MANAGER.lock_wait();
 
-    let mut main_window = Window::new(160, 52, SCREEN.lock().pixel_format());
+    let mut main_window = Window::new(160, 52, SCREEN.lock_wait().pixel_format());
     main_window.draw_window(b"Hello Window");
     let main_window_id = layer_manager.new_layer(main_window);
     layer_manager
@@ -94,16 +94,16 @@ fn main() -> Result<()> {
 
     // FIXME: 最初に登録されるレイヤーは背景ウィンドウなので、`layer_id` 1 を表示すれば
     //        必ず全て表示されるが、ハードコードは良くなさそう
-    LAYER_MANAGER.lock().draw_id(1);
+    LAYER_MANAGER.lock_wait().draw_id(1);
 
     timer::init();
 
     loop {
         cli();
-        let tick = TIMER_MANAGER.lock().current_tick();
+        let tick = TIMER_MANAGER.lock_wait().current_tick();
         sti();
         {
-            let mut layer_manager = LAYER_MANAGER.lock();
+            let mut layer_manager = LAYER_MANAGER.lock_wait();
             let window = layer_manager.layer(main_window_id).window_mut();
             window.fill_rectangle(
                 Vector2D::new(24, 28),
@@ -131,7 +131,7 @@ fn main() -> Result<()> {
 
         match msg.r#type() {
             MessageType::InteruptXHCI => {
-                let mut xhc = XHC.lock();
+                let mut xhc = XHC.lock_wait();
                 while xhc.primary_event_ring().has_front() {
                     if let Err(err) = xhc.process_event() {
                         log!(LogLevel::Error, "Error while process_evnet: {}", err);

@@ -24,7 +24,7 @@ pub const DESKTOP_BG_COLOR: PixelColor = PixelColor::new(45, 118, 237);
 pub const DESKTOP_FG_COLOR: PixelColor = PixelColor::new(255, 255, 255);
 
 pub fn init() {
-    let mut layer_manager = LAYER_MANAGER.lock();
+    let mut layer_manager = LAYER_MANAGER.lock_wait();
 
     let window_size = layer_manager.screen_size() - Vector2D::new(0, 50);
     let pixel_format = layer_manager.pixel_format();
@@ -70,7 +70,7 @@ macro_rules! printk {
     ($($arg:tt)*) => {
         {
             use core::fmt::Write as _;
-            write!($crate::console::CONSOLE.lock(), $($arg)*).unwrap();
+            write!($crate::console::CONSOLE.lock_wait(), $($arg)*).unwrap();
         }
     };
 }
@@ -111,7 +111,7 @@ impl Console {
     }
 
     pub fn put_string(&mut self, s: &[u8]) {
-        let mut layer_manager = LAYER_MANAGER.lock();
+        let mut layer_manager = LAYER_MANAGER.lock_wait();
         let window = layer_manager.layer(self.layer_id).window_mut();
 
         for &c in s {
@@ -171,7 +171,7 @@ impl Write for Console {
             }
         }
 
-        LAYER_MANAGER.lock().draw_id(self.layer_id);
+        LAYER_MANAGER.lock_wait().draw_id(self.layer_id);
         Ok(())
     }
 }
@@ -195,7 +195,7 @@ impl PanicConsole {
             panic!();
         }
 
-        let fb_config = FB_CONFIG.lock();
+        let fb_config = FB_CONFIG.lock_wait();
         let col_num = fb_config.horizontal_resolution / 8;
         let row_num = fb_config.vertical_resolution / 16;
         let frame_buffer = fb_config.frame_buffer;

@@ -14,7 +14,7 @@ pub static LAYER_MANAGER: OnceMutex<LayerManager> = OnceMutex::new();
 pub static SCREEN: OnceMutex<FrameBuffer> = OnceMutex::new();
 
 pub fn init() {
-    let fb_config = FB_CONFIG.lock().clone();
+    let fb_config = FB_CONFIG.lock_wait().clone();
     let frame_width = fb_config.horizontal_resolution as u32;
     let frame_height = fb_config.vertical_resolution as u32;
     let pixel_format = fb_config.pixel_format;
@@ -65,7 +65,7 @@ impl LayerManager {
     pub fn new(screen: &'static OnceMutex<FrameBuffer>) -> Self {
         // バックバッファの作成
         let config = {
-            let screen = screen.lock();
+            let screen = screen.lock_wait();
 
             FrameBufferConfig {
                 frame_buffer: 0,
@@ -89,7 +89,7 @@ impl LayerManager {
     pub fn screen_size(&self) -> Vector2D<i32> {
         use crate::graphics::PixelWrite as _;
 
-        let screen = self.screen.lock();
+        let screen = self.screen.lock_wait();
         Vector2D::new(
             screen.horizontal_resolution() as i32,
             screen.vertical_resolution() as i32,
@@ -97,7 +97,7 @@ impl LayerManager {
     }
 
     pub fn pixel_format(&self) -> PixelFormat {
-        self.screen.lock().pixel_format()
+        self.screen.lock_wait().pixel_format()
     }
 
     /// 新しいレイヤーを作成し、そのレイヤーの ID を返す。
@@ -170,7 +170,7 @@ impl LayerManager {
 
         // バックバッファをフレームバッファにコピー
         self.screen
-            .lock()
+            .lock_wait()
             .copy(area.pos, &self.back_buffer, area)
             .unwrap();
     }
@@ -202,7 +202,7 @@ impl LayerManager {
 
         // バックバッファをフレームバッファにコピー
         self.screen
-            .lock()
+            .lock_wait()
             .copy(area.pos, &self.back_buffer, &area)
             .unwrap();
     }
