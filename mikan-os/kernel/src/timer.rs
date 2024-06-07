@@ -1,3 +1,5 @@
+use crate::interrupt::InterruptVector;
+
 const COUNT_MAX: u32 = u32::MAX;
 
 /// 割り込みの発生方法の設定を行うレジスタ。
@@ -12,10 +14,11 @@ const CURRENT_COUNT: *mut u32 = 0xfee0_0390 as *mut u32;
 /// カウンタの減少スピードの設定を行うレジスタ。
 const DIVIDE_CONFIG: *mut u32 = 0xfee0_03e0 as *mut u32;
 
-pub fn initialize_lapic_timer() {
+pub fn init() {
     unsafe {
         *DIVIDE_CONFIG = 0b1011; // divide 1:1
-        *LVT_TIMER = (0b001 << 16) | 32; // masked, one-shot
+        *LVT_TIMER = (0b010 << 16) | InterruptVector::LAPICTimer as u32; // not-masked, periodic
+        *INITIAL_COUNT = COUNT_MAX;
     }
 }
 

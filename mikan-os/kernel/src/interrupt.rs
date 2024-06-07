@@ -34,6 +34,15 @@ pub fn init() {
             int_handler_xhci,
             cs,
         );
+        idt[InterruptVector::LAPICTimer as usize].set_idt_entry(
+            InterruptDescriptorAttribute::new(
+                x86_descriptor::SystemSegmentType::InterruptGate,
+                0,
+                true,
+            ),
+            int_handler_lapic_timer,
+            cs,
+        );
         asmfunc::load_idt(
             (mem::size_of::<InterruptDescriptor>() * idt.len()) as u16 - 1,
             idt.as_ptr() as u64,
@@ -44,6 +53,12 @@ pub fn init() {
 #[custom_attribute::interrupt]
 fn int_handler_xhci(_frame: &InterruptFrame) {
     push_main_queue(Message::new(MessageType::InteruptXHCI));
+    notify_end_of_interrupt();
+}
+
+#[custom_attribute::interrupt]
+fn int_handler_lapic_timer(_frame: &InterruptFrame) {
+    push_main_queue(Message::new(MessageType::InterruptLAPICTimer));
     notify_end_of_interrupt();
 }
 
@@ -137,6 +152,7 @@ pub fn notify_end_of_interrupt() {
 
 pub enum InterruptVector {
     XHCI = 0x40,
+    LAPICTimer = 0x41,
 }
 
 pub struct InterruptFrame {
@@ -173,6 +189,7 @@ impl InterruptFrame {
 #[repr(u32)]
 pub enum MessageType {
     InteruptXHCI,
+    InterruptLAPICTimer,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

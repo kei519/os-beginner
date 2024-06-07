@@ -18,7 +18,7 @@ use kernel::{
     layer::{self, LAYER_MANAGER, SCREEN},
     log,
     logger::{set_log_level, LogLevel},
-    memory_manager, mouse, paging, pci, printk, printkln, segment,
+    memory_manager, mouse, paging, pci, printk, printkln, segment, timer,
     window::Window,
     xhci::{self, XHC},
 };
@@ -95,6 +95,8 @@ fn main() -> Result<()> {
     //        必ず全て表示されるが、ハードコードは良くなさそう
     LAYER_MANAGER.lock().draw_id(1);
 
+    timer::init();
+
     let mut count = 0;
     loop {
         count += 1;
@@ -134,6 +136,7 @@ fn main() -> Result<()> {
                     }
                 }
             }
+            MessageType::InterruptLAPICTimer => printkln!("Timer interrupt"),
         }
     }
 }
