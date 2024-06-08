@@ -36,7 +36,7 @@ extern "C" {
     #[link_name = "_ZNK3usb4xhci9EventRing8HasFrontEv"]
     fn event_ring_has_front(this: *const EventRing) -> bool;
 
-    #[link_name = "_ZN3usb17HIDKeyboardDriver18SetDefaultObserverEPFvhE"]
+    #[link_name = "_ZN3usb17HIDKeyboardDriver18SetDefaultObserverEPFvhhE"]
     fn hid_keyboard_driver_set_default_observer(observer: *const c_void);
 }
 
@@ -146,7 +146,7 @@ impl HIDMouseDriver {
     }
 }
 
-type KeyboardObserverType = fn(c_uchar);
+type KeyboardObserverType = fn(c_uchar, c_uchar);
 
 #[repr(C)]
 pub struct HIDKeyboardDriver {

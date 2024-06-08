@@ -1,4 +1,4 @@
-use crate::{message, usb::HIDKeyboardDriver};
+use crate::{bitfield::BitField as _, message, usb::HIDKeyboardDriver};
 
 const KEYCODE_MAP: [u8; 256] = [
     0, 0, 0, 0, b'a', b'b', b'c', b'd', // 0
@@ -36,11 +36,64 @@ const KEYCODE_MAP: [u8; 256] = [
        // 256
 ];
 
+const KEYCODE_MAP_SHIFTED: [u8; 256] = [
+    0, 0, 0, 0, b'A', b'B', b'C', b'D', // 0
+    b'E', b'F', b'G', b'H', b'I', b'J', b'K', b'L', // 8
+    b'M', b'N', b'O', b'P', b'Q', b'R', b'S', b'T', // 16
+    b'U', b'V', b'W', b'X', b'Y', b'Z', b'!', b'@', // 24
+    b'#', b'$', b'%', b'^', b'&', b'*', b'(', b')', // 32
+    b'\n', 0x08, 0x08, b'\t', b' ', b'_', b'+', b'{', // 40
+    b'}', b'|', b'~', b':', b'"', b'~', b'<', b'>', // 48
+    b'?', 0, 0, 0, 0, 0, 0, 0, // 56
+    0, 0, 0, 0, 0, 0, 0, 0, // 64
+    0, 0, 0, 0, 0, 0, 0, 0, // 72
+    0, 0, 0, 0, b'/', b'*', b'-', b'+', // 80
+    b'\n', b'1', b'2', b'3', b'4', b'5', b'6', b'7', // 88
+    b'8', b'9', b'0', b'.', b'\\', 0, 0, b'=', // 96
+    0, 0, 0, 0, 0, 0, 0, 0, // 104
+    0, 0, 0, 0, 0, 0, 0, 0, // 112
+    0, 0, 0, 0, 0, 0, 0, 0, // 120
+    0, 0, 0, 0, 0, 0, 0, 0, // 128
+    0, 0, 0, 0, 0, 0, 0, 0, // 136
+    0, 0, 0, 0, 0, 0, 0, 0, // 144
+    0, 0, 0, 0, 0, 0, 0, 0, // 152
+    0, 0, 0, 0, 0, 0, 0, 0, // 160
+    0, 0, 0, 0, 0, 0, 0, 0, // 168
+    0, 0, 0, 0, 0, 0, 0, 0, // 176
+    0, 0, 0, 0, 0, 0, 0, 0, // 184
+    0, 0, 0, 0, 0, 0, 0, 0, // 192
+    0, 0, 0, 0, 0, 0, 0, 0, // 200
+    0, 0, 0, 0, 0, 0, 0, 0, // 208
+    0, 0, 0, 0, 0, 0, 0, 0, // 216
+    0, 0, 0, 0, 0, 0, 0, 0, // 224
+    0, 0, 0, 0, 0, 0, 0, 0, // 232
+    0, 0, 0, 0, 0, 0, 0, 0, // 240
+    0, 0, 0, 0, 0, 0, 0, 0, // 248
+       // 256
+];
+
+pub const LCONTROL_BIT: u32 = 0;
+pub const LSHIFT_BIT: u32 = 1;
+pub const LALT_BIT: u32 = 2;
+pub const LGUI_BIT: u32 = 3;
+pub const RCONTROL_BIT: u32 = 4;
+pub const RSHIFT_BIT: u32 = 5;
+pub const RALT_BIT: u32 = 6;
+pub const RGUI_BIT: u32 = 7;
+
 pub fn init() {
-    HIDKeyboardDriver::set_default_observer(|keycode| {
+    HIDKeyboardDriver::set_default_observer(|modifier, keycode| {
+        let shift = modifier.get_bit(LSHIFT_BIT) || modifier.get_bit(RSHIFT_BIT);
+        let ascii = if shift {
+            KEYCODE_MAP_SHIFTED
+        } else {
+            KEYCODE_MAP
+        }[keycode as usize];
+
         message::push_main_queue(message::Message::KeyPush {
+            modifier,
             keycode,
-            ascii: KEYCODE_MAP[keycode as usize],
+            ascii,
         })
     })
 }
