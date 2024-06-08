@@ -50,6 +50,14 @@ impl Window {
         }
     }
 
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+
     /// 指定された領域のウィンドウの内容を指定されたフレームバッファへ転送する。
     ///
     /// * writer - 描画に用いるライター。
@@ -169,10 +177,6 @@ const CLOSE_BUTTON: [&[u8; CLOSE_BUTTON_WIDTH]; CLOSE_BUTTON_HEIGHT] = [
     b"@@@@@@@@@@@@@@@@",
 ];
 
-const fn to_color(c: u32) -> PixelColor {
-    PixelColor::new((c >> 16) as u8, (c >> 8) as u8, c as u8)
-}
-
 impl Window {
     pub fn draw_window(&mut self, title: &[u8]) {
         let win_w = self.width as i32;
@@ -180,7 +184,7 @@ impl Window {
 
         {
             let mut fill_rect = |pos, size, c| {
-                self.fill_rectangle(pos, size, &to_color(c));
+                self.fill_rectangle(pos, size, &PixelColor::to_color(c));
             };
 
             fill_rect(Vector2D::new(0, 0), Vector2D::new(win_w, 1), 0xc6c6c6);
@@ -215,11 +219,16 @@ impl Window {
             );
         }
 
-        font::write_string(self, Vector2D::new(24, 4), title, &to_color(0xffffff));
+        font::write_string(
+            self,
+            Vector2D::new(24, 4),
+            title,
+            &PixelColor::to_color(0xffffff),
+        );
 
         for (y, row) in CLOSE_BUTTON.iter().enumerate() {
             for (x, &b) in row.iter().enumerate() {
-                let c = to_color(match b {
+                let c = PixelColor::to_color(match b {
                     b'@' => 0x000000,
                     b'$' => 0x848484,
                     b':' => 0xc6c6c6,
@@ -231,5 +240,31 @@ impl Window {
                 )
             }
         }
+    }
+
+    /// ウィンドウの中にテキスト描画用のスペースを描画する。
+    pub fn draw_text_box(&mut self, pos: Vector2D<i32>, size: Vector2D<i32>) {
+        let mut fill_rect = |pos, size, c| self.fill_rectangle(pos, size, &PixelColor::to_color(c));
+
+        // fill main box
+        fill_rect(
+            pos + Vector2D::new(1, 1),
+            size - Vector2D::new(2, 2),
+            0xffffff,
+        );
+
+        // draw border lines
+        fill_rect(pos, Vector2D::new(size.x(), 1), 0x848484);
+        fill_rect(pos, Vector2D::new(1, size.y()), 0x848484);
+        fill_rect(
+            pos + Vector2D::new(0, size.y()),
+            Vector2D::new(size.x(), 1),
+            0xc6c6c6,
+        );
+        fill_rect(
+            pos + Vector2D::new(size.x(), 0),
+            Vector2D::new(1, size.y()),
+            0xc6c6c6,
+        );
     }
 }

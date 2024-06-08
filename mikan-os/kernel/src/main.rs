@@ -60,6 +60,30 @@ fn initialize_main_window() -> u32 {
     main_window_id
 }
 
+/// テキストウィンドウを表示、登録し、そのレイヤー ID を返す。
+fn initialize_text_window() -> u32 {
+    let win_w = 160;
+    let win_h = 52;
+
+    let mut window = Window::new(win_w, win_h, SCREEN.lock_wait().pixel_format());
+    window.draw_window(b"Text Box Test");
+    window.draw_text_box(
+        Vector2D::new(4, 24),
+        Vector2D::new(win_w as i32 - 8, win_h as i32 - 24 - 4),
+    );
+
+    let mut layer_manager = LAYER_MANAGER.lock_wait();
+    let layer_id = layer_manager.new_layer(window);
+    layer_manager
+        .layer(layer_id)
+        .r#move(Vector2D::new(350, 200))
+        .set_draggable(true);
+
+    layer_manager.up_down(layer_id, i32::MAX);
+
+    layer_id
+}
+
 // この呼び出しの前にスタック領域を変更するため、でかい構造体をそのまま渡せなくなる
 // それを避けるために参照で渡す
 #[custom_attribute::kernel_entry(KERNEL_MAIN_STACK, STACK_SIZE = 1024 * 1024)]
@@ -94,6 +118,7 @@ fn main(acpi_table: &RSDP) -> Result<()> {
     xhci::init();
 
     let main_window_id = initialize_main_window();
+    let text_window_id = initialize_text_window();
     mouse::init();
 
     // FIXME: 最初に登録されるレイヤーは背景ウィンドウなので、`layer_id` 1 を表示すれば
@@ -105,6 +130,7 @@ fn main(acpi_table: &RSDP) -> Result<()> {
 
     keyboard::init();
 
+    let mut text_window_index = 0;
     loop {
         let tick = TIMER_MANAGER.lock_wait().current_tick();
         {
@@ -145,9 +171,33 @@ fn main(acpi_table: &RSDP) -> Result<()> {
             }
             Message::TimerTimeout(_) => {}
             Message::KeyPush { ascii, .. } => {
-                if ascii != 0 {
-                    printk!("{}", ascii as char);
+                if ascii == 0 {
+                    continue;
                 }
+
+                let pos = |index| Vector2D::new(8 + 8 * index, 24 + 6);
+
+                let mut manager = LAYER_MANAGER.lock_wait();
+                let window = manager.layer(text_window_id).window_mut();
+
+                let max_chars = (window.width() as i32 - 16) / 8;
+                if ascii == 0x08 && text_window_index > 0 {
+                    text_window_index -= 1;
+                    window.fill_rectangle(
+                        pos(text_window_index),
+                        Vector2D::new(8, 16),
+                        &PixelColor::to_color(0xffffff),
+                    );
+                } else if ascii >= b' ' && text_window_index < max_chars {
+                    font::write_ascii(
+                        window,
+                        pos(text_window_index),
+                        ascii,
+                        &PixelColor::to_color(0),
+                    );
+                    text_window_index += 1;
+                }
+                manager.draw_id(text_window_id);
             }
         }
     }

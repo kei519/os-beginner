@@ -24,7 +24,7 @@ pub fn init() {
     layer_manager
         .layer(mouse_layer_id)
         .move_relative(Vector2D::new(200, 200));
-    layer_manager.up_down(mouse_layer_id, 3);
+    layer_manager.up_down(mouse_layer_id, i32::MAX);
     MOUSE_LAYER_ID.store(mouse_layer_id, Ordering::Release);
 
     HIDMouseDriver::set_default_observer(mouse_observer);
