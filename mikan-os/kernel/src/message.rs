@@ -16,6 +16,6 @@ pub fn push_main_queue(msg: Message) {
 #[repr(u32)]
 pub enum Message {
     InterruptXHCI,
-    InterruptLAPICTimer,
     TimerTimeout(Timer),
+    KeyPush { keycode: u8, ascii: u8 },
 }

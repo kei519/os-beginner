@@ -39,6 +39,10 @@ namespace usb {
 
   std::function<HIDKeyboardDriver::ObserverType> HIDKeyboardDriver::default_observer;
 
+  void HIDKeyboardDriver::SetDefaultObserver(HIDKeyboardDriver::ObserverType *observer) {
+    HIDKeyboardDriver::default_observer = observer;
+  }
+
   void HIDKeyboardDriver::NotifyKeyPush(uint8_t keycode) {
     for (int i = 0; i < num_observers_; ++i) {
       observers_[i](keycode);

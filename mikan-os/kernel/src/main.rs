@@ -15,14 +15,14 @@ use kernel::{
     font,
     frame_buffer_config::FrameBufferConfig,
     graphics::{PixelColor, PixelWrite, Vector2D, FB_CONFIG},
-    interrupt,
+    interrupt, keyboard,
     layer::{self, LAYER_MANAGER, SCREEN},
     log,
     logger::{set_log_level, LogLevel},
     memory_manager,
     message::{self, Message},
     mouse, paging, pci, printk, printkln, segment,
-    timer::{self, Timer, TIMER_MANAGER},
+    timer::{self, TIMER_MANAGER},
     window::Window,
     xhci::{self, XHC},
 };
@@ -103,11 +103,7 @@ fn main(acpi_table: &RSDP) -> Result<()> {
     acpi_table.init()?;
     timer::init();
 
-    {
-        let mut manager = TIMER_MANAGER.lock_wait();
-        manager.add_timer(Timer::new(200, 2));
-        manager.add_timer(Timer::new(600, -1));
-    }
+    keyboard::init();
 
     loop {
         let tick = TIMER_MANAGER.lock_wait().current_tick();
@@ -147,17 +143,10 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                     }
                 }
             }
-            Message::InterruptLAPICTimer => printkln!("Timer interrupt"),
-            Message::TimerTimeout(timer) => {
-                printkln!(
-                    "Timer: timeout = {}, value = {}",
-                    timer.timeout(),
-                    timer.value()
-                );
-                if timer.value() > 0 {
-                    TIMER_MANAGER
-                        .lock_wait()
-                        .add_timer(Timer::new(timer.timeout() + 100, timer.value() + 1));
+            Message::TimerTimeout(_) => {}
+            Message::KeyPush { ascii, .. } => {
+                if ascii != 0 {
+                    printk!("{}", ascii as char);
                 }
             }
         }

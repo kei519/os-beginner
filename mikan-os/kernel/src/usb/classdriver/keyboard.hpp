@@ -22,6 +22,7 @@ namespace usb {
     using ObserverType = void (uint8_t keycode);
     void SubscribeKeyPush(std::function<ObserverType> observer);
     static std::function<ObserverType> default_observer;
+    static void SetDefaultObserver(ObserverType *observer);
 
    private:
     std::array<std::function<ObserverType>, 4> observers_;

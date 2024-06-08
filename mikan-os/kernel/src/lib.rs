@@ -13,6 +13,7 @@ pub mod frame_buffer;
 pub mod frame_buffer_config;
 pub mod graphics;
 pub mod interrupt;
+pub mod keyboard;
 pub mod layer;
 pub mod logger;
 pub mod memory_manager;

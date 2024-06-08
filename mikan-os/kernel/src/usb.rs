@@ -35,6 +35,9 @@ extern "C" {
 
     #[link_name = "_ZNK3usb4xhci9EventRing8HasFrontEv"]
     fn event_ring_has_front(this: *const EventRing) -> bool;
+
+    #[link_name = "_ZN3usb17HIDKeyboardDriver18SetDefaultObserverEPFvhE"]
+    fn hid_keyboard_driver_set_default_observer(observer: *const c_void);
 }
 
 #[repr(C)]
@@ -122,7 +125,7 @@ impl EventRing {
     }
 }
 
-type ObserverType = fn(c_uchar, c_schar, c_schar);
+type MouseObserverType = fn(c_uchar, c_schar, c_schar);
 
 #[repr(C)]
 struct Function {
@@ -131,14 +134,30 @@ struct Function {
 
 #[repr(C)]
 pub struct HIDMouseDriver {
-    observers: [Function; 4], // 本当は Function<ObserverType>
+    observers: [Function; 4], // 本当は Function<MouseObserverType>
     num_observers: i32,
 }
 
 impl HIDMouseDriver {
-    pub fn set_default_observer(observer: ObserverType) {
+    pub fn set_default_observer(observer: MouseObserverType) {
         unsafe {
             hid_mouse_driver_set_default_observer(observer as *const c_void);
+        }
+    }
+}
+
+type KeyboardObserverType = fn(c_uchar);
+
+#[repr(C)]
+pub struct HIDKeyboardDriver {
+    observers: [Function; 4], // 本当は Function<KeyboardObserverType>
+    num_observers: i32,
+}
+
+impl HIDKeyboardDriver {
+    pub fn set_default_observer(observer: KeyboardObserverType) {
+        unsafe {
+            hid_keyboard_driver_set_default_observer(observer as *const c_void);
         }
     }
 }
