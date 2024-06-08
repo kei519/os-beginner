@@ -22,7 +22,7 @@ use kernel::{
     memory_manager,
     message::{self, Message},
     mouse, paging, pci, printk, printkln, segment,
-    timer::{self, TIMER_MANAGER},
+    timer::{self, Timer, TIMER_MANAGER},
     window::Window,
     xhci::{self, XHC},
 };
@@ -84,6 +84,12 @@ fn initialize_text_window() -> u32 {
     layer_id
 }
 
+fn draw_text_cursor(visible: bool, index: i32, window: &mut Window) {
+    let color = PixelColor::to_color(if visible { 0 } else { 0xffffff });
+    let pos = Vector2D::new(8 + 8 * index, 24 + 5);
+    window.fill_rectangle(pos, Vector2D::new(7, 15), &color);
+}
+
 // この呼び出しの前にスタック領域を変更するため、でかい構造体をそのまま渡せなくなる
 // それを避けるために参照で渡す
 #[custom_attribute::kernel_entry(KERNEL_MAIN_STACK, STACK_SIZE = 1024 * 1024)]
@@ -130,6 +136,14 @@ fn main(acpi_table: &RSDP) -> Result<()> {
 
     keyboard::init();
 
+    // カーソル点滅用のタイマを追加
+    let textbox_cursor_timer = 1;
+    let timer_05sec = (timer::TIMER_FREQ as f64 * 0.5) as u64;
+    TIMER_MANAGER
+        .lock_wait()
+        .add_timer(Timer::new(timer_05sec, textbox_cursor_timer));
+    let mut textbox_cursor_visible = false;
+
     let mut text_window_index = 0;
     loop {
         let tick = TIMER_MANAGER.lock_wait().current_tick();
@@ -169,35 +183,57 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                     }
                 }
             }
-            Message::TimerTimeout(_) => {}
+            Message::TimerTimeout(timer) => {
+                if timer.value() == textbox_cursor_timer {
+                    TIMER_MANAGER.lock_wait().add_timer(Timer::new(
+                        timer.timeout() + timer_05sec,
+                        textbox_cursor_timer,
+                    ));
+                    textbox_cursor_visible = !textbox_cursor_visible;
+                    let mut layer_manager = LAYER_MANAGER.lock_wait();
+                    draw_text_cursor(
+                        textbox_cursor_visible,
+                        text_window_index,
+                        layer_manager.layer(text_window_id).window_mut(),
+                    );
+                    layer_manager.draw_id(text_window_id);
+                }
+            }
             Message::KeyPush { ascii, .. } => {
-                if ascii == 0 {
-                    continue;
+                // `input_text_window(ascii)` の代わり
+                'input_text_window: {
+                    if ascii == 0 {
+                        break 'input_text_window;
+                    }
+
+                    let pos = |index| Vector2D::new(8 + 8 * index, 24 + 6);
+
+                    let mut manager = LAYER_MANAGER.lock_wait();
+                    let window = manager.layer(text_window_id).window_mut();
+
+                    let max_chars = (window.width() as i32 - 16) / 8;
+                    if ascii == 0x08 && text_window_index > 0 {
+                        draw_text_cursor(false, text_window_index, window);
+                        text_window_index -= 1;
+                        window.fill_rectangle(
+                            pos(text_window_index),
+                            Vector2D::new(8, 16),
+                            &PixelColor::to_color(0xffffff),
+                        );
+                        draw_text_cursor(true, text_window_index, window);
+                    } else if ascii >= b' ' && text_window_index < max_chars {
+                        draw_text_cursor(false, text_window_index, window);
+                        font::write_ascii(
+                            window,
+                            pos(text_window_index),
+                            ascii,
+                            &PixelColor::to_color(0),
+                        );
+                        text_window_index += 1;
+                        draw_text_cursor(true, text_window_index, window);
+                    }
+                    manager.draw_id(text_window_id);
                 }
-
-                let pos = |index| Vector2D::new(8 + 8 * index, 24 + 6);
-
-                let mut manager = LAYER_MANAGER.lock_wait();
-                let window = manager.layer(text_window_id).window_mut();
-
-                let max_chars = (window.width() as i32 - 16) / 8;
-                if ascii == 0x08 && text_window_index > 0 {
-                    text_window_index -= 1;
-                    window.fill_rectangle(
-                        pos(text_window_index),
-                        Vector2D::new(8, 16),
-                        &PixelColor::to_color(0xffffff),
-                    );
-                } else if ascii >= b' ' && text_window_index < max_chars {
-                    font::write_ascii(
-                        window,
-                        pos(text_window_index),
-                        ascii,
-                        &PixelColor::to_color(0),
-                    );
-                    text_window_index += 1;
-                }
-                manager.draw_id(text_window_id);
             }
         }
     }

@@ -29,7 +29,7 @@ pub static TIMER_MANAGER: OnceMutex<TimerManager> = OnceMutex::new();
 pub static LAPIC_TIMER_FREQ: AtomicU64 = AtomicU64::new(0);
 
 /// 1秒間に [TIMER_MANAGER] の `tick()` が発生する回数。
-const TIMER_FREQ: u64 = 100;
+pub const TIMER_FREQ: u64 = 100;
 
 pub fn init() {
     TIMER_MANAGER.init(TimerManager::new());
