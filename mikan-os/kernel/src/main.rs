@@ -15,11 +15,13 @@ use kernel::{
     font,
     frame_buffer_config::FrameBufferConfig,
     graphics::{PixelColor, PixelWrite, Vector2D, FB_CONFIG},
-    interrupt::{self, Message},
+    interrupt,
     layer::{self, LAYER_MANAGER, SCREEN},
     log,
     logger::{set_log_level, LogLevel},
-    memory_manager, mouse, paging, pci, printk, printkln, segment,
+    memory_manager,
+    message::{self, Message},
+    mouse, paging, pci, printk, printkln, segment,
     timer::{self, Timer, TIMER_MANAGER},
     window::Window,
     xhci::{self, XHC},
@@ -127,7 +129,7 @@ fn main(acpi_table: &RSDP) -> Result<()> {
         }
 
         cli();
-        let msg = match interrupt::pop_main_queue() {
+        let msg = match message::pop_main_queue() {
             Some(msg) => msg,
             None => {
                 sti_hlt();

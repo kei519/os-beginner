@@ -17,6 +17,7 @@ pub mod layer;
 pub mod logger;
 pub mod memory_manager;
 pub mod memory_map;
+pub mod message;
 pub mod mouse;
 pub mod paging;
 pub mod pci;

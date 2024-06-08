@@ -1,26 +1,16 @@
-use alloc::collections::VecDeque;
 use core::mem;
 
 use crate::{
     asmfunc,
     bitfield::BitField as _,
+    message::{self, Message},
     sync::Mutex,
-    timer::{self, Timer},
+    timer,
     x86_descriptor::{self, DescriptorType, SystemSegmentType},
 };
 
 static IDT: Mutex<[InterruptDescriptor; 256]> =
     Mutex::new([InterruptDescriptor::const_default(); 256]);
-
-static MAIN_QUEUE: Mutex<VecDeque<Message>> = Mutex::new(VecDeque::new());
-
-pub fn pop_main_queue() -> Option<Message> {
-    MAIN_QUEUE.lock_wait().pop_front()
-}
-
-pub fn push_main_queue(msg: Message) {
-    MAIN_QUEUE.lock_wait().push_back(msg)
-}
 
 pub fn init() {
     let cs = asmfunc::get_cs();
@@ -53,7 +43,7 @@ pub fn init() {
 
 #[custom_attribute::interrupt]
 fn int_handler_xhci(_frame: &InterruptFrame) {
-    push_main_queue(Message::InterruptXHCI);
+    message::push_main_queue(Message::InterruptXHCI);
     notify_end_of_interrupt();
 }
 
@@ -184,12 +174,4 @@ impl InterruptFrame {
     pub fn ss(&self) -> u64 {
         self.ss
     }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-#[repr(u32)]
-pub enum Message {
-    InterruptXHCI,
-    InterruptLAPICTimer,
-    TimerTimeout(Timer),
 }

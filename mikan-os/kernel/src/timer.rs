@@ -4,7 +4,8 @@ use alloc::collections::BinaryHeap;
 
 use crate::{
     acpi,
-    interrupt::{self, InterruptVector, Message},
+    interrupt::InterruptVector,
+    message::{self, Message},
     sync::OnceMutex,
 };
 
@@ -99,7 +100,7 @@ impl TimerManager {
             let t = self.timers.pop().unwrap();
 
             let m = Message::TimerTimeout(t);
-            interrupt::push_main_queue(m);
+            message::push_main_queue(m);
         }
     }
 
