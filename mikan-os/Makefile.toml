@@ -81,7 +81,7 @@ fi
 ''']
 
 [tasks.debug]
-dependencies = ["debug-build"]
+dependencies = ["debug-build", "check-ovmf_vars"]
 command = "${DEVENV_DIR}/run_qemu_debug.sh"
 args = [
     "mikan-loader/target/x86_64-unknown-uefi/debug/mikan-loader.efi",
