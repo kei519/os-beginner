@@ -9,6 +9,9 @@ use crate::{
 
 static GDT: Mutex<[SegmentDescriptor; 3]> = Mutex::new([SegmentDescriptor::default(); 3]);
 
+pub const KERNEL_CS: u16 = 1 << 3;
+pub const KERNEL_SS: u16 = 2 << 3;
+
 pub fn setup_segments() {
     let mut gdt = GDT.lock_wait();
     gdt[1] = SegmentDescriptor::code_segment(0, 0xfffff, false, true, false, 0);
@@ -22,8 +25,6 @@ pub fn setup_segments() {
 pub fn init() {
     setup_segments();
 
-    const KERNEL_CS: u16 = 1 << 3;
-    const KERNEL_SS: u16 = 2 << 3;
     asmfunc::set_ds_all(0);
     asmfunc::set_cs_ss(KERNEL_CS, KERNEL_SS);
 }

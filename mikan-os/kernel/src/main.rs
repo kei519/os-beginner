@@ -4,12 +4,13 @@
 extern crate alloc;
 
 use alloc::format;
-use core::{arch::asm, panic::PanicInfo};
+use core::{arch::asm, panic::PanicInfo, ptr};
 use uefi::table::boot::MemoryMap;
 
 use kernel::{
     acpi::RSDP,
-    asmfunc::{cli, sti, sti_hlt},
+    asmfunc::{self, cli, sti},
+    bitfield::BitField as _,
     console::{self, PanicConsole},
     error::Result,
     font,
@@ -21,7 +22,9 @@ use kernel::{
     logger::{set_log_level, LogLevel},
     memory_manager,
     message::{self, Message},
-    mouse, paging, pci, printk, printkln, segment,
+    mouse, paging, pci, printk, printkln,
+    segment::{self, KERNEL_CS, KERNEL_SS},
+    task::TaskContext,
     timer::{self, Timer, TIMER_MANAGER},
     window::Window,
     xhci::{self, XHC},
@@ -29,19 +32,30 @@ use kernel::{
 
 /// カーネル用スタック
 #[repr(align(16))]
-struct KernelStack {
-    _buf: [u8; STACK_SIZE],
+struct Stack<const SIZE: usize> {
+    _buf: [u8; SIZE],
 }
-impl KernelStack {
+
+impl<const SIZE: usize> Stack<SIZE> {
     const fn new() -> Self {
-        Self {
-            _buf: [0; STACK_SIZE],
-        }
+        Self { _buf: [0; SIZE] }
+    }
+
+    fn as_ptr(&self) -> *const Self {
+        self as *const _
+    }
+
+    fn end_ptr(&self) -> *const Self {
+        unsafe { self.as_ptr().add(1) }
     }
 }
 
 #[no_mangle]
-static KERNEL_MAIN_STACK: KernelStack = KernelStack::new();
+static KERNEL_MAIN_STACK: Stack<STACK_SIZE> = Stack::new();
+static TASK_A_CTX: TaskContext = TaskContext::new();
+
+static TASK_B_STACK: Stack<{ 8 * 1024 }> = Stack::new();
+static mut TASK_B_CTX: TaskContext = TaskContext::new();
 
 /// メインウィンドウの初期化を行う。
 fn initialize_main_window() -> u32 {
@@ -90,6 +104,21 @@ fn draw_text_cursor(visible: bool, index: i32, window: &mut Window) {
     window.fill_rectangle(pos, Vector2D::new(7, 15), &color);
 }
 
+/// `task_b()` 用のウィンドウを初期化、登録しそのレイヤー ID を返す。
+fn initialize_task_b_window() -> u32 {
+    let mut window = Window::new(160, 52, FB_CONFIG.lock_wait().pixel_format);
+    window.draw_window(b"TaskB Window");
+
+    let mut manager = LAYER_MANAGER.lock_wait();
+    let id = manager.new_layer(window);
+    manager
+        .layer(id)
+        .set_draggable(true)
+        .r#move(Vector2D::new(100, 100));
+    manager.up_down(id, i32::MAX);
+    id
+}
+
 // この呼び出しの前にスタック領域を変更するため、でかい構造体をそのまま渡せなくなる
 // それを避けるために参照で渡す
 #[custom_attribute::kernel_entry(KERNEL_MAIN_STACK, STACK_SIZE = 1024 * 1024)]
@@ -125,6 +154,7 @@ fn main(acpi_table: &RSDP) -> Result<()> {
 
     let main_window_id = initialize_main_window();
     let text_window_id = initialize_text_window();
+    let task_b_window_id = initialize_task_b_window();
     mouse::init();
 
     // FIXME: 最初に登録されるレイヤーは背景ウィンドウなので、`layer_id` 1 を表示すれば
@@ -135,6 +165,26 @@ fn main(acpi_table: &RSDP) -> Result<()> {
     timer::init();
 
     keyboard::init();
+
+    // task_b() 用のコンテキストを作成
+    unsafe {
+        TASK_B_CTX.rip = task_b as *const () as _;
+        TASK_B_CTX.rdi = 1;
+        TASK_B_CTX.rsi = 42;
+        // 教科書ではこの引数は渡していないが、この方が Atomic 変数とか用意しないで良くて楽なので、
+        // 引数として渡す
+        TASK_B_CTX.rdx = task_b_window_id as _;
+
+        TASK_B_CTX.cr3 = asmfunc::get_cr3();
+        TASK_B_CTX.rflags = 0x202; // IF（割り込みフラグ）
+        TASK_B_CTX.cs = KERNEL_CS as _;
+        TASK_B_CTX.ss = KERNEL_SS as _;
+        // 呼び出し前に SP が16の倍数でないといけない
+        // （呼び出し後は下位4ビットが8になっている）
+        TASK_B_CTX.rsp = TASK_B_STACK.end_ptr() as u64 - 8;
+
+        TASK_B_CTX.fxsafe_area[24].set_bits(7..=12, 0x3f);
+    }
 
     // カーソル点滅用のタイマを追加
     let textbox_cursor_timer = 1;
@@ -165,10 +215,14 @@ fn main(acpi_table: &RSDP) -> Result<()> {
         }
 
         cli();
-        let msg = match message::pop_main_queue() {
+        let msg = message::pop_main_queue();
+        let msg = match msg {
             Some(msg) => msg,
             None => {
-                sti_hlt();
+                sti();
+                unsafe {
+                    asmfunc::switch_context(&*ptr::addr_of!(TASK_B_CTX), &TASK_A_CTX);
+                };
                 continue;
             }
         };
@@ -236,6 +290,36 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                 }
             }
         }
+    }
+}
+
+fn task_b(task_id: i32, data: i32, layer_id: u32) {
+    printkln!(
+        "task_b: task_id={}, data={}, layer_id={}",
+        task_id,
+        data,
+        layer_id
+    );
+    let mut count = 0;
+    loop {
+        count += 1;
+        let mut manager = LAYER_MANAGER.lock_wait();
+        let window = manager.layer(layer_id).window_mut();
+        window.fill_rectangle(
+            Vector2D::new(24, 28),
+            Vector2D::new(8 * 10, 16),
+            &PixelColor::to_color(0xc6c6c6),
+        );
+        font::write_string(
+            window,
+            Vector2D::new(24, 28),
+            format!("{:010}", count).as_bytes(),
+            &PixelColor::to_color(0),
+        );
+        manager.draw_id(layer_id);
+        drop(manager);
+
+        unsafe { asmfunc::switch_context(&TASK_A_CTX, &*ptr::addr_of!(TASK_B_CTX)) };
     }
 }
 

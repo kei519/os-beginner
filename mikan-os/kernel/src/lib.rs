@@ -24,6 +24,7 @@ pub mod paging;
 pub mod pci;
 pub mod segment;
 pub mod sync;
+pub mod task;
 pub mod timer;
 pub mod usb;
 pub mod window;
