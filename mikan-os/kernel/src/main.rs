@@ -38,6 +38,9 @@ struct Stack<const SIZE: usize> {
 
 impl<const SIZE: usize> Stack<SIZE> {
     const fn new() -> Self {
+        if SIZE % 16 != 0 {
+            panic!("stack size must be a multiple of 16");
+        }
         Self { _buf: [0; SIZE] }
     }
 
