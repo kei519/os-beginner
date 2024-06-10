@@ -33,7 +33,7 @@ pub static LAPIC_TIMER_FREQ: AtomicU64 = AtomicU64::new(0);
 pub const TIMER_FREQ: u64 = 100;
 
 /// コンテキストスイッチの時間間隔。
-pub const TASK_TIMER_PERIOD: u64 = (TIMER_FREQ as f64 * 1.0) as u64;
+pub const TASK_TIMER_PERIOD: u64 = (TIMER_FREQ as f64 * 0.02) as u64;
 
 /// コンテキストスイッチ用の [Timer] の [value]。
 pub const TASK_TIMER_VALUE: i32 = i32::MIN;
