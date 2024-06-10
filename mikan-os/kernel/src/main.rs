@@ -9,8 +9,7 @@ use uefi::table::boot::MemoryMap;
 
 use kernel::{
     acpi::RSDP,
-    asmfunc::{self, cli, sti, sti_hlt},
-    bitfield::BitField as _,
+    asmfunc::{cli, sti, sti_hlt},
     console::{self, PanicConsole},
     error::Result,
     font,
@@ -22,41 +21,15 @@ use kernel::{
     logger::{set_log_level, LogLevel},
     memory_manager,
     message::{self, Message},
-    mouse, paging, pci, printk, printkln,
-    segment::{self, KERNEL_CS, KERNEL_SS},
-    task::{self, TASK_B_CTX},
+    mouse, paging, pci, printk, printkln, segment,
+    task::{self, Stack},
     timer::{self, Timer, TIMER_MANAGER},
     window::Window,
     xhci::{self, XHC},
 };
 
-/// カーネル用スタック
-#[repr(align(16))]
-struct Stack<const SIZE: usize> {
-    _buf: [u8; SIZE],
-}
-
-impl<const SIZE: usize> Stack<SIZE> {
-    const fn new() -> Self {
-        if SIZE % 16 != 0 {
-            panic!("stack size must be a multiple of 16");
-        }
-        Self { _buf: [0; SIZE] }
-    }
-
-    fn as_ptr(&self) -> *const Self {
-        self as *const _
-    }
-
-    fn end_ptr(&self) -> *const Self {
-        unsafe { self.as_ptr().add(1) }
-    }
-}
-
 #[no_mangle]
 static KERNEL_MAIN_STACK: Stack<STACK_SIZE> = Stack::new();
-
-static TASK_B_STACK: Stack<{ 8 * 1024 }> = Stack::new();
 
 /// メインウィンドウの初期化を行う。
 fn initialize_main_window() -> u32 {
@@ -167,26 +140,6 @@ fn main(acpi_table: &RSDP) -> Result<()> {
 
     keyboard::init();
 
-    // task_b() 用のコンテキストを作成
-    unsafe {
-        TASK_B_CTX.rip = task_b as *const () as _;
-        TASK_B_CTX.rdi = 1;
-        TASK_B_CTX.rsi = 43;
-        // 教科書ではこの引数は渡していないが、この方が Atomic 変数とか用意しないで良くて楽なので、
-        // 引数として渡す
-        TASK_B_CTX.rdx = task_b_window_id as _;
-
-        TASK_B_CTX.cr3 = asmfunc::get_cr3();
-        TASK_B_CTX.rflags = 0x202; // IF（割り込みフラグ）
-        TASK_B_CTX.cs = KERNEL_CS as _;
-        TASK_B_CTX.ss = KERNEL_SS as _;
-        // 呼び出し前に SP が16の倍数でないといけない
-        // （呼び出し後は下位4ビットが8になっている）
-        TASK_B_CTX.rsp = TASK_B_STACK.end_ptr() as u64 - 8;
-
-        TASK_B_CTX.fxsafe_area[24].set_bits(7..=12, 0x3f);
-    }
-
     // カーソル点滅用のタイマを追加
     let textbox_cursor_timer = 1;
     let timer_05sec = (timer::TIMER_FREQ as f64 * 0.5) as u64;
@@ -196,6 +149,11 @@ fn main(acpi_table: &RSDP) -> Result<()> {
     let mut textbox_cursor_visible = false;
 
     task::init();
+    {
+        task::new_task().init_context(task_b, 45, task_b_window_id);
+        task::new_task().init_context(task_idle, 0xdeadbeef, 0);
+        task::new_task().init_context(task_idle, 0xcafebabe, 0);
+    }
 
     let mut text_window_index = 0;
     loop {
@@ -293,7 +251,7 @@ fn main(acpi_table: &RSDP) -> Result<()> {
     }
 }
 
-fn task_b(task_id: i32, data: i32, layer_id: u32) {
+fn task_b(task_id: u64, data: i64, layer_id: u32) {
     printkln!(
         "task_b: task_id={}, data={}, layer_id={}",
         task_id,
@@ -321,6 +279,16 @@ fn task_b(task_id: i32, data: i32, layer_id: u32) {
         // TODO: 描画をメインスレッドに依頼するようにして削除する
         sti_hlt();
     }
+}
+
+fn task_idle(task_id: u64, data: i64, layer_id: u32) {
+    printkln!(
+        "task_idle: task_id={}, data={:x}, layer_id={}",
+        task_id,
+        data,
+        layer_id
+    );
+    halt();
 }
 
 #[panic_handler]
