@@ -135,6 +135,12 @@ impl<T> OnceMutex<T> {
     }
 }
 
+impl<T> Default for OnceMutex<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// [Mutex]、[OnceMutex] のロック、間接参照を行う構造体。
 pub struct MutexGuard<'this, T> {
     data: &'this mut T,
@@ -372,6 +378,12 @@ impl<T> OnceRwLock<T> {
         } else {
             None
         }
+    }
+}
+
+impl<T> Default for OnceRwLock<T> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

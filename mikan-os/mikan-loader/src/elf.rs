@@ -46,6 +46,7 @@ pub enum ProgramType {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
+#[allow(unused)]
 pub struct Elf64Dyn {
     tag: i64,
     val: u64,
@@ -63,6 +64,7 @@ pub enum DT {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
+#[allow(unused)]
 pub struct Elf64Rela {
     pub offset: u64,
     pub info: u32,
