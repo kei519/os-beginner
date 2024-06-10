@@ -47,6 +47,7 @@ impl RSDP {
         for i in 0..xsdt.count() {
             let entry = &xsdt[i];
             if entry.is_valid(b"FACP") {
+                #[allow(invalid_reference_casting)]
                 FADT.init(unsafe { &*(entry as *const _ as *const FADT) });
                 break;
             }
