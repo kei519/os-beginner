@@ -4,9 +4,10 @@ use alloc::collections::BinaryHeap;
 
 use crate::{
     acpi,
-    interrupt::InterruptVector,
+    interrupt::{self, InterruptVector},
     message::{self, Message},
     sync::OnceMutex,
+    task,
 };
 
 const COUNT_MAX: u32 = u32::MAX;
@@ -30,6 +31,12 @@ pub static LAPIC_TIMER_FREQ: AtomicU64 = AtomicU64::new(0);
 
 /// 1秒間に [TIMER_MANAGER] の `tick()` が発生する回数。
 pub const TIMER_FREQ: u64 = 100;
+
+/// コンテキストスイッチの時間間隔。
+pub const TASK_TIMER_PERIOD: u64 = (TIMER_FREQ as f64 * 0.02) as u64;
+
+/// コンテキストスイッチ用の [Timer] の [value]。
+pub const TASK_TIMER_VALUE: i32 = i32::MIN;
 
 pub fn init() {
     TIMER_MANAGER.init(TimerManager::new());
@@ -69,8 +76,14 @@ pub fn stop_lapic_timer() {
 }
 
 pub fn lapic_timer_on_interrupt() {
-    if let Some(mut manager) = TIMER_MANAGER.lock() {
-        manager.tick();
+    let task_timer_timeout = match TIMER_MANAGER.lock() {
+        Some(mut manager) => manager.tick(),
+        None => false,
+    };
+    interrupt::notify_end_of_interrupt();
+
+    if task_timer_timeout {
+        task::switch_task();
     }
 }
 
@@ -88,8 +101,10 @@ impl TimerManager {
         }
     }
 
-    fn tick(&mut self) {
+    fn tick(&mut self) -> bool {
         self.tick += 1;
+
+        let mut task_timer_timeout = false;
         loop {
             match self.timers.peek() {
                 Some(t) if t.timeout() <= self.tick => {}
@@ -99,9 +114,17 @@ impl TimerManager {
             }
             let t = self.timers.pop().unwrap();
 
+            if t.value() == TASK_TIMER_VALUE {
+                task_timer_timeout = true;
+                self.timers
+                    .push(Timer::new(self.tick + TASK_TIMER_PERIOD, TASK_TIMER_VALUE));
+                continue;
+            }
+
             let m = Message::TimerTimeout(t);
             message::push_main_queue(m);
         }
+        task_timer_timeout
     }
 
     pub fn current_tick(&self) -> u64 {

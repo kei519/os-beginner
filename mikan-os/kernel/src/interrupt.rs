@@ -50,7 +50,6 @@ fn int_handler_xhci(_frame: &InterruptFrame) {
 #[custom_attribute::interrupt]
 fn int_handler_lapic_timer(_frame: &InterruptFrame) {
     timer::lapic_timer_on_interrupt();
-    notify_end_of_interrupt();
 }
 
 #[repr(packed)]

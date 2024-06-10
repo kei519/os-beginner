@@ -4,12 +4,12 @@
 extern crate alloc;
 
 use alloc::format;
-use core::{arch::asm, panic::PanicInfo, ptr};
+use core::{arch::asm, panic::PanicInfo};
 use uefi::table::boot::MemoryMap;
 
 use kernel::{
     acpi::RSDP,
-    asmfunc::{self, cli, sti},
+    asmfunc::{self, cli, sti, sti_hlt},
     bitfield::BitField as _,
     console::{self, PanicConsole},
     error::Result,
@@ -24,7 +24,7 @@ use kernel::{
     message::{self, Message},
     mouse, paging, pci, printk, printkln,
     segment::{self, KERNEL_CS, KERNEL_SS},
-    task::TaskContext,
+    task::{self, TASK_B_CTX},
     timer::{self, Timer, TIMER_MANAGER},
     window::Window,
     xhci::{self, XHC},
@@ -55,10 +55,8 @@ impl<const SIZE: usize> Stack<SIZE> {
 
 #[no_mangle]
 static KERNEL_MAIN_STACK: Stack<STACK_SIZE> = Stack::new();
-static TASK_A_CTX: TaskContext = TaskContext::new();
 
 static TASK_B_STACK: Stack<{ 8 * 1024 }> = Stack::new();
-static mut TASK_B_CTX: TaskContext = TaskContext::new();
 
 /// メインウィンドウの初期化を行う。
 fn initialize_main_window() -> u32 {
@@ -173,7 +171,7 @@ fn main(acpi_table: &RSDP) -> Result<()> {
     unsafe {
         TASK_B_CTX.rip = task_b as *const () as _;
         TASK_B_CTX.rdi = 1;
-        TASK_B_CTX.rsi = 42;
+        TASK_B_CTX.rsi = 43;
         // 教科書ではこの引数は渡していないが、この方が Atomic 変数とか用意しないで良くて楽なので、
         // 引数として渡す
         TASK_B_CTX.rdx = task_b_window_id as _;
@@ -196,6 +194,8 @@ fn main(acpi_table: &RSDP) -> Result<()> {
         .lock_wait()
         .add_timer(Timer::new(timer_05sec, textbox_cursor_timer));
     let mut textbox_cursor_visible = false;
+
+    task::init();
 
     let mut text_window_index = 0;
     loop {
@@ -222,10 +222,7 @@ fn main(acpi_table: &RSDP) -> Result<()> {
         let msg = match msg {
             Some(msg) => msg,
             None => {
-                sti();
-                unsafe {
-                    asmfunc::switch_context(&*ptr::addr_of!(TASK_B_CTX), &TASK_A_CTX);
-                };
+                sti_hlt();
                 continue;
             }
         };
@@ -321,8 +318,8 @@ fn task_b(task_id: i32, data: i32, layer_id: u32) {
         );
         manager.draw_id(layer_id);
         drop(manager);
-
-        unsafe { asmfunc::switch_context(&TASK_A_CTX, &*ptr::addr_of!(TASK_B_CTX)) };
+        // TODO: 描画をメインスレッドに依頼するようにして削除する
+        sti_hlt();
     }
 }
 

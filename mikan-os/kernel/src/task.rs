@@ -1,4 +1,34 @@
-use core::mem;
+use core::{mem, ptr};
+
+use crate::{
+    asmfunc,
+    timer::{Timer, TASK_TIMER_PERIOD, TASK_TIMER_VALUE, TIMER_MANAGER},
+};
+
+pub static TASK_A_CTX: TaskContext = TaskContext::new();
+pub static mut TASK_B_CTX: TaskContext = TaskContext::new();
+
+static mut CURRENT_TASK: Option<&'static TaskContext> = None;
+
+pub fn init() {
+    unsafe { CURRENT_TASK = Some(&TASK_A_CTX) };
+    let mut manager = TIMER_MANAGER.lock_wait();
+    let timeout = manager.current_tick() + TASK_TIMER_PERIOD;
+    manager.add_timer(Timer::new(timeout, TASK_TIMER_VALUE));
+}
+
+pub fn switch_task() {
+    unsafe {
+        let old_task = CURRENT_TASK.unwrap();
+        CURRENT_TASK = Some(if ptr::eq(old_task, &TASK_A_CTX) {
+            &*ptr::addr_of!(TASK_B_CTX)
+        } else {
+            &TASK_A_CTX
+        });
+
+        asmfunc::switch_context(CURRENT_TASK.unwrap(), old_task);
+    }
+}
 
 #[repr(C, align(16))]
 #[derive(Debug)]
@@ -33,6 +63,14 @@ pub struct TaskContext {
 impl TaskContext {
     pub const fn new() -> Self {
         unsafe { mem::zeroed() }
+    }
+
+    pub fn as_ptr(&self) -> *const Self {
+        self as *const _
+    }
+
+    pub fn as_mut_ptr(&mut self) -> *mut Self {
+        self as *mut _
     }
 }
 
