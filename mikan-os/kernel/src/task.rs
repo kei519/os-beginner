@@ -221,6 +221,14 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
     }
 }
 
+impl<const N: usize> PartialEq for Task<N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl<const N: usize> Eq for Task<N> {}
+
 struct TaskManager {
     tasks: Vec<Arc<Task>>,
     latest_id: u64,
