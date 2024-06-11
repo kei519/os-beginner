@@ -3,9 +3,9 @@ use core::mem;
 use crate::{
     asmfunc,
     bitfield::BitField as _,
-    message::{self, Message},
+    message::Message,
     sync::Mutex,
-    timer,
+    task, timer,
     x86_descriptor::{self, DescriptorType, SystemSegmentType},
 };
 
@@ -43,7 +43,8 @@ pub fn init() {
 
 #[custom_attribute::interrupt]
 fn int_handler_xhci(_frame: &InterruptFrame) {
-    message::push_main_queue(Message::InterruptXHCI);
+    // メインタスクが 1 で登録されるので必ず存在するはず
+    task::send_message(1, Message::InterruptXHCI).unwrap();
     notify_end_of_interrupt();
 }
 

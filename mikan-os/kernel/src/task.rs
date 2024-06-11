@@ -6,7 +6,9 @@ use crate::{
     asmfunc,
     error::{Code, Result},
     make_error,
+    message::Message,
     segment::{KERNEL_CS, KERNEL_SS},
+    sync::Mutex,
     timer::{Timer, TASK_TIMER_PERIOD, TASK_TIMER_VALUE, TIMER_MANAGER},
 };
 
@@ -50,6 +52,18 @@ pub fn sleep(id: u64) -> Result<()> {
 
 pub fn wake_up(id: u64) -> Result<()> {
     unsafe { TASK_MANAGER.wake_up(id) }
+}
+
+/// 今走っているタスクを返す。
+///
+/// すべてのタスクがスリープしている場合は `panic` を起こす。
+/// つまり、割り込みハンドラから呼び出すべきではない。
+pub fn current_task() -> Arc<Task> {
+    unsafe { TASK_MANAGER.current_task() }
+}
+
+pub fn send_message(id: u64, msg: Message) -> Result<()> {
+    unsafe { TASK_MANAGER.send_message(id, msg) }
 }
 
 #[repr(C, align(16))]
@@ -137,6 +151,7 @@ pub struct Task<const STACK_SIZE: usize = 4096> {
     id: u64,
     _stack: Box<Stack<STACK_SIZE>>,
     context: TaskContext,
+    msgs: Mutex<VecDeque<Message>>,
 }
 
 impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
@@ -156,6 +171,7 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
             id,
             _stack: stack,
             context,
+            msgs: Mutex::new(VecDeque::new()),
         }
     }
 
@@ -189,6 +205,15 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
         // TASK_MANAGER に登録されている Task しか呼べないはずなので OK
         unsafe { TASK_MANAGER.wake_up(self.id) }.unwrap();
         self
+    }
+
+    pub fn send_message(&self, msg: Message) {
+        self.msgs.lock_wait().push_back(msg);
+        self.wake_up();
+    }
+
+    pub fn receive_message(&self) -> Option<Message> {
+        self.msgs.lock_wait().pop_front()
     }
 }
 
@@ -259,10 +284,27 @@ impl TaskManager {
             None => return Err(make_error!(Code::NoSuchTask)),
         };
 
-        match self.running.iter().find(|task| task.id == id) {
-            None => self.running.push_back(task.clone()),
-            _ => {}
+        if !self.running.iter().any(|task| task.id == id) {
+            self.running.push_back(task.clone());
         }
+        Ok(())
+    }
+
+    /// 今走っているタスクを返す。
+    ///
+    /// すべてのタスクがスリープしている場合は `panic` を起こす。
+    /// つまり、割り込みハンドラから呼び出すべきではない。
+    fn current_task(&self) -> Arc<Task> {
+        self.running.front().unwrap().clone()
+    }
+
+    fn send_message(&self, id: u64, msg: Message) -> Result<()> {
+        let task = match self.tasks.iter().find(|task| task.id == id) {
+            Some(task) => task,
+            None => return Err(make_error!(Code::NoSuchTask)),
+        };
+
+        task.send_message(msg);
         Ok(())
     }
 }

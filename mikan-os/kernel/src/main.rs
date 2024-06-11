@@ -20,7 +20,7 @@ use kernel::{
     log,
     logger::{set_log_level, LogLevel},
     memory_manager,
-    message::{self, Message},
+    message::Message,
     mouse, paging, pci, printk, printkln, segment,
     task::{self, Stack},
     timer::{self, Timer, TIMER_MANAGER},
@@ -124,12 +124,10 @@ fn main(acpi_table: &RSDP) -> Result<()> {
     interrupt::init();
 
     pci::init()?;
-    xhci::init();
 
     let main_window_id = initialize_main_window();
     let text_window_id = initialize_text_window();
     let task_b_window_id = initialize_task_b_window();
-    mouse::init();
 
     // FIXME: 最初に登録されるレイヤーは背景ウィンドウなので、`layer_id` 1 を表示すれば
     //        必ず全て表示されるが、ハードコードは良くなさそう
@@ -137,8 +135,6 @@ fn main(acpi_table: &RSDP) -> Result<()> {
 
     acpi_table.init()?;
     timer::init();
-
-    keyboard::init();
 
     // カーソル点滅用のタイマを追加
     let textbox_cursor_timer = 1;
@@ -149,6 +145,7 @@ fn main(acpi_table: &RSDP) -> Result<()> {
     let mut textbox_cursor_visible = false;
 
     task::init();
+    let main_task = task::current_task();
     let taskb_id = {
         let taskb_id = task::new_task()
             .init_context(task_b, 45, task_b_window_id)
@@ -163,6 +160,10 @@ fn main(acpi_table: &RSDP) -> Result<()> {
 
         taskb_id
     };
+
+    xhci::init();
+    mouse::init();
+    keyboard::init();
 
     let mut text_window_index = 0;
     loop {
@@ -185,11 +186,11 @@ fn main(acpi_table: &RSDP) -> Result<()> {
         }
 
         cli();
-        let msg = message::pop_main_queue();
-        let msg = match msg {
+        let msg = match main_task.receive_message() {
             Some(msg) => msg,
             None => {
-                sti_hlt();
+                main_task.sleep();
+                sti();
                 continue;
             }
         };
