@@ -1,4 +1,5 @@
 use core::{
+    arch::asm,
     mem,
     sync::atomic::{AtomicBool, AtomicI32, Ordering},
 };
@@ -36,6 +37,12 @@ pub fn init() {
         TASK_MANAGER
             .new_task()
             .set_level(TASK_MANAGER.current_level)
+            .wake_up(-1);
+
+        TASK_MANAGER
+            .new_task()
+            .init_context(task_idle, 0, 0)
+            .set_level(0)
             .wake_up(-1);
     }
 
@@ -451,5 +458,11 @@ fn erase<const N: usize>(que: &mut VecDeque<Arc<Task<N>>>, id: u64) {
 impl Default for TaskManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn task_idle(_: u64, _: i64, _: u32) {
+    loop {
+        unsafe { asm!("hlt") };
     }
 }

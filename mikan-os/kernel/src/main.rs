@@ -146,20 +146,10 @@ fn main(acpi_table: &RSDP) -> Result<()> {
 
     task::init();
     let main_task = task::current_task();
-    let taskb_id = {
-        let taskb_id = task::new_task()
-            .init_context(task_b, 45, task_b_window_id)
-            .wake_up(-1)
-            .id();
-        task::new_task()
-            .init_context(task_idle, 0xdeadbeef, 0)
-            .wake_up(-1);
-        task::new_task()
-            .init_context(task_idle, 0xcafebabe, 0)
-            .wake_up(-1);
-
-        taskb_id
-    };
+    let taskb_id = task::new_task()
+        .init_context(task_b, 45, task_b_window_id)
+        .wake_up(-1)
+        .id();
 
     xhci::init();
     mouse::init();
@@ -295,16 +285,6 @@ fn task_b(task_id: u64, data: i64, layer_id: u32) {
         // TODO: 描画をメインスレッドに依頼するようにして削除する
         sti_hlt();
     }
-}
-
-fn task_idle(task_id: u64, data: i64, layer_id: u32) {
-    printkln!(
-        "task_idle: task_id={}, data={:x}, layer_id={}",
-        task_id,
-        data,
-        layer_id
-    );
-    halt();
 }
 
 #[panic_handler]
