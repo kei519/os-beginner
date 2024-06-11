@@ -83,7 +83,7 @@ pub fn lapic_timer_on_interrupt() {
     interrupt::notify_end_of_interrupt();
 
     if task_timer_timeout {
-        task::switch_task();
+        task::switch_task(false);
     }
 }
 

@@ -149,11 +149,20 @@ fn main(acpi_table: &RSDP) -> Result<()> {
     let mut textbox_cursor_visible = false;
 
     task::init();
-    {
-        task::new_task().init_context(task_b, 45, task_b_window_id);
-        task::new_task().init_context(task_idle, 0xdeadbeef, 0);
-        task::new_task().init_context(task_idle, 0xcafebabe, 0);
-    }
+    let taskb_id = {
+        let taskb_id = task::new_task()
+            .init_context(task_b, 45, task_b_window_id)
+            .wake_up()
+            .id();
+        task::new_task()
+            .init_context(task_idle, 0xdeadbeef, 0)
+            .wake_up();
+        task::new_task()
+            .init_context(task_idle, 0xcafebabe, 0)
+            .wake_up();
+
+        taskb_id
+    };
 
     let mut text_window_index = 0;
     loop {
@@ -245,6 +254,12 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                         draw_text_cursor(true, text_window_index, window);
                     }
                     manager.draw_id(text_window_id);
+                }
+                // S で task_b を眠らせ W で起こす
+                if ascii == b's' {
+                    printkln!("sleep task_b: {:?}", task::sleep(taskb_id));
+                } else if ascii == b'w' {
+                    printkln!("wakeup task_b: {:?}", task::wake_up(taskb_id));
                 }
             }
         }

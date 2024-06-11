@@ -1,9 +1,11 @@
 use core::mem;
 
-use alloc::{boxed::Box, vec, vec::Vec};
+use alloc::{boxed::Box, collections::VecDeque, sync::Arc, vec, vec::Vec};
 
 use crate::{
     asmfunc,
+    error::{Code, Result},
+    make_error,
     segment::{KERNEL_CS, KERNEL_SS},
     timer::{Timer, TASK_TIMER_PERIOD, TASK_TIMER_VALUE, TIMER_MANAGER},
 };
@@ -11,6 +13,10 @@ use crate::{
 /// [OnceMutex] や [Mutex] で持ちたいが、ロックを取得してからコンテキストスイッチをすると
 /// ロックを取得したままコンテキストスイッチが起こり、以後コンテキストスイッチができなくなるため、
 /// `static mut` で持つ。
+///
+/// # Safety
+///
+/// 同じタスクに対して同時に操作をしないこと。
 static mut TASK_MANAGER: TaskManager = TaskManager::new();
 
 /// それぞれのタスクで実行される関数を表す。
@@ -21,19 +27,29 @@ static mut TASK_MANAGER: TaskManager = TaskManager::new();
 pub type TaskFunc = fn(u64, i64, u32);
 
 pub fn init() {
-    unsafe { TASK_MANAGER.new_task() };
+    unsafe {
+        TASK_MANAGER.new_task().wake_up();
+    }
 
     let mut timer_manager = TIMER_MANAGER.lock_wait();
     let timeout = timer_manager.current_tick() + TASK_TIMER_PERIOD;
     timer_manager.add_timer(Timer::new(timeout, TASK_TIMER_VALUE));
 }
 
-pub fn switch_task() {
-    unsafe { TASK_MANAGER.switch_task() };
+pub fn switch_task(current_sleep: bool) {
+    unsafe { TASK_MANAGER.switch_task(current_sleep) };
 }
 
 pub fn new_task() -> &'static mut Task {
     unsafe { TASK_MANAGER.new_task() }
+}
+
+pub fn sleep(id: u64) -> Result<()> {
+    unsafe { TASK_MANAGER.sleep(id) }
+}
+
+pub fn wake_up(id: u64) -> Result<()> {
+    unsafe { TASK_MANAGER.wake_up(id) }
 }
 
 #[repr(C, align(16))]
@@ -143,7 +159,7 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
         }
     }
 
-    pub fn init_context(&mut self, f: TaskFunc, data: i64, layer_id: u32) {
+    pub fn init_context(&mut self, f: TaskFunc, data: i64, layer_id: u32) -> &mut Self {
         self.context.cr3 = asmfunc::get_cr3();
         self.context.rflags = 0x202;
         self.context.cs = KERNEL_CS as u64;
@@ -152,17 +168,34 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
         self.context.rdi = self.id;
         self.context.rsi = data as u64;
         self.context.rdx = layer_id as u64;
+        self
     }
 
     pub fn context(&self) -> &TaskContext {
         &self.context
     }
+
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
+    pub fn sleep(&self) -> &Self {
+        // TASK_MANAGER に登録されている Task しか呼べないはずなので OK
+        unsafe { TASK_MANAGER.sleep(self.id) }.unwrap();
+        self
+    }
+
+    pub fn wake_up(&self) -> &Self {
+        // TASK_MANAGER に登録されている Task しか呼べないはずなので OK
+        unsafe { TASK_MANAGER.wake_up(self.id) }.unwrap();
+        self
+    }
 }
 
 struct TaskManager {
-    tasks: Vec<Task>,
+    tasks: Vec<Arc<Task>>,
     latest_id: u64,
-    current_task_index: usize,
+    running: VecDeque<Arc<Task>>,
 }
 
 impl TaskManager {
@@ -170,28 +203,67 @@ impl TaskManager {
         Self {
             tasks: vec![],
             latest_id: 0,
-            current_task_index: 0,
+            running: VecDeque::new(),
         }
     }
 
     fn new_task(&mut self) -> &mut Task {
         self.latest_id += 1;
-        self.tasks.push(Task::new(self.latest_id));
-        // 今追加したばかりなので、この unwrap() は必ず成功する
-        self.tasks.last_mut().unwrap()
+        self.tasks.push(Arc::new(Task::new(self.latest_id)));
+        // 今追加したばかりで、running にはまだ追加されていないから、この unwrap() は必ず成功する
+        self.tasks
+            .last_mut()
+            .and_then(|task| Arc::get_mut(task))
+            .unwrap()
     }
 
-    fn switch_task(&mut self) {
-        let next_task_index = match self.current_task_index + 1 {
-            index if index >= self.tasks.len() => 0,
-            index => index,
-        };
-
-        let current_task = &self.tasks[self.current_task_index];
-        let next_task = &self.tasks[next_task_index];
-        self.current_task_index = next_task_index;
+    fn switch_task(&mut self, current_sleep: bool) {
+        let current_task = self.running.pop_front().unwrap();
+        if !current_sleep {
+            self.running.push_back(current_task.clone());
+        }
+        let next_task = self.running.front().unwrap();
 
         asmfunc::switch_context(next_task.context(), current_task.context());
+    }
+
+    fn sleep(&mut self, id: u64) -> Result<()> {
+        // そもそも指定された id のタスクが存在するか確認
+        if !self.tasks.iter().any(|task| task.id == id) {
+            return Err(make_error!(Code::NoSuchTask));
+        }
+
+        match self
+            .running
+            .iter()
+            .enumerate()
+            .find(|(_, task)| task.id == id)
+            .map(|(i, _)| i)
+        {
+            None => {}
+            Some(index) => match index {
+                0 => {
+                    self.switch_task(true);
+                }
+                index => {
+                    self.running.remove(index);
+                }
+            },
+        };
+        Ok(())
+    }
+
+    fn wake_up(&mut self, id: u64) -> Result<()> {
+        let task = match self.tasks.iter().find(|task| task.id == id) {
+            Some(task) => task,
+            None => return Err(make_error!(Code::NoSuchTask)),
+        };
+
+        match self.running.iter().find(|task| task.id == id) {
+            None => self.running.push_back(task.clone()),
+            _ => {}
+        }
+        Ok(())
     }
 }
 
