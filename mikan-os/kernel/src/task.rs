@@ -184,6 +184,10 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
         self.context.rdi = self.id;
         self.context.rsi = data as u64;
         self.context.rdx = layer_id as u64;
+
+        // MXCSR のすべての例外をマスクする
+        unsafe { *(self.context.fxsafe_area.as_mut_ptr().add(24) as *mut u32) = 0x1f80 };
+
         self
     }
 
