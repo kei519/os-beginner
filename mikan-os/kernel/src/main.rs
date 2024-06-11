@@ -149,14 +149,14 @@ fn main(acpi_table: &RSDP) -> Result<()> {
     let taskb_id = {
         let taskb_id = task::new_task()
             .init_context(task_b, 45, task_b_window_id)
-            .wake_up()
+            .wake_up(-1)
             .id();
         task::new_task()
             .init_context(task_idle, 0xdeadbeef, 0)
-            .wake_up();
+            .wake_up(-1);
         task::new_task()
             .init_context(task_idle, 0xcafebabe, 0)
-            .wake_up();
+            .wake_up(-1);
 
         taskb_id
     };
@@ -260,7 +260,7 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                 if ascii == b's' {
                     printkln!("sleep task_b: {:?}", task::sleep(taskb_id));
                 } else if ascii == b'w' {
-                    printkln!("wakeup task_b: {:?}", task::wake_up(taskb_id));
+                    printkln!("wakeup task_b: {:?}", task::wake_up(taskb_id, -1));
                 }
             }
         }
