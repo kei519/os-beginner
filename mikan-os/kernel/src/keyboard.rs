@@ -1,4 +1,4 @@
-use crate::{bitfield::BitField as _, message::Message, task, usb::HIDKeyboardDriver};
+use crate::{bitfield::BitField as _, message::MessageType, task, usb::HIDKeyboardDriver};
 
 const KEYCODE_MAP: [u8; 256] = [
     0, 0, 0, 0, b'a', b'b', b'c', b'd', // 0
@@ -93,11 +93,12 @@ pub fn init() {
         // メインタスクが 1 で登録されるので必ず存在するはず
         task::send_message(
             1,
-            Message::KeyPush {
+            MessageType::KeyPush {
                 modifier,
                 keycode,
                 ascii,
-            },
+            }
+            .into(),
         )
         .unwrap();
     })

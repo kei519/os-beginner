@@ -173,7 +173,7 @@ impl PixelWrite for BgrResv8BitPerColorPixelWriter {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 /// 2次元のベクトル情報を保持するクラス。
 pub struct Vector2D<T> {
     x: T,

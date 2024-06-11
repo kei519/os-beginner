@@ -5,7 +5,7 @@ use alloc::collections::BinaryHeap;
 use crate::{
     acpi,
     interrupt::{self, InterruptVector},
-    message::Message,
+    message::MessageType,
     sync::OnceMutex,
     task,
 };
@@ -121,7 +121,7 @@ impl TimerManager {
                 continue;
             }
 
-            let m = Message::TimerTimeout(t);
+            let m = MessageType::TimerTimeout(t).into();
             // メインタスクが 1 で登録されるので必ず存在するはず
             task::send_message(1, m).unwrap();
         }

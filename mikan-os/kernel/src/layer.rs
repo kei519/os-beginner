@@ -4,6 +4,7 @@ use crate::{
     frame_buffer::FrameBuffer,
     frame_buffer_config::{FrameBufferConfig, PixelFormat},
     graphics::{self, PixelWrite as _, Rectangle, Vector2D, FB_CONFIG},
+    message::LayerOperation,
     sync::OnceMutex,
     window::Window,
 };
@@ -40,6 +41,15 @@ pub fn init() {
     layer_manager.up_down(bglayer_id, 0);
 
     LAYER_MANAGER.init(layer_manager);
+}
+
+pub fn process_layer_message(op: LayerOperation, layer_id: u32, pos: Vector2D<i32>) {
+    let mut manager = LAYER_MANAGER.lock_wait();
+    match op {
+        LayerOperation::Move => manager.r#move(layer_id, pos),
+        LayerOperation::MoveRelative => manager.move_relative(layer_id, pos),
+        LayerOperation::Draw => manager.draw_id(layer_id),
+    }
 }
 
 /// 全レイヤーを管理する構造体。

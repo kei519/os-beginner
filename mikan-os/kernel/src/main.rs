@@ -9,7 +9,7 @@ use uefi::table::boot::MemoryMap;
 
 use kernel::{
     acpi::RSDP,
-    asmfunc::{cli, sti, sti_hlt},
+    asmfunc::{cli, sti},
     console::{self, PanicConsole},
     error::Result,
     font,
@@ -20,7 +20,7 @@ use kernel::{
     log,
     logger::{set_log_level, LogLevel},
     memory_manager,
-    message::Message,
+    message::{LayerOperation, Message, MessageType},
     mouse, paging, pci, printk, printkln, segment,
     task::{self, Stack},
     timer::{self, Timer, TIMER_MANAGER},
@@ -172,6 +172,7 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                 format!("{:010}", tick).as_bytes(),
                 &PixelColor::new(0, 0, 0),
             );
+
             layer_manager.draw_id(main_window_id);
         }
 
@@ -186,8 +187,8 @@ fn main(acpi_table: &RSDP) -> Result<()> {
         };
         sti();
 
-        match msg {
-            Message::InterruptXHCI => {
+        match msg.ty {
+            MessageType::InterruptXHCI => {
                 let mut xhc = XHC.lock_wait();
                 while xhc.primary_event_ring().has_front() {
                     if let Err(err) = xhc.process_event() {
@@ -195,7 +196,7 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                     }
                 }
             }
-            Message::TimerTimeout(timer) => {
+            MessageType::TimerTimeout(timer) => {
                 if timer.value() == textbox_cursor_timer {
                     TIMER_MANAGER.lock_wait().add_timer(Timer::new(
                         timer.timeout() + timer_05sec,
@@ -211,7 +212,7 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                     layer_manager.draw_id(text_window_id);
                 }
             }
-            Message::KeyPush { ascii, .. } => {
+            MessageType::KeyPush { ascii, .. } => {
                 // `input_text_window(ascii)` の代わり
                 'input_text_window: {
                     if ascii == 0 {
@@ -253,22 +254,32 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                     printkln!("wakeup task_b: {:?}", task::wake_up(taskb_id, -1));
                 }
             }
+            MessageType::Layer { op, layer_id, pos } => {
+                layer::process_layer_message(op, layer_id, pos);
+                // 呼び出してきたタスクがあるはずだから、unwrap は失敗しない
+                task::send_message(msg.src_task, MessageType::LayerFinish.into()).unwrap();
+            }
+            MessageType::LayerFinish => {}
         }
     }
 }
 
-fn task_b(task_id: u64, data: i64, layer_id: u32) {
+fn task_b(task_id: u64, data: i64, layer_id: u32, window: Option<&mut Window>) {
     printkln!(
         "task_b: task_id={}, data={}, layer_id={}",
         task_id,
         data,
         layer_id
     );
+    let window = window.unwrap();
+
+    cli();
+    let task = task::current_task();
+    sti();
+
     let mut count = 0;
     loop {
         count += 1;
-        let mut manager = LAYER_MANAGER.lock_wait();
-        let window = manager.layer(layer_id).window_mut();
         window.fill_rectangle(
             Vector2D::new(24, 28),
             Vector2D::new(8 * 10, 16),
@@ -280,10 +291,36 @@ fn task_b(task_id: u64, data: i64, layer_id: u32) {
             format!("{:010}", count).as_bytes(),
             &PixelColor::to_color(0),
         );
-        manager.draw_id(layer_id);
-        drop(manager);
-        // TODO: 描画をメインスレッドに依頼するようにして削除する
-        sti_hlt();
+
+        let mut msg: Message = MessageType::Layer {
+            op: LayerOperation::Draw,
+            layer_id,
+            pos: Vector2D::default(),
+        }
+        .into();
+        msg.src_task = task_id;
+
+        cli();
+        task::send_message(1, msg).unwrap();
+        sti();
+
+        loop {
+            // receive_message は task.msgsがロックに包まれているから、
+            // 割り込みを禁止する必要はない
+            match task.receive_message() {
+                Some(msg) => {
+                    if matches!(msg.ty, MessageType::LayerFinish) {
+                        break;
+                    }
+                }
+                None => {
+                    cli();
+                    task.sleep();
+                    sti();
+                    continue;
+                }
+            }
+        }
     }
 }
 

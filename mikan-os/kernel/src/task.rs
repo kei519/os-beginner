@@ -9,11 +9,13 @@ use alloc::{boxed::Box, collections::VecDeque, sync::Arc, vec, vec::Vec};
 use crate::{
     asmfunc,
     error::{Code, Result},
+    layer::LAYER_MANAGER,
     make_error,
     message::Message,
     segment::{KERNEL_CS, KERNEL_SS},
     sync::Mutex,
     timer::{Timer, TASK_TIMER_PERIOD, TASK_TIMER_VALUE, TIMER_MANAGER},
+    window::Window,
 };
 
 /// [OnceMutex] や [Mutex] で持ちたいが、ロックを取得してからコンテキストスイッチをすると
@@ -30,7 +32,7 @@ static mut TASK_MANAGER: TaskManager = TaskManager::new();
 /// * task_id
 /// * data
 /// * layer_id - Window がない場合は `0`。
-pub type TaskFunc = fn(u64, i64, u32);
+pub type TaskFunc = fn(u64, i64, u32, Option<&mut Window>);
 
 pub fn init() {
     unsafe {
@@ -76,6 +78,7 @@ pub fn current_task() -> Arc<Task> {
     unsafe { TASK_MANAGER.current_task() }
 }
 
+/// ID が `id` のタスクが存在しなかった場合はエラーを返す。
 pub fn send_message(id: u64, msg: Message) -> Result<()> {
     unsafe { TASK_MANAGER.send_message(id, msg) }
 }
@@ -93,7 +96,7 @@ pub struct TaskContext {
     pub gs: u64,
     pub rax: u64,
     pub rbx: u64,
-    pub rcs: u64,
+    pub rcx: u64,
     pub rdx: u64,
     pub rdi: u64,
     pub rsi: u64,
@@ -204,6 +207,13 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
         self.context.rdi = self.id;
         self.context.rsi = data as u64;
         self.context.rdx = layer_id as u64;
+
+        let window_ptr = if layer_id == 0 {
+            0
+        } else {
+            LAYER_MANAGER.lock_wait().layer(layer_id).window() as *const _ as u64
+        };
+        self.context.rcx = window_ptr;
 
         // MXCSR のすべての例外をマスクする
         unsafe { *(self.context.fxsafe_area.as_mut_ptr().add(24) as *mut u32) = 0x1f80 };
@@ -381,6 +391,7 @@ impl TaskManager {
         self.current_que().front().unwrap().clone()
     }
 
+    /// ID が `id` のタスクが存在しなかった場合はエラーを返す。
     fn send_message(&self, id: u64, msg: Message) -> Result<()> {
         let task = match self.find_task_by_id(id) {
             Some(task) => task,
@@ -461,7 +472,7 @@ impl Default for TaskManager {
     }
 }
 
-fn task_idle(_: u64, _: i64, _: u32) {
+fn task_idle(_: u64, _: i64, _: u32, _: Option<&mut Window>) {
     loop {
         unsafe { asm!("hlt") };
     }

@@ -70,7 +70,9 @@ macro_rules! printk {
     ($($arg:tt)*) => {
         {
             use core::fmt::Write as _;
+            $crate::asmfunc::cli();
             write!($crate::console::CONSOLE.lock_wait(), $($arg)*).unwrap();
+            $crate::asmfunc::sti();
         }
     };
 }
