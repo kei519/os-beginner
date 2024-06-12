@@ -28,7 +28,7 @@ impl Window {
     ///
     /// * width - ウィンドウの幅。
     /// * height - ウィンドウの高さ
-    pub fn new(width: u32, height: u32, shadow_fomrat: PixelFormat) -> Self {
+    pub fn new(width: u32, height: u32, shadow_format: PixelFormat) -> Self {
         let mut data = Vec::with_capacity((width * height) as usize);
         data.resize((width * height) as usize, Default::default());
         let data = data.into_boxed_slice();
@@ -38,7 +38,7 @@ impl Window {
             pixels_per_scan_line: 0,
             horizontal_resolution: width as _,
             vertical_resolution: height as _,
-            pixel_format: shadow_fomrat,
+            pixel_format: shadow_format,
         };
 
         Self {
