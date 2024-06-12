@@ -178,7 +178,7 @@ const CLOSE_BUTTON: [&[u8; CLOSE_BUTTON_WIDTH]; CLOSE_BUTTON_HEIGHT] = [
 ];
 
 impl Window {
-    pub fn draw_window(&mut self, title: &[u8]) {
+    pub fn draw_window(&mut self, title: &str) {
         let win_w = self.width as i32;
         let win_h = self.height as i32;
 
@@ -222,7 +222,7 @@ impl Window {
         font::write_string(
             self,
             Vector2D::new(24, 4),
-            title,
+            title.as_bytes(),
             &PixelColor::to_color(0xffffff),
         );
 

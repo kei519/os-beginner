@@ -36,7 +36,7 @@ fn initialize_main_window() -> u32 {
     let mut layer_manager = LAYER_MANAGER.lock_wait();
 
     let mut main_window = Window::new(160, 52, SCREEN.lock_wait().pixel_format());
-    main_window.draw_window(b"Hello Window");
+    main_window.draw_window("Hello Window");
     let main_window_id = layer_manager.new_layer(main_window);
     layer_manager
         .layer(main_window_id)
@@ -54,7 +54,7 @@ fn initialize_text_window() -> u32 {
     let win_h = 52;
 
     let mut window = Window::new(win_w, win_h, SCREEN.lock_wait().pixel_format());
-    window.draw_window(b"Text Box Test");
+    window.draw_window("Text Box Test");
     window.draw_text_box(
         Vector2D::new(4, 24),
         Vector2D::new(win_w as i32 - 8, win_h as i32 - 24 - 4),
@@ -81,7 +81,7 @@ fn draw_text_cursor(visible: bool, index: i32, window: &mut Window) {
 /// `task_b()` 用のウィンドウを初期化、登録しそのレイヤー ID を返す。
 fn initialize_task_b_window() -> u32 {
     let mut window = Window::new(160, 52, FB_CONFIG.lock_wait().pixel_format);
-    window.draw_window(b"TaskB Window");
+    window.draw_window("TaskB Window");
 
     let mut manager = LAYER_MANAGER.lock_wait();
     let id = manager.new_layer(window);
