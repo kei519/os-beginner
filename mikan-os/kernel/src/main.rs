@@ -227,7 +227,7 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                     let mut manager = LAYER_MANAGER.lock_wait();
                     let window = manager.layer(text_window_id).window_mut();
 
-                    let max_chars = (window.width() as i32 - 8) / 8;
+                    let max_chars = (window.width() as i32 - 8) / 8 - 1;
                     if ascii == 0x08 && text_window_index > 0 {
                         draw_text_cursor(false, text_window_index, window);
                         text_window_index -= 1;
