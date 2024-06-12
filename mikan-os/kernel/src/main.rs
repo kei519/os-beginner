@@ -161,7 +161,7 @@ fn main(acpi_table: &RSDP) -> Result<()> {
     let mut text_window_index = 0;
     loop {
         let tick = TIMER_MANAGER.lock_wait().current_tick();
-        {
+        let active = {
             let mut layer_manager = LAYER_MANAGER.lock_wait();
             let window = layer_manager.layer(main_window_id).window_mut();
             window.fill_rectangle(
@@ -177,7 +177,8 @@ fn main(acpi_table: &RSDP) -> Result<()> {
             );
 
             layer_manager.draw_id(main_window_id);
-        }
+            layer_manager.get_active()
+        };
 
         cli();
         let msg = match main_task.receive_message() {
@@ -215,46 +216,54 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                     layer_manager.draw_id(text_window_id);
                 }
             }
-            MessageType::KeyPush { ascii, .. } => {
-                // `input_text_window(ascii)` の代わり
-                'input_text_window: {
-                    if ascii == 0 {
-                        break 'input_text_window;
+            MessageType::KeyPush { ascii, keycode, .. } => {
+                if active == text_window_id {
+                    // `input_text_window(ascii)` の代わり
+                    'input_text_window: {
+                        if ascii == 0 {
+                            break 'input_text_window;
+                        }
+
+                        let pos = |index| Vector2D::new(4 + 8 * index, 6);
+
+                        let mut manager = LAYER_MANAGER.lock_wait();
+                        let window = manager.layer(text_window_id).window_mut();
+
+                        let max_chars = (window.width() as i32 - 8) / 8 - 1;
+                        if ascii == 0x08 && text_window_index > 0 {
+                            draw_text_cursor(false, text_window_index, window);
+                            text_window_index -= 1;
+                            window.fill_rectangle(
+                                pos(text_window_index),
+                                Vector2D::new(8, 16),
+                                &PixelColor::to_color(0xffffff),
+                            );
+                            draw_text_cursor(true, text_window_index, window);
+                        } else if ascii >= b' ' && text_window_index < max_chars {
+                            draw_text_cursor(false, text_window_index, window);
+                            font::write_ascii(
+                                window,
+                                pos(text_window_index),
+                                ascii,
+                                &PixelColor::to_color(0),
+                            );
+                            text_window_index += 1;
+                            draw_text_cursor(true, text_window_index, window);
+                        }
+                        manager.draw_id(text_window_id);
                     }
-
-                    let pos = |index| Vector2D::new(4 + 8 * index, 6);
-
-                    let mut manager = LAYER_MANAGER.lock_wait();
-                    let window = manager.layer(text_window_id).window_mut();
-
-                    let max_chars = (window.width() as i32 - 8) / 8 - 1;
-                    if ascii == 0x08 && text_window_index > 0 {
-                        draw_text_cursor(false, text_window_index, window);
-                        text_window_index -= 1;
-                        window.fill_rectangle(
-                            pos(text_window_index),
-                            Vector2D::new(8, 16),
-                            &PixelColor::to_color(0xffffff),
-                        );
-                        draw_text_cursor(true, text_window_index, window);
-                    } else if ascii >= b' ' && text_window_index < max_chars {
-                        draw_text_cursor(false, text_window_index, window);
-                        font::write_ascii(
-                            window,
-                            pos(text_window_index),
-                            ascii,
-                            &PixelColor::to_color(0),
-                        );
-                        text_window_index += 1;
-                        draw_text_cursor(true, text_window_index, window);
+                } else if active == task_b_window_id {
+                    if ascii == b's' {
+                        printkln!("sleep task_b: {:?}", task::sleep(taskb_id));
+                    } else if ascii == b'w' {
+                        printkln!("wakeup task_b: {:?}", task::wake_up(taskb_id, -1));
                     }
-                    manager.draw_id(text_window_id);
-                }
-                // S で task_b を眠らせ W で起こす
-                if ascii == b's' {
-                    printkln!("sleep task_b: {:?}", task::sleep(taskb_id));
-                } else if ascii == b'w' {
-                    printkln!("wakeup task_b: {:?}", task::wake_up(taskb_id, -1));
+                } else {
+                    printkln!(
+                        "key push not handled: keycode {:02x}, ascii {:02x}",
+                        keycode,
+                        ascii
+                    );
                 }
             }
             MessageType::Layer { op, layer_id, pos } => {
