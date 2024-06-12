@@ -87,6 +87,7 @@ fn initialize_task_b_window() -> u32 {
 
     let mut manager = LAYER_MANAGER.lock_wait();
     let id = manager.new_layer(window);
+    manager.activate(id);
     manager
         .layer(id)
         .set_draggable(true)

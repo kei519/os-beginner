@@ -66,6 +66,10 @@ pub struct LayerManager {
     latest_id: u32,
     /// バックバッファ。
     back_buffer: FrameBuffer,
+    /// マウスレイヤ ID。
+    mouse_layer: u32,
+    /// アクティブレイヤ ID。
+    active_layer: u32,
 }
 
 impl LayerManager {
@@ -93,6 +97,8 @@ impl LayerManager {
             layer_stack: Vec::new(),
             latest_id: 0,
             back_buffer,
+            mouse_layer: 0,
+            active_layer: 0,
         }
     }
 
@@ -290,6 +296,47 @@ impl LayerManager {
             }
         };
         self.layer_stack.iter().rev().find_map(pred)
+    }
+
+    /// 非表示の場合は `-1` を返す。
+    pub fn get_height(&self, id: u32) -> i32 {
+        match self
+            .layer_stack
+            .iter()
+            .enumerate()
+            .find(|(_, &layer)| layer == id)
+            .map(|(i, _)| i)
+        {
+            Some(height) => height as i32,
+            None => -1,
+        }
+    }
+
+    pub fn set_mouse_layer(&mut self, id: u32) {
+        self.mouse_layer = id;
+    }
+
+    pub fn get_active(&self) -> u32 {
+        self.active_layer
+    }
+
+    /// `id` が `0` の場合は全てのウィンドウを非アクティブにする。
+    pub fn activate(&mut self, id: u32) {
+        if self.active_layer == id {
+            return;
+        }
+
+        if self.active_layer > 0 {
+            self.layer(self.active_layer).window_mut().deactivate();
+            self.draw_id(self.active_layer);
+        }
+
+        self.active_layer = id;
+        if id > 0 {
+            self.layer(id).window_mut().activate();
+            self.up_down(id, self.get_height(self.mouse_layer) - 1);
+            self.draw_id(id);
+        }
     }
 }
 

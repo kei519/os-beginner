@@ -21,6 +21,7 @@ pub fn init() {
     mouse_window.set_transparent_color(Some(MOUSE_TRANSPARENT_COLOR));
     draw_mouse_cursor(&mut mouse_window, &Vector2D::new(0, 0));
     let mouse_layer_id = layer_manager.new_layer(mouse_window);
+    layer_manager.set_mouse_layer(mouse_layer_id);
     layer_manager
         .layer(mouse_layer_id)
         .move_relative(Vector2D::new(200, 200));
@@ -52,6 +53,9 @@ pub fn mouse_observer(buttons: u8, displacement_x: i8, displacement_y: i8) {
         if let Some(id) = layer_maneger.find_layer_by_position(&mouse_position, layer_id) {
             if layer_maneger.layer(id).is_draggable() {
                 MOUSE_DRAG_LAYER_ID.store(id, Ordering::Release);
+                layer_maneger.activate(id);
+            } else {
+                layer_maneger.activate(0);
             }
         }
     } else if previous_left_pressed && left_pressed {
