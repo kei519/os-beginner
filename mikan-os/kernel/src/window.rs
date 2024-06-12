@@ -50,11 +50,13 @@ impl Window {
         shadow_format: PixelFormat,
         title: impl Into<String>,
     ) -> Self {
-        let title = title.into();
-        let mut base = WindowBase::new(width, height, shadow_format);
-        base.draw_window(&title);
+        let mut ret = Self::Toplevel {
+            base: WindowBase::new(width, height, shadow_format),
+            title: title.into(),
+        };
+        ret.draw_window();
 
-        Self::Toplevel { base, title }
+        ret
     }
 
     pub fn activate(&mut self) {
@@ -69,6 +71,77 @@ impl Window {
         if matches!(self, Self::Toplevel { .. }) {
             self.draw_window_title(false);
         }
+    }
+
+    pub fn draw_window(&mut self) {
+        let win_w = self.base().width() as i32;
+        let win_h = self.base().height() as i32;
+
+        {
+            let mut fill_rect = |pos, size, c| {
+                self.base_mut()
+                    .fill_rectangle(pos, size, &PixelColor::to_color(c));
+            };
+
+            fill_rect(Vector2D::new(0, 0), Vector2D::new(win_w, 1), 0xc6c6c6);
+            fill_rect(Vector2D::new(1, 1), Vector2D::new(win_w - 2, 1), 0xffffff);
+            fill_rect(Vector2D::new(0, 0), Vector2D::new(1, win_h), 0xc6c6c6);
+            fill_rect(Vector2D::new(1, 1), Vector2D::new(1, win_h - 2), 0xffffff);
+            fill_rect(
+                Vector2D::new(win_w - 2, 1),
+                Vector2D::new(1, win_h - 2),
+                0x848484,
+            );
+            fill_rect(
+                Vector2D::new(win_w - 1, 0),
+                Vector2D::new(1, win_h),
+                0x000000,
+            );
+            fill_rect(
+                Vector2D::new(2, 2),
+                Vector2D::new(win_w - 4, win_h - 4),
+                0xc6c6c6,
+            );
+            fill_rect(Vector2D::new(3, 3), Vector2D::new(win_w - 6, 18), 0x000084);
+            fill_rect(
+                Vector2D::new(1, win_h - 2),
+                Vector2D::new(win_w - 2, 1),
+                0x848484,
+            );
+            fill_rect(
+                Vector2D::new(0, win_h - 1),
+                Vector2D::new(win_w, 1),
+                0x000000,
+            );
+        }
+
+        self.draw_window_title(false)
+    }
+
+    /// ウィンドウの中にテキスト描画用のスペースを描画する。
+    pub fn draw_text_box(&mut self, pos: Vector2D<i32>, size: Vector2D<i32>) {
+        let mut fill_rect = |pos, size, c| self.fill_rectangle(pos, size, &PixelColor::to_color(c));
+
+        // fill main box
+        fill_rect(
+            pos + Vector2D::new(1, 1),
+            size - Vector2D::new(2, 2),
+            0xffffff,
+        );
+
+        // draw border lines
+        fill_rect(pos, Vector2D::new(size.x(), 1), 0x848484);
+        fill_rect(pos, Vector2D::new(1, size.y()), 0x848484);
+        fill_rect(
+            pos + Vector2D::new(0, size.y()),
+            Vector2D::new(size.x(), 1),
+            0xc6c6c6,
+        );
+        fill_rect(
+            pos + Vector2D::new(size.x(), 0),
+            Vector2D::new(1, size.y()),
+            0xc6c6c6,
+        );
     }
 
     pub fn draw_window_title(&mut self, active: bool) {
@@ -395,97 +468,5 @@ impl PixelWrite for WindowBase {
 
     fn vertical_resolution(&self) -> usize {
         self.height as usize
-    }
-}
-
-impl WindowBase {
-    pub fn draw_window(&mut self, title: &str) {
-        let win_w = self.width as i32;
-        let win_h = self.height as i32;
-
-        {
-            let mut fill_rect = |pos, size, c| {
-                self.fill_rectangle(pos, size, &PixelColor::to_color(c));
-            };
-
-            fill_rect(Vector2D::new(0, 0), Vector2D::new(win_w, 1), 0xc6c6c6);
-            fill_rect(Vector2D::new(1, 1), Vector2D::new(win_w - 2, 1), 0xffffff);
-            fill_rect(Vector2D::new(0, 0), Vector2D::new(1, win_h), 0xc6c6c6);
-            fill_rect(Vector2D::new(1, 1), Vector2D::new(1, win_h - 2), 0xffffff);
-            fill_rect(
-                Vector2D::new(win_w - 2, 1),
-                Vector2D::new(1, win_h - 2),
-                0x848484,
-            );
-            fill_rect(
-                Vector2D::new(win_w - 1, 0),
-                Vector2D::new(1, win_h),
-                0x000000,
-            );
-            fill_rect(
-                Vector2D::new(2, 2),
-                Vector2D::new(win_w - 4, win_h - 4),
-                0xc6c6c6,
-            );
-            fill_rect(Vector2D::new(3, 3), Vector2D::new(win_w - 6, 18), 0x000084);
-            fill_rect(
-                Vector2D::new(1, win_h - 2),
-                Vector2D::new(win_w - 2, 1),
-                0x848484,
-            );
-            fill_rect(
-                Vector2D::new(0, win_h - 1),
-                Vector2D::new(win_w, 1),
-                0x000000,
-            );
-        }
-
-        font::write_string(
-            self,
-            Vector2D::new(24, 4),
-            title.as_bytes(),
-            &PixelColor::to_color(0xffffff),
-        );
-
-        for (y, row) in CLOSE_BUTTON.iter().enumerate() {
-            for (x, &b) in row.iter().enumerate() {
-                let c = PixelColor::to_color(match b {
-                    b'@' => 0x000000,
-                    b'$' => 0x848484,
-                    b':' => 0xc6c6c6,
-                    _ => 0xffffff,
-                });
-                self.write(
-                    Vector2D::new(win_w - 5 - (CLOSE_BUTTON_WIDTH + x) as i32, 5 + y as i32),
-                    &c,
-                )
-            }
-        }
-    }
-
-    /// ウィンドウの中にテキスト描画用のスペースを描画する。
-    pub fn draw_text_box(&mut self, pos: Vector2D<i32>, size: Vector2D<i32>) {
-        let mut fill_rect = |pos, size, c| self.fill_rectangle(pos, size, &PixelColor::to_color(c));
-
-        // fill main box
-        fill_rect(
-            pos + Vector2D::new(1, 1),
-            size - Vector2D::new(2, 2),
-            0xffffff,
-        );
-
-        // draw border lines
-        fill_rect(pos, Vector2D::new(size.x(), 1), 0x848484);
-        fill_rect(pos, Vector2D::new(1, size.y()), 0x848484);
-        fill_rect(
-            pos + Vector2D::new(0, size.y()),
-            Vector2D::new(size.x(), 1),
-            0xc6c6c6,
-        );
-        fill_rect(
-            pos + Vector2D::new(size.x(), 0),
-            Vector2D::new(1, size.y()),
-            0xc6c6c6,
-        );
     }
 }

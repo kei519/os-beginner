@@ -59,16 +59,15 @@ fn initialize_text_window() -> u32 {
         SCREEN.lock_wait().pixel_format(),
         "Text Box Test",
     );
-    window.base_mut().draw_text_box(
-        Vector2D::new(4, 24),
-        Vector2D::new(win_w as i32 - 8, win_h as i32 - 24 - 4),
-    );
+
+    let inner_size = window.size();
+    window.draw_text_box(Vector2D::new(0, 0), inner_size);
 
     let mut layer_manager = LAYER_MANAGER.lock_wait();
     let layer_id = layer_manager.new_layer(window);
     layer_manager
         .layer(layer_id)
-        .r#move(Vector2D::new(350, 200))
+        .r#move(Vector2D::new(500, 100))
         .set_draggable(true);
 
     layer_manager.up_down(layer_id, i32::MAX);
