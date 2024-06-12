@@ -17,7 +17,7 @@ bench = false
 
 [profile.dev]
 panic = "abort"
-opt-level = 3
+opt-level = 0
 overflow-checks = false
 
 [profile.release]
