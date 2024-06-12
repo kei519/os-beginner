@@ -24,7 +24,7 @@ use kernel::{
     mouse, paging, pci, printk, printkln, segment,
     task::{self, Stack},
     timer::{self, Timer, TIMER_MANAGER},
-    window::Window,
+    window::WindowBase,
     xhci::{self, XHC},
 };
 
@@ -35,7 +35,7 @@ static KERNEL_MAIN_STACK: Stack<STACK_SIZE> = Stack::new();
 fn initialize_main_window() -> u32 {
     let mut layer_manager = LAYER_MANAGER.lock_wait();
 
-    let mut main_window = Window::new(160, 52, SCREEN.lock_wait().pixel_format());
+    let mut main_window = WindowBase::new(160, 52, SCREEN.lock_wait().pixel_format());
     main_window.draw_window("Hello Window");
     let main_window_id = layer_manager.new_layer(main_window);
     layer_manager
@@ -53,7 +53,7 @@ fn initialize_text_window() -> u32 {
     let win_w = 160;
     let win_h = 52;
 
-    let mut window = Window::new(win_w, win_h, SCREEN.lock_wait().pixel_format());
+    let mut window = WindowBase::new(win_w, win_h, SCREEN.lock_wait().pixel_format());
     window.draw_window("Text Box Test");
     window.draw_text_box(
         Vector2D::new(4, 24),
@@ -72,7 +72,7 @@ fn initialize_text_window() -> u32 {
     layer_id
 }
 
-fn draw_text_cursor(visible: bool, index: i32, window: &mut Window) {
+fn draw_text_cursor(visible: bool, index: i32, window: &mut WindowBase) {
     let color = PixelColor::to_color(if visible { 0 } else { 0xffffff });
     let pos = Vector2D::new(8 + 8 * index, 24 + 5);
     window.fill_rectangle(pos, Vector2D::new(7, 15), &color);
@@ -80,7 +80,7 @@ fn draw_text_cursor(visible: bool, index: i32, window: &mut Window) {
 
 /// `task_b()` 用のウィンドウを初期化、登録しそのレイヤー ID を返す。
 fn initialize_task_b_window() -> u32 {
-    let mut window = Window::new(160, 52, FB_CONFIG.lock_wait().pixel_format);
+    let mut window = WindowBase::new(160, 52, FB_CONFIG.lock_wait().pixel_format);
     window.draw_window("TaskB Window");
 
     let mut manager = LAYER_MANAGER.lock_wait();
@@ -264,7 +264,7 @@ fn main(acpi_table: &RSDP) -> Result<()> {
     }
 }
 
-fn task_b(task_id: u64, data: i64, layer_id: u32, window: Option<&mut Window>) {
+fn task_b(task_id: u64, data: i64, layer_id: u32, window: Option<&mut WindowBase>) {
     printkln!(
         "task_b: task_id={}, data={}, layer_id={}",
         task_id,

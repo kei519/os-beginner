@@ -12,7 +12,7 @@ use crate::{
     graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, FB_CONFIG},
     layer::LAYER_MANAGER,
     sync::OnceMutex,
-    window::Window,
+    window::WindowBase,
 };
 
 /// コンソール処理を担う。
@@ -32,7 +32,7 @@ pub fn init() {
     let column_num = window_size.x() as usize / 8;
 
     let mut console_window =
-        Window::new(window_size.x() as u32, window_size.y() as u32, pixel_format);
+        WindowBase::new(window_size.x() as u32, window_size.y() as u32, pixel_format);
     console_window.fill_rectangle(Vector2D::new(0, 0), window_size, &DESKTOP_BG_COLOR);
     let console_id = layer_manager.new_layer(console_window);
     layer_manager.up_down(console_id, 1);
@@ -130,7 +130,7 @@ impl Console {
         layer_manager.draw_id(self.layer_id);
     }
 
-    fn new_line(&mut self, window: &mut Window) {
+    fn new_line(&mut self, window: &mut WindowBase) {
         self.cursor_column = 0;
 
         if self.cursor_row < self.row_num - 1 {

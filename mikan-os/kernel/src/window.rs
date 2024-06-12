@@ -10,7 +10,7 @@ use crate::{
 };
 
 /// ウィンドウを管理する構造体。
-pub struct Window {
+pub struct WindowBase {
     /// 幅。
     width: u32,
     /// 高さ。
@@ -23,7 +23,7 @@ pub struct Window {
     shadow_buffer: FrameBuffer,
 }
 
-impl Window {
+impl WindowBase {
     /// コンストラクタ。
     ///
     /// * width - ウィンドウの幅。
@@ -129,7 +129,7 @@ impl Window {
     }
 }
 
-impl PixelWrite for Window {
+impl PixelWrite for WindowBase {
     /// 保持しているバッファ内に書き込みを行う。
     ///
     /// # Remarks
@@ -177,7 +177,7 @@ const CLOSE_BUTTON: [&[u8; CLOSE_BUTTON_WIDTH]; CLOSE_BUTTON_HEIGHT] = [
     b"@@@@@@@@@@@@@@@@",
 ];
 
-impl Window {
+impl WindowBase {
     pub fn draw_window(&mut self, title: &str) {
         let win_w = self.width as i32;
         let win_h = self.height as i32;

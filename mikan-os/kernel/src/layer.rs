@@ -6,7 +6,7 @@ use crate::{
     graphics::{self, PixelWrite as _, Rectangle, Vector2D, FB_CONFIG},
     message::LayerOperation,
     sync::OnceMutex,
-    window::Window,
+    window::WindowBase,
 };
 
 pub static LAYER_MANAGER: OnceMutex<LayerManager> = OnceMutex::new();
@@ -35,7 +35,7 @@ pub fn init() {
 
     let mut layer_manager = LayerManager::new(&SCREEN);
 
-    let bgwindow = Window::new(frame_width, frame_height, pixel_format);
+    let bgwindow = WindowBase::new(frame_width, frame_height, pixel_format);
     let bglayer_id = layer_manager.new_layer(bgwindow);
     graphics::draw_desktop(layer_manager.layer(bglayer_id).window_mut());
     layer_manager.up_down(bglayer_id, 0);
@@ -113,7 +113,7 @@ impl LayerManager {
     /// 新しいレイヤーを作成し、そのレイヤーの ID を返す。
     ///
     /// * window - 生成するレイヤーに紐づけるウィンドウ。
-    pub fn new_layer(&mut self, window: Window) -> u32 {
+    pub fn new_layer(&mut self, window: WindowBase) -> u32 {
         self.latest_id += 1;
         self.layers.insert(self.latest_id, Layer::new(window));
         self.latest_id
@@ -298,7 +298,7 @@ pub struct Layer {
     /// 位置。
     pos: Vector2D<i32>,
     /// 設定されているウィンドウ。
-    window: Window,
+    window: WindowBase,
     /// ドラッグ可能かどうかを表すフラグ。
     /// デフォルトは `false`。
     dragable: bool,
@@ -308,7 +308,7 @@ impl Layer {
     /// コンストラクタ。
     ///
     /// * window - 紐づけるウィンドウ。
-    pub fn new(window: Window) -> Self {
+    pub fn new(window: WindowBase) -> Self {
         Self {
             window,
             pos: Default::default(),
@@ -317,12 +317,12 @@ impl Layer {
     }
 
     /// 紐づいているウィンドウへの排他参照を返す。
-    pub fn window_mut(&mut self) -> &mut Window {
+    pub fn window_mut(&mut self) -> &mut WindowBase {
         &mut self.window
     }
 
     /// 紐づいているウィンドウへの共有参照を返す。
-    pub fn window(&self) -> &Window {
+    pub fn window(&self) -> &WindowBase {
         &self.window
     }
 

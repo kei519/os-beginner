@@ -5,13 +5,13 @@ use crate::{
     graphics::{PixelColor, PixelWrite, Vector2D},
     layer::{LAYER_MANAGER, SCREEN},
     usb::HIDMouseDriver,
-    window::Window,
+    window::WindowBase,
 };
 
 pub static MOUSE_LAYER_ID: AtomicU32 = AtomicU32::new(0);
 
 pub fn init() {
-    let mut mouse_window = Window::new(
+    let mut mouse_window = WindowBase::new(
         MOUSE_CURSOR_WIDTH as u32,
         MOUSE_CURSOR_HEIGHT as u32,
         SCREEN.lock_wait().pixel_format(),

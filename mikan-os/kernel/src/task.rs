@@ -15,7 +15,7 @@ use crate::{
     segment::{KERNEL_CS, KERNEL_SS},
     sync::Mutex,
     timer::{Timer, TASK_TIMER_PERIOD, TASK_TIMER_VALUE, TIMER_MANAGER},
-    window::Window,
+    window::WindowBase,
 };
 
 /// [OnceMutex] や [Mutex] で持ちたいが、ロックを取得してからコンテキストスイッチをすると
@@ -32,7 +32,7 @@ static mut TASK_MANAGER: TaskManager = TaskManager::new();
 /// * task_id
 /// * data
 /// * layer_id - Window がない場合は `0`。
-pub type TaskFunc = fn(u64, i64, u32, Option<&mut Window>);
+pub type TaskFunc = fn(u64, i64, u32, Option<&mut WindowBase>);
 
 pub fn init() {
     unsafe {
@@ -472,7 +472,7 @@ impl Default for TaskManager {
     }
 }
 
-fn task_idle(_: u64, _: i64, _: u32, _: Option<&mut Window>) {
+fn task_idle(_: u64, _: i64, _: u32, _: Option<&mut WindowBase>) {
     loop {
         unsafe { asm!("hlt") };
     }
