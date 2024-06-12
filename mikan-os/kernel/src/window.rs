@@ -11,6 +11,26 @@ use crate::{
     logger::LogLevel,
 };
 
+const CLOSE_BUTTON_WIDTH: usize = 16;
+const CLOSE_BUTTON_HEIGHT: usize = 14;
+
+const CLOSE_BUTTON: [&[u8; CLOSE_BUTTON_WIDTH]; CLOSE_BUTTON_HEIGHT] = [
+    b"...............@",
+    b".:::::::::::::$@",
+    b".:::::::::::::$@",
+    b".:::@@::::@@::$@",
+    b".::::@@::@@:::$@",
+    b".::::::@@:::::$@",
+    b".::::::@@:::::$@",
+    b".::::@@::@@:::$@",
+    b".:::@@::::@@::$@",
+    b".:::::::::::::$@",
+    b".:::::::::::::$@",
+    b".:::::::::::::$@",
+    b".$$$$$$$$$$$$$$@",
+    b"@@@@@@@@@@@@@@@@",
+];
+
 pub enum Window {
     Base(WindowBase),
     Toplevel { base: WindowBase, title: String },
@@ -383,26 +403,6 @@ impl PixelWrite for WindowBase {
         self.height as usize
     }
 }
-
-const CLOSE_BUTTON_WIDTH: usize = 16;
-const CLOSE_BUTTON_HEIGHT: usize = 14;
-
-const CLOSE_BUTTON: [&[u8; CLOSE_BUTTON_WIDTH]; CLOSE_BUTTON_HEIGHT] = [
-    b"...............@",
-    b".:::::::::::::$@",
-    b".:::::::::::::$@",
-    b".:::@@::::@@::$@",
-    b".::::@@::@@:::$@",
-    b".::::::@@:::::$@",
-    b".::::::@@:::::$@",
-    b".::::@@::@@:::$@",
-    b".:::@@::::@@::$@",
-    b".:::::::::::::$@",
-    b".:::::::::::::$@",
-    b".:::::::::::::$@",
-    b".$$$$$$$$$$$$$$@",
-    b"@@@@@@@@@@@@@@@@",
-];
 
 impl WindowBase {
     pub fn draw_window(&mut self, title: &str) {
