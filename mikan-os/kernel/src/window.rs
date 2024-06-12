@@ -227,29 +227,23 @@ impl PixelWrite for Window {
             Self::Base(base) => base.frame_buffer(),
             Self::Toplevel { base, .. } => {
                 base.frame_buffer()
-                    + Self::TOP_LEFT_MARGIN.y() as usize * base.pixels_per_scan_line()
-                    + Self::TOP_LEFT_MARGIN.x() as usize
+                    + (Self::TOP_LEFT_MARGIN.y() as usize * base.pixels_per_scan_line()
+                        + Self::TOP_LEFT_MARGIN.x() as usize)
+                        * 8
             }
         }
     }
 
     fn pixels_per_scan_line(&self) -> usize {
-        match self {
-            Self::Base(base) => base.pixels_per_scan_line(),
-            Self::Toplevel { base, .. } => {
-                base.pixels_per_scan_line()
-                    - Self::TOP_LEFT_MARGIN.x() as usize
-                    - Self::BOTTOM_RIGHT_MARGIN.x() as usize
-            }
-        }
+        self.base().pixels_per_scan_line()
     }
 
     fn horizontal_resolution(&self) -> usize {
-        self.size().y() as _
+        self.size().x() as _
     }
 
     fn vertical_resolution(&self) -> usize {
-        self.size().x() as _
+        self.size().y() as _
     }
 }
 

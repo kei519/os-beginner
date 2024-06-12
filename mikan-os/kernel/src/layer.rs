@@ -6,7 +6,7 @@ use crate::{
     graphics::{self, PixelWrite as _, Rectangle, Vector2D, FB_CONFIG},
     message::LayerOperation,
     sync::OnceMutex,
-    window::WindowBase,
+    window::Window,
 };
 
 pub static LAYER_MANAGER: OnceMutex<LayerManager> = OnceMutex::new();
@@ -35,7 +35,7 @@ pub fn init() {
 
     let mut layer_manager = LayerManager::new(&SCREEN);
 
-    let bgwindow = WindowBase::new(frame_width, frame_height, pixel_format);
+    let bgwindow = Window::new_base(frame_width, frame_height, pixel_format);
     let bglayer_id = layer_manager.new_layer(bgwindow);
     graphics::draw_desktop(layer_manager.layer(bglayer_id).window_mut());
     layer_manager.up_down(bglayer_id, 0);
@@ -113,7 +113,7 @@ impl LayerManager {
     /// 新しいレイヤーを作成し、そのレイヤーの ID を返す。
     ///
     /// * window - 生成するレイヤーに紐づけるウィンドウ。
-    pub fn new_layer(&mut self, window: WindowBase) -> u32 {
+    pub fn new_layer(&mut self, window: Window) -> u32 {
         self.latest_id += 1;
         self.layers.insert(self.latest_id, Layer::new(window));
         self.latest_id
@@ -135,7 +135,7 @@ impl LayerManager {
     /// 有効な ID を指定していない場合は `panic` する。
     pub fn r#move(&mut self, id: u32, new_position: Vector2D<i32>) {
         let layer = self.layer(id);
-        let window_size = layer.window().size();
+        let window_size = layer.window().base().size();
         let old_pos = layer.pos;
 
         layer.r#move(new_position);
@@ -156,7 +156,7 @@ impl LayerManager {
     /// 有効な ID を指定していない場合は `panic` する。
     pub fn move_relative(&mut self, id: u32, pos_diff: Vector2D<i32>) {
         let layer = self.find_layer_mut(id).unwrap();
-        let window_size = layer.window().size();
+        let window_size = layer.window().base().size();
         let old_pos = layer.pos;
         layer.move_relative(pos_diff);
 
@@ -194,7 +194,7 @@ impl LayerManager {
         // 借用の問題で、最初に指定領域を用意しておく
         let area = Rectangle {
             pos: self.layer(id).pos,
-            size: self.layer(id).window().size(),
+            size: self.layer(id).window().base().size(),
         };
 
         for layer_id in &self.layer_stack {
@@ -279,7 +279,7 @@ impl LayerManager {
             }
             let layer = &self.layers[&id];
             let win_pos = layer.pos();
-            let win_end_pos = win_pos + layer.window().size();
+            let win_end_pos = win_pos + layer.window().base().size();
 
             if (win_pos.x() <= pos.x() && pos.x() < win_end_pos.x())
                 && (win_pos.y() <= pos.y() && pos.y() < win_end_pos.y())
@@ -298,7 +298,7 @@ pub struct Layer {
     /// 位置。
     pos: Vector2D<i32>,
     /// 設定されているウィンドウ。
-    window: WindowBase,
+    window: Window,
     /// ドラッグ可能かどうかを表すフラグ。
     /// デフォルトは `false`。
     dragable: bool,
@@ -308,7 +308,7 @@ impl Layer {
     /// コンストラクタ。
     ///
     /// * window - 紐づけるウィンドウ。
-    pub fn new(window: WindowBase) -> Self {
+    pub fn new(window: Window) -> Self {
         Self {
             window,
             pos: Default::default(),
@@ -317,12 +317,12 @@ impl Layer {
     }
 
     /// 紐づいているウィンドウへの排他参照を返す。
-    pub fn window_mut(&mut self) -> &mut WindowBase {
+    pub fn window_mut(&mut self) -> &mut Window {
         &mut self.window
     }
 
     /// 紐づいているウィンドウへの共有参照を返す。
-    pub fn window(&self) -> &WindowBase {
+    pub fn window(&self) -> &Window {
         &self.window
     }
 
@@ -345,7 +345,7 @@ impl Layer {
 
     /// レイヤーを設定された位置に描画する。
     pub fn draw_to(&mut self, screen: &mut FrameBuffer, area: &Rectangle<i32>) {
-        self.window.draw_to(screen, self.pos, area);
+        self.window.base_mut().draw_to(screen, self.pos, area);
     }
 
     /// ドラッグ可能かどうかを設定する。

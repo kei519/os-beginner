@@ -24,7 +24,7 @@ use kernel::{
     mouse, paging, pci, printk, printkln, segment,
     task::{self, Stack},
     timer::{self, Timer, TIMER_MANAGER},
-    window::WindowBase,
+    window::Window,
     xhci::{self, XHC},
 };
 
@@ -35,8 +35,8 @@ static KERNEL_MAIN_STACK: Stack<STACK_SIZE> = Stack::new();
 fn initialize_main_window() -> u32 {
     let mut layer_manager = LAYER_MANAGER.lock_wait();
 
-    let mut main_window = WindowBase::new(160, 52, SCREEN.lock_wait().pixel_format());
-    main_window.draw_window("Hello Window");
+    let main_window =
+        Window::new_toplevel(160, 52, SCREEN.lock_wait().pixel_format(), "Hello Window");
     let main_window_id = layer_manager.new_layer(main_window);
     layer_manager
         .layer(main_window_id)
@@ -53,9 +53,13 @@ fn initialize_text_window() -> u32 {
     let win_w = 160;
     let win_h = 52;
 
-    let mut window = WindowBase::new(win_w, win_h, SCREEN.lock_wait().pixel_format());
-    window.draw_window("Text Box Test");
-    window.draw_text_box(
+    let mut window = Window::new_toplevel(
+        win_w,
+        win_h,
+        SCREEN.lock_wait().pixel_format(),
+        "Text Box Test",
+    );
+    window.base_mut().draw_text_box(
         Vector2D::new(4, 24),
         Vector2D::new(win_w as i32 - 8, win_h as i32 - 24 - 4),
     );
@@ -72,16 +76,15 @@ fn initialize_text_window() -> u32 {
     layer_id
 }
 
-fn draw_text_cursor(visible: bool, index: i32, window: &mut WindowBase) {
+fn draw_text_cursor(visible: bool, index: i32, window: &mut Window) {
     let color = PixelColor::to_color(if visible { 0 } else { 0xffffff });
-    let pos = Vector2D::new(8 + 8 * index, 24 + 5);
+    let pos = Vector2D::new(4 + 8 * index, 5);
     window.fill_rectangle(pos, Vector2D::new(7, 15), &color);
 }
 
 /// `task_b()` 用のウィンドウを初期化、登録しそのレイヤー ID を返す。
 fn initialize_task_b_window() -> u32 {
-    let mut window = WindowBase::new(160, 52, FB_CONFIG.lock_wait().pixel_format);
-    window.draw_window("TaskB Window");
+    let window = Window::new_toplevel(160, 52, FB_CONFIG.lock_wait().pixel_format, "TaskB Window");
 
     let mut manager = LAYER_MANAGER.lock_wait();
     let id = manager.new_layer(window);
@@ -162,13 +165,13 @@ fn main(acpi_table: &RSDP) -> Result<()> {
             let mut layer_manager = LAYER_MANAGER.lock_wait();
             let window = layer_manager.layer(main_window_id).window_mut();
             window.fill_rectangle(
-                Vector2D::new(24, 28),
+                Vector2D::new(20, 4),
                 Vector2D::new(8 * 10, 16),
                 &PixelColor::new(0xc6, 0xc6, 0xc6),
             );
             font::write_string(
                 window,
-                Vector2D::new(24, 28),
+                Vector2D::new(20, 4),
                 format!("{:010}", tick).as_bytes(),
                 &PixelColor::new(0, 0, 0),
             );
@@ -219,12 +222,12 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                         break 'input_text_window;
                     }
 
-                    let pos = |index| Vector2D::new(8 + 8 * index, 24 + 6);
+                    let pos = |index| Vector2D::new(4 + 8 * index, 6);
 
                     let mut manager = LAYER_MANAGER.lock_wait();
                     let window = manager.layer(text_window_id).window_mut();
 
-                    let max_chars = (window.width() as i32 - 16) / 8;
+                    let max_chars = (window.width() as i32 - 8) / 8;
                     if ascii == 0x08 && text_window_index > 0 {
                         draw_text_cursor(false, text_window_index, window);
                         text_window_index -= 1;
@@ -264,7 +267,7 @@ fn main(acpi_table: &RSDP) -> Result<()> {
     }
 }
 
-fn task_b(task_id: u64, data: i64, layer_id: u32, window: Option<&mut WindowBase>) {
+fn task_b(task_id: u64, data: i64, layer_id: u32, window: Option<&mut Window>) {
     printkln!(
         "task_b: task_id={}, data={}, layer_id={}",
         task_id,
@@ -281,13 +284,13 @@ fn task_b(task_id: u64, data: i64, layer_id: u32, window: Option<&mut WindowBase
     loop {
         count += 1;
         window.fill_rectangle(
-            Vector2D::new(24, 28),
+            Vector2D::new(20, 4),
             Vector2D::new(8 * 10, 16),
             &PixelColor::to_color(0xc6c6c6),
         );
         font::write_string(
             window,
-            Vector2D::new(24, 28),
+            Vector2D::new(20, 4),
             format!("{:010}", count).as_bytes(),
             &PixelColor::to_color(0),
         );
