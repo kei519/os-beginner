@@ -446,3 +446,46 @@ impl<T> Drop for WriteGuard<'_, T> {
         self.counter.store(0, Release);
     }
 }
+
+pub struct SharedLock<T> {
+    data: UnsafeCell<T>,
+    /// ブール変数で十分だが、[WriteGuard] を流用するために [AtomicIsize] にしている。
+    write_count: AtomicIsize,
+    /// 必要ないが、[WriteGuard] を流用するために [AtomicIsize] にしている。
+    read_count: AtomicIsize,
+}
+
+unsafe impl<T: Send + Sync> Sync for SharedLock<T> {}
+
+impl<T> SharedLock<T> {
+    pub const fn new(value: T) -> Self {
+        Self {
+            data: UnsafeCell::new(value),
+            write_count: AtomicIsize::new(0),
+            read_count: AtomicIsize::new(0),
+        }
+    }
+
+    pub fn write(&self) -> WriteGuard<'_, T> {
+        if self
+            .write_count
+            .compare_exchange_weak(UNUSED, -1, Acquire, Relaxed)
+            .is_err()
+        {
+            spin_loop();
+        }
+
+        WriteGuard {
+            data: unsafe { &mut *self.data.get() },
+            counter: &self.write_count,
+        }
+    }
+
+    pub fn read(&self) -> ReadGuard<'_, T> {
+        self.read_count.fetch_add(1, Relaxed);
+        ReadGuard {
+            data: unsafe { &*self.data.get() },
+            counter: &self.read_count,
+        }
+    }
+}
