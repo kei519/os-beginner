@@ -34,6 +34,15 @@ args = [
 ]
 dependencies = ["build", "check-ovmf_vars"]
 
+[tasks.test]
+command = "${DEVENV_DIR}/run_qemu.sh"
+args = [
+    "mikan-loader/target/x86_64-unknown-uefi/debug/mikan-loader.efi",
+    "kernel/target/x86_64-unknown-none/debug/kernel",
+]
+dependencies = ["debug-build", "check-ovmf_vars"]
+
+
 [tasks.check-ovmf_vars]
 script='''
 #!/bin/bash
