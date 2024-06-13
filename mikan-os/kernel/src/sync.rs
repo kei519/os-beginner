@@ -88,7 +88,7 @@ impl<T> OnceMutex<T> {
             false
         } else {
             unsafe { (*self.data.get()).write(value) };
-            self.is_initialized.store(true, Release);
+            self.is_initialized.store(true, Relaxed);
             true
         };
 
