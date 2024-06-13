@@ -27,6 +27,7 @@ pub mod sync;
 pub mod task;
 pub mod timer;
 pub mod usb;
+pub mod util;
 pub mod window;
 pub mod x86_descriptor;
 pub mod xhci;
