@@ -17,7 +17,7 @@ pub struct FrameBuffer {
     /// バッファ。
     _buffer: Box<[u8]>,
     /// ライター。
-    writer: Box<dyn PixelWrite + Send>,
+    writer: Box<dyn PixelWrite + Send + Sync>,
 }
 
 impl FrameBuffer {
@@ -54,7 +54,7 @@ impl FrameBuffer {
         };
 
         let pixel_format = config.pixel_format;
-        let writer: Box<dyn PixelWrite + Send> = match config.pixel_format {
+        let writer: Box<dyn PixelWrite + Send + Sync> = match config.pixel_format {
             PixelFormat::Rgb => Box::new(RgbResv8BitPerColorPixelWriter::new(config)),
             PixelFormat::Bgr => Box::new(BgrResv8BitPerColorPixelWriter::new(config)),
         };

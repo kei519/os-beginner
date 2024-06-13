@@ -1,11 +1,11 @@
-use alloc::{collections::BTreeMap, vec::Vec};
+use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 
 use crate::{
     frame_buffer::FrameBuffer,
     frame_buffer_config::{FrameBufferConfig, PixelFormat},
     graphics::{self, PixelWrite as _, Rectangle, Vector2D, FB_CONFIG},
     message::LayerOperation,
-    sync::OnceMutex,
+    sync::{OnceMutex, SharedLock},
     window::Window,
 };
 
@@ -37,7 +37,7 @@ pub fn init() {
 
     let bgwindow = Window::new_base(frame_width, frame_height, pixel_format);
     let bglayer_id = layer_manager.new_layer(bgwindow);
-    graphics::draw_desktop(layer_manager.layer(bglayer_id).window_mut());
+    graphics::draw_desktop(&mut *layer_manager.layer(bglayer_id).window().write());
     layer_manager.up_down(bglayer_id, 0);
 
     LAYER_MANAGER.init(layer_manager);
@@ -141,7 +141,7 @@ impl LayerManager {
     /// 有効な ID を指定していない場合は `panic` する。
     pub fn r#move(&mut self, id: u32, new_position: Vector2D<i32>) {
         let layer = self.layer(id);
-        let window_size = layer.window().base().size();
+        let window_size = layer.window().read().base().size();
         let old_pos = layer.pos;
 
         layer.r#move(new_position);
@@ -162,7 +162,7 @@ impl LayerManager {
     /// 有効な ID を指定していない場合は `panic` する。
     pub fn move_relative(&mut self, id: u32, pos_diff: Vector2D<i32>) {
         let layer = self.find_layer_mut(id).unwrap();
-        let window_size = layer.window().base().size();
+        let window_size = layer.window().read().base().size();
         let old_pos = layer.pos;
         layer.move_relative(pos_diff);
 
@@ -200,7 +200,7 @@ impl LayerManager {
         // 借用の問題で、最初に指定領域を用意しておく
         let area = Rectangle {
             pos: self.layer(id).pos,
-            size: self.layer(id).window().base().size(),
+            size: self.layer(id).window().read().base().size(),
         };
 
         for layer_id in &self.layer_stack {
@@ -285,7 +285,7 @@ impl LayerManager {
             }
             let layer = &self.layers[&id];
             let win_pos = layer.pos();
-            let win_end_pos = win_pos + layer.window().base().size();
+            let win_end_pos = win_pos + layer.window().read().base().size();
 
             if (win_pos.x() <= pos.x() && pos.x() < win_end_pos.x())
                 && (win_pos.y() <= pos.y() && pos.y() < win_end_pos.y())
@@ -327,13 +327,13 @@ impl LayerManager {
         }
 
         if self.active_layer > 0 {
-            self.layer(self.active_layer).window_mut().deactivate();
+            self.layer(self.active_layer).window().write().deactivate();
             self.draw_id(self.active_layer);
         }
 
         self.active_layer = id;
         if id > 0 {
-            self.layer(id).window_mut().activate();
+            self.layer(id).window().write().activate();
             self.up_down(id, self.get_height(self.mouse_layer) - 1);
             self.draw_id(id);
         }
@@ -345,7 +345,7 @@ pub struct Layer {
     /// 位置。
     pos: Vector2D<i32>,
     /// 設定されているウィンドウ。
-    window: Window,
+    window: Arc<SharedLock<Window>>,
     /// ドラッグ可能かどうかを表すフラグ。
     /// デフォルトは `false`。
     dragable: bool,
@@ -357,20 +357,15 @@ impl Layer {
     /// * window - 紐づけるウィンドウ。
     pub fn new(window: Window) -> Self {
         Self {
-            window,
+            window: Arc::new(SharedLock::new(window)),
             pos: Default::default(),
             dragable: false,
         }
     }
 
-    /// 紐づいているウィンドウへの排他参照を返す。
-    pub fn window_mut(&mut self) -> &mut Window {
-        &mut self.window
-    }
-
-    /// 紐づいているウィンドウへの共有参照を返す。
-    pub fn window(&self) -> &Window {
-        &self.window
+    /// 紐づいているウィンドウを返す。
+    pub fn window(&self) -> Arc<SharedLock<Window>> {
+        self.window.clone()
     }
 
     /// レイヤーの場所を返す。
@@ -392,7 +387,7 @@ impl Layer {
 
     /// レイヤーを設定された位置に描画する。
     pub fn draw_to(&self, screen: &mut FrameBuffer, area: &Rectangle<i32>) {
-        self.window.base().draw_to(screen, self.pos, area);
+        self.window.read().base().draw_to(screen, self.pos, area);
     }
 
     /// ドラッグ可能かどうかを設定する。

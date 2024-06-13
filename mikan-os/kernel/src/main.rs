@@ -168,14 +168,14 @@ fn main(acpi_table: &RSDP) -> Result<()> {
         let tick = TIMER_MANAGER.lock_wait().current_tick();
         let active = {
             let mut layer_manager = LAYER_MANAGER.lock_wait();
-            let window = layer_manager.layer(main_window_id).window_mut();
-            window.fill_rectangle(
+            let window = layer_manager.layer(main_window_id).window();
+            window.write().fill_rectangle(
                 Vector2D::new(20, 4),
                 Vector2D::new(8 * 10, 16),
                 &PixelColor::new(0xc6, 0xc6, 0xc6),
             );
             font::write_string(
-                window,
+                &mut *window.write(),
                 Vector2D::new(20, 4),
                 format!("{:010}", tick).as_bytes(),
                 &PixelColor::new(0, 0, 0),
@@ -216,7 +216,7 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                     draw_text_cursor(
                         textbox_cursor_visible,
                         text_window_index,
-                        layer_manager.layer(text_window_id).window_mut(),
+                        &mut layer_manager.layer(text_window_id).window().write(),
                     );
                     layer_manager.draw_id(text_window_id);
                 }
@@ -232,28 +232,29 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                         let pos = |index| Vector2D::new(4 + 8 * index, 6);
 
                         let mut manager = LAYER_MANAGER.lock_wait();
-                        let window = manager.layer(text_window_id).window_mut();
+                        let window = manager.layer(text_window_id).window();
+                        let mut window = window.write();
 
                         let max_chars = (window.width() as i32 - 8) / 8 - 1;
                         if ascii == 0x08 && text_window_index > 0 {
-                            draw_text_cursor(false, text_window_index, window);
+                            draw_text_cursor(false, text_window_index, &mut window);
                             text_window_index -= 1;
                             window.fill_rectangle(
                                 pos(text_window_index),
                                 Vector2D::new(8, 16),
                                 &PixelColor::to_color(0xffffff),
                             );
-                            draw_text_cursor(true, text_window_index, window);
+                            draw_text_cursor(true, text_window_index, &mut window);
                         } else if ascii >= b' ' && text_window_index < max_chars {
-                            draw_text_cursor(false, text_window_index, window);
+                            draw_text_cursor(false, text_window_index, &mut window);
                             font::write_ascii(
-                                window,
+                                &mut *window,
                                 pos(text_window_index),
                                 ascii,
                                 &PixelColor::to_color(0),
                             );
                             text_window_index += 1;
-                            draw_text_cursor(true, text_window_index, window);
+                            draw_text_cursor(true, text_window_index, &mut window);
                         }
                         manager.draw_id(text_window_id);
                     }
@@ -281,14 +282,14 @@ fn main(acpi_table: &RSDP) -> Result<()> {
     }
 }
 
-fn task_b(task_id: u64, data: i64, layer_id: u32, window: Option<&mut Window>) {
+fn task_b(task_id: u64, data: i64, layer_id: u32) {
     printkln!(
         "task_b: task_id={}, data={}, layer_id={}",
         task_id,
         data,
         layer_id
     );
-    let window = window.unwrap();
+    let window = LAYER_MANAGER.lock_wait().layer(layer_id).window();
 
     cli();
     let task = task::current_task();
@@ -297,13 +298,14 @@ fn task_b(task_id: u64, data: i64, layer_id: u32, window: Option<&mut Window>) {
     let mut count = 0;
     loop {
         count += 1;
+        let mut window = window.write();
         window.fill_rectangle(
             Vector2D::new(20, 4),
             Vector2D::new(8 * 10, 16),
             &PixelColor::to_color(0xc6c6c6),
         );
         font::write_string(
-            window,
+            &mut *window,
             Vector2D::new(20, 4),
             format!("{:010}", count).as_bytes(),
             &PixelColor::to_color(0),

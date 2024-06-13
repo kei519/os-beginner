@@ -9,13 +9,11 @@ use alloc::{boxed::Box, collections::VecDeque, sync::Arc, vec, vec::Vec};
 use crate::{
     asmfunc,
     error::{Code, Result},
-    layer::LAYER_MANAGER,
     make_error,
     message::Message,
     segment::{KERNEL_CS, KERNEL_SS},
     sync::Mutex,
     timer::{Timer, TASK_TIMER_PERIOD, TASK_TIMER_VALUE, TIMER_MANAGER},
-    window::Window,
 };
 
 /// [OnceMutex] や [Mutex] で持ちたいが、ロックを取得してからコンテキストスイッチをすると
@@ -32,7 +30,7 @@ static mut TASK_MANAGER: TaskManager = TaskManager::new();
 /// * task_id
 /// * data
 /// * layer_id - Window がない場合は `0`。
-pub type TaskFunc = fn(u64, i64, u32, Option<&mut Window>);
+pub type TaskFunc = fn(u64, i64, u32);
 
 pub fn init() {
     unsafe {
@@ -207,13 +205,6 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
         self.context.rdi = self.id;
         self.context.rsi = data as u64;
         self.context.rdx = layer_id as u64;
-
-        let window_ptr = if layer_id == 0 {
-            0
-        } else {
-            LAYER_MANAGER.lock_wait().layer(layer_id).window() as *const _ as u64
-        };
-        self.context.rcx = window_ptr;
 
         // MXCSR のすべての例外をマスクする
         unsafe { *(self.context.fxsafe_area.as_mut_ptr().add(24) as *mut u32) = 0x1f80 };
@@ -472,7 +463,7 @@ impl Default for TaskManager {
     }
 }
 
-fn task_idle(_: u64, _: i64, _: u32, _: Option<&mut Window>) {
+fn task_idle(_: u64, _: i64, _: u32) {
     loop {
         unsafe { asm!("hlt") };
     }

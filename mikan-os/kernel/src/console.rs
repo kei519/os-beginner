@@ -114,14 +114,14 @@ impl Console {
 
     pub fn put_string(&mut self, s: &[u8]) {
         let mut layer_manager = LAYER_MANAGER.lock_wait();
-        let window = layer_manager.layer(self.layer_id).window_mut();
+        let window = layer_manager.layer(self.layer_id).window();
 
         for &c in s {
             if c == b'\n' {
-                self.new_line(window);
+                self.new_line(&mut window.write());
             } else if self.cursor_column < self.column_num - 1 {
                 let pos = Vector2D::new(8 * self.cursor_column as i32, 16 * self.cursor_row as i32);
-                write_ascii(window, pos, c, self.fg_color);
+                write_ascii(&mut *window.write(), pos, c, self.fg_color);
                 self.buffer[self.cursor_row * self.column_num + self.cursor_column] = c;
                 self.cursor_column += 1;
             }
