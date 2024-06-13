@@ -1,7 +1,9 @@
+#[cfg(feature = "not-check")]
 use cmake::Config;
 
 fn main() {
-    if cfg!(feature = "not-check") {
+    #[cfg(feature = "not-check")]
+    {
         let dst = Config::new("./")
             .define("CMAKE_C_COMPILER", "clang")
             .define("CMAKE_CXX_COMPILER", "clang++")
