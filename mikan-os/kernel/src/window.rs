@@ -236,8 +236,8 @@ impl Window {
     /// * writer - 描画に用いるライター。
     /// * position - 描画する位置。
     /// * area - 転送する領域。
-    pub fn draw_to(&mut self, dst: &mut FrameBuffer, pos: Vector2D<i32>, area: &Rectangle<i32>) {
-        self.base_mut().draw_to(dst, pos, area)
+    pub fn draw_to(&self, dst: &mut FrameBuffer, pos: Vector2D<i32>, area: &Rectangle<i32>) {
+        self.base().draw_to(dst, pos, area)
     }
 
     pub fn r#move(&mut self, dst_pos: Vector2D<i32>, src: &Rectangle<i32>) {
@@ -251,7 +251,7 @@ impl Window {
 
     /// 指定された位置のピクセルへの排他参照を返す。
     pub fn at(&mut self, pos: Vector2D<i32>) -> &mut PixelColor {
-        self.base_mut().at(pos)
+        self.base_mut().at_mut(pos)
     }
 }
 
@@ -374,7 +374,7 @@ impl WindowBase {
     /// * writer - 描画に用いるライター。
     /// * position - 描画する位置。
     /// * area - 転送する領域。
-    pub fn draw_to(&mut self, dst: &mut FrameBuffer, pos: Vector2D<i32>, area: &Rectangle<i32>) {
+    pub fn draw_to(&self, dst: &mut FrameBuffer, pos: Vector2D<i32>, area: &Rectangle<i32>) {
         // 自身の領域
         let window_area = Rectangle {
             pos,
@@ -430,8 +430,13 @@ impl WindowBase {
         self.transparent_color = c;
     }
 
+    /// 指定された位置のピクセルへの共有参照を返す。
+    pub fn at(&self, pos: Vector2D<i32>) -> &PixelColor {
+        &self.data[(pos.y() * self.width as i32 + pos.x()) as usize]
+    }
+
     /// 指定された位置のピクセルへの排他参照を返す。
-    pub fn at(&mut self, pos: Vector2D<i32>) -> &mut PixelColor {
+    pub fn at_mut(&mut self, pos: Vector2D<i32>) -> &mut PixelColor {
         &mut self.data[(pos.y() * self.width as i32 + pos.x()) as usize]
     }
 
@@ -450,7 +455,7 @@ impl PixelWrite for WindowBase {
     ///
     /// 描画が必要な場合は `Window::draw_to()` を呼ぶこと。
     fn write(&mut self, pos: Vector2D<i32>, color: &PixelColor) {
-        *self.at(pos) = *color;
+        *self.at_mut(pos) = *color;
         self.shadow_buffer.write(pos, color);
     }
 

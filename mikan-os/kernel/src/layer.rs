@@ -391,8 +391,8 @@ impl Layer {
     }
 
     /// レイヤーを設定された位置に描画する。
-    pub fn draw_to(&mut self, screen: &mut FrameBuffer, area: &Rectangle<i32>) {
-        self.window.base_mut().draw_to(screen, self.pos, area);
+    pub fn draw_to(&self, screen: &mut FrameBuffer, area: &Rectangle<i32>) {
+        self.window.base().draw_to(screen, self.pos, area);
     }
 
     /// ドラッグ可能かどうかを設定する。
