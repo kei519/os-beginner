@@ -9,10 +9,10 @@ use crate::{
     log,
     logger::LogLevel,
     make_error,
-    sync::OnceMutex,
+    util::OnceStatic,
 };
 
-pub static FADT: OnceMutex<&'static FADT> = OnceMutex::new();
+pub static FADT: OnceStatic<&'static FADT> = OnceStatic::new();
 
 const PM_TIMER_FREQ: u32 = 3579545;
 
@@ -44,19 +44,23 @@ impl RSDP {
             return Err(make_error!(Code::InvalidFormat));
         }
 
+        let mut fadt = None;
         for i in 0..xsdt.count() {
             let entry = &xsdt[i];
             if entry.is_valid(b"FACP") {
                 #[allow(invalid_reference_casting)]
-                FADT.init(unsafe { &*(entry as *const _ as *const FADT) });
+                {
+                    fadt = Some(unsafe { &*(entry as *const _ as *const FADT) });
+                }
                 break;
             }
         }
 
-        if !FADT.is_initialized() {
+        if fadt.is_none() {
             log!(LogLevel::Error, "FADT is not found");
             return Err(make_error!(Code::InvalidFormat));
         }
+        FADT.init(fadt.unwrap());
 
         Ok(())
     }
@@ -197,7 +201,7 @@ impl FADT {
 
 /// `msec` ミリ秒待機する。
 pub fn wait_milli_seconds(msec: u64) {
-    let fadt = FADT.lock_wait();
+    let fadt = FADT.get();
     let pm_timer_32 = fadt.flags().get_bit(8);
     let pm_tmr_blk = fadt.pm_tmr_blk() as u16;
 
