@@ -88,7 +88,7 @@ impl<T> OnceMutex<T> {
             false
         } else {
             unsafe { (*self.data.get()).write(value) };
-            self.is_initialized.store(true, Relaxed);
+            self.is_initialized.store(true, Release);
             true
         };
 
@@ -131,6 +131,14 @@ impl<T> OnceMutex<T> {
             Some(self.lock_wait())
         } else {
             None
+        }
+    }
+}
+
+impl<T> Drop for OnceMutex<T> {
+    fn drop(&mut self) {
+        if self.is_initialized.load(Acquire) {
+            unsafe { (*self.data.get()).assume_init_drop() };
         }
     }
 }
@@ -298,7 +306,7 @@ impl<T> OnceRwLock<T> {
             false
         } else {
             unsafe { (*self.data.get()).write(value) };
-            self.is_initialized.store(true, Relaxed);
+            self.is_initialized.store(true, Release);
             true
         };
 
@@ -375,6 +383,14 @@ impl<T> OnceRwLock<T> {
             Some(self.write())
         } else {
             None
+        }
+    }
+}
+
+impl<T> Drop for OnceRwLock<T> {
+    fn drop(&mut self) {
+        if self.is_initialized.load(Acquire) {
+            unsafe { (*self.data.get()).assume_init_drop() };
         }
     }
 }

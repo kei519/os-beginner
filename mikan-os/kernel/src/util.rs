@@ -54,6 +54,14 @@ impl<T> OnceStatic<T> {
     }
 }
 
+impl<T> Drop for OnceStatic<T> {
+    fn drop(&mut self) {
+        if self.is_initialized.load(Acquire) {
+            unsafe { (*self.data.get()).assume_init_drop() };
+        }
+    }
+}
+
 impl<T> Default for OnceStatic<T> {
     fn default() -> Self {
         Self::new()
