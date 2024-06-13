@@ -3,10 +3,10 @@ use core::{
     slice,
 };
 
-use crate::{console::DESKTOP_BG_COLOR, frame_buffer_config::FrameBufferConfig, sync::OnceMutex};
+use crate::{console::DESKTOP_BG_COLOR, frame_buffer_config::FrameBufferConfig, util::OnceStatic};
 
 /// フレームバッファ情報。
-pub static FB_CONFIG: OnceMutex<FrameBufferConfig> = OnceMutex::new();
+pub static FB_CONFIG: OnceStatic<FrameBufferConfig> = OnceStatic::new();
 
 #[derive(PartialEq, Eq, Clone, Default, Copy)]
 pub struct PixelColor {

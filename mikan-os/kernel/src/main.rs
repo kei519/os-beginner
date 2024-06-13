@@ -83,7 +83,7 @@ fn draw_text_cursor(visible: bool, index: i32, window: &mut Window) {
 
 /// `task_b()` 用のウィンドウを初期化、登録しそのレイヤー ID を返す。
 fn initialize_task_b_window() -> u32 {
-    let window = Window::new_toplevel(160, 52, FB_CONFIG.lock_wait().pixel_format, "TaskB Window");
+    let window = Window::new_toplevel(160, 52, FB_CONFIG.as_ref().pixel_format, "TaskB Window");
 
     let mut manager = LAYER_MANAGER.lock_wait();
     let id = manager.new_layer(window);

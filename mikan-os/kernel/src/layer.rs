@@ -15,7 +15,7 @@ pub static LAYER_MANAGER: OnceMutex<LayerManager> = OnceMutex::new();
 pub static SCREEN: OnceMutex<FrameBuffer> = OnceMutex::new();
 
 pub fn init() {
-    let fb_config = FB_CONFIG.lock_wait().clone();
+    let fb_config = FB_CONFIG.as_ref().clone();
     let frame_width = fb_config.horizontal_resolution as u32;
     let frame_height = fb_config.vertical_resolution as u32;
     let pixel_format = fb_config.pixel_format;

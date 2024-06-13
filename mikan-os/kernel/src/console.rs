@@ -192,12 +192,7 @@ pub struct PanicConsole {
 
 impl PanicConsole {
     pub fn new() -> Self {
-        // [FB_CONFIG] も初期化されていない場合はどうしようもない。
-        if !FB_CONFIG.is_initialized() {
-            panic!();
-        }
-
-        let fb_config = FB_CONFIG.lock_wait();
+        let fb_config = FB_CONFIG.as_ref();
         let col_num = fb_config.horizontal_resolution / 8;
         let row_num = fb_config.vertical_resolution / 16;
         let frame_buffer = fb_config.frame_buffer;
