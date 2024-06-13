@@ -120,7 +120,12 @@ fn main(acpi_table: &RSDP) -> Result<()> {
     console::init();
 
     printk!("Welcome to MikanOS!\n");
+
+    #[cfg(not(debug_assertions))]
     set_log_level(LogLevel::Warn);
+
+    #[cfg(debug_assertions)]
+    set_log_level(LogLevel::Debug);
 
     segment::init();
     paging::init();
