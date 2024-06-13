@@ -147,8 +147,6 @@ pub struct MutexGuard<'this, T> {
     lock: &'this AtomicBool,
 }
 
-unsafe impl<T: Sync> Sync for MutexGuard<'_, T> {}
-
 impl<T> Deref for MutexGuard<'_, T> {
     type Target = T;
 
