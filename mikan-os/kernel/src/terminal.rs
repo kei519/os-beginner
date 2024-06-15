@@ -1,8 +1,5 @@
-use alloc::{borrow::ToOwned, sync::Arc, vec::Vec};
+use alloc::{collections::VecDeque, format, string::String, sync::Arc, vec::Vec};
 use core::str;
-
-// フォーマッターに勝手に vec::self にされてしまうので、マクロは別に読み込む
-use alloc::{format, vec};
 
 use crate::{
     asmfunc, font,
@@ -77,6 +74,8 @@ pub struct Terminal {
     cursor_visible: bool,
     linebuf_index: usize,
     linebuf: [u8; LINE_MAX],
+    cmd_history: VecDeque<String>,
+    cmd_history_index: i32,
 }
 
 impl Terminal {
@@ -99,6 +98,9 @@ impl Terminal {
             (id, window)
         };
 
+        let mut cmd_history = VecDeque::new();
+        cmd_history.resize(8, String::new());
+
         let mut ret = Self {
             layer_id,
             window,
@@ -106,6 +108,8 @@ impl Terminal {
             cursor_visible: false,
             linebuf_index: 0,
             linebuf: [0u8; LINE_MAX],
+            cmd_history,
+            cmd_history_index: -1,
         };
         ret.print(">");
         ret
@@ -120,7 +124,7 @@ impl Terminal {
         }
     }
 
-    pub fn input_key(&mut self, _modifier: u8, _keycode: u8, ascii: u8) -> Rectangle<i32> {
+    fn input_key(&mut self, _modifier: u8, keycode: u8, ascii: u8) -> Rectangle<i32> {
         self.draw_cursor(false);
 
         let mut draw_area = Rectangle {
@@ -129,14 +133,39 @@ impl Terminal {
         };
 
         match ascii {
-            0 => {}
+            0 => {
+                draw_area = match keycode {
+                    // down arrow
+                    0x51 => self.history_up_down(-1),
+                    // up arrow
+                    0x52 => self.history_up_down(1),
+                    _ => draw_area,
+                }
+            }
             b'\n' => {
-                self.execute_line();
+                let command =
+                    String::from(str::from_utf8(&self.linebuf[..self.linebuf_index]).unwrap());
+                if self.linebuf_index > 0 {
+                    self.cmd_history.pop_back();
+                    self.cmd_history.push_front(command.clone());
+                }
+                self.linebuf_index = 0;
+                self.cmd_history_index = -1;
+
+                self.cursor = if self.cursor.y() < ROWS as i32 - 1 {
+                    Vector2D::new(0, self.cursor.y() + 1)
+                } else {
+                    self.scroll1();
+                    Vector2D::new(0, self.cursor.y())
+                };
+
+                self.execute_line(command);
                 self.print(">");
                 draw_area.pos = Vector2D::new(0, 0);
                 draw_area.size = self.window.read().size();
             }
             0x08 => {
+                // backspace
                 if self.cursor.x() > 0 && self.linebuf_index > 0 {
                     self.cursor -= Vector2D::new(1, 0);
                     self.window.write().draw_rectangle(
@@ -230,13 +259,7 @@ impl Terminal {
         self.draw_cursor(true);
     }
 
-    fn execute_line(&mut self) {
-        let mut command = vec![];
-        self.linebuf[..self.linebuf_index].clone_into(&mut command);
-        self.linebuf_index = 0;
-        self.print("\n");
-
-        let command = str::from_utf8(&command).unwrap();
+    fn execute_line(&mut self, command: String) {
         let splited: Vec<_> = command.split(' ').filter(|s| !s.is_empty()).collect();
 
         let Some(&command) = splited.first() else {
@@ -280,6 +303,46 @@ impl Terminal {
                 self.print("\n");
             }
         }
+    }
+
+    fn history_up_down(&mut self, direction: i32) -> Rectangle<i32> {
+        if direction == -1 && self.cmd_history_index >= 0 {
+            self.cmd_history_index -= 1;
+        } else if direction == 1 && self.cmd_history_index + 1 < self.cmd_history.len() as i32 {
+            self.cmd_history_index += 1;
+        }
+
+        // プロンプト分の1
+        self.cursor = Vector2D::new(1, self.cursor.y());
+        let first_pos = self.calc_curosr_pos();
+
+        let draw_area = Rectangle {
+            pos: first_pos,
+            size: Vector2D::new(8 * (COLUMNS as i32 - 1), 16),
+        };
+        self.window.write().fill_rectangle(
+            draw_area.pos,
+            draw_area.size,
+            &PixelColor::new(0, 0, 0),
+        );
+
+        let history = if self.cmd_history_index >= 0 {
+            self.cmd_history[self.cmd_history_index as usize].as_bytes()
+        } else {
+            b""
+        };
+
+        self.linebuf[..history.len()].copy_from_slice(history);
+        self.linebuf_index = history.len();
+
+        font::write_string(
+            &mut *self.window.write(),
+            first_pos,
+            history,
+            &PixelColor::new(255, 255, 255),
+        );
+        self.cursor += Vector2D::new(history.len() as i32, 0);
+        draw_area
     }
 }
 
