@@ -1,13 +1,13 @@
+use alloc::{borrow::ToOwned, sync::Arc, vec::Vec};
 use core::str;
 
-use alloc::sync::Arc;
+// フォーマッターに勝手に vec::self にされてしまうので、マクロは別に読み込む
+use alloc::vec;
 
 use crate::{
     asmfunc, font,
     graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, FB_CONFIG},
     layer::{LAYER_MANAGER, LAYER_TASK_MAP},
-    log,
-    logger::LogLevel,
     message::{Message, MessageType},
     sync::SharedLock,
     task,
@@ -98,19 +98,20 @@ impl Terminal {
             (id, window)
         };
 
-        Self {
+        let mut ret = Self {
             layer_id,
             window,
             cursor: Vector2D::new(0, 0),
             cursor_visible: false,
             linebuf_index: 0,
             linebuf: [0u8; LINE_MAX],
-        }
+        };
+        ret.print(">");
+        ret
     }
 
     pub fn blink_cursor(&mut self) -> Rectangle<i32> {
-        self.cursor_visible = !self.cursor_visible;
-        self.draw_cursor();
+        self.draw_cursor(!self.cursor_visible);
 
         Rectangle {
             pos: self.calc_curosr_pos(),
@@ -119,8 +120,7 @@ impl Terminal {
     }
 
     pub fn input_key(&mut self, _modifier: u8, _keycode: u8, ascii: u8) -> Rectangle<i32> {
-        self.cursor_visible = false;
-        self.draw_cursor();
+        self.draw_cursor(false);
 
         let mut draw_area = Rectangle {
             pos: self.calc_curosr_pos(),
@@ -130,32 +130,20 @@ impl Terminal {
         match ascii {
             0 => {}
             b'\n' => {
-                log!(
-                    LogLevel::Warn,
-                    "line: {:}",
-                    str::from_utf8(&self.linebuf[..self.linebuf_index]).unwrap(),
-                );
-                self.linebuf_index = 0;
-                if self.cursor.y() < ROWS as i32 - 1 {
-                    self.cursor = Vector2D::new(0, self.cursor.y() + 1)
-                } else {
-                    self.cursor = Vector2D::new(0, self.cursor.y());
-                    self.scroll1();
-                }
+                self.execute_line();
+                self.print(">");
                 draw_area.pos = Vector2D::new(0, 0);
                 draw_area.size = self.window.read().size();
             }
             0x08 => {
-                if self.cursor.x() > 0 {
+                if self.cursor.x() > 0 && self.linebuf_index > 0 {
                     self.cursor -= Vector2D::new(1, 0);
                     self.window.write().draw_rectangle(
                         self.calc_curosr_pos(),
                         Vector2D::new(8, 16),
                         &PixelColor::new(0, 0, 0),
                     );
-                    if self.linebuf_index > 0 {
-                        self.linebuf_index -= 1;
-                    }
+                    self.linebuf_index -= 1;
                 }
             }
             ascii => {
@@ -173,13 +161,13 @@ impl Terminal {
             }
         }
 
-        self.cursor_visible = true;
-        self.draw_cursor();
+        self.draw_cursor(true);
 
         draw_area
     }
 
-    fn draw_cursor(&mut self) {
+    fn draw_cursor(&mut self, visible: bool) {
+        self.cursor_visible = visible;
         let color = if self.cursor_visible { 0xffffff } else { 0 };
         let color = PixelColor::to_color(color);
         let pos = Vector2D::new(4 + 8 * self.cursor.x(), 5 + 16 * self.cursor.y());
@@ -205,6 +193,67 @@ impl Terminal {
             Vector2D::new(8 * COLUMNS as i32, 16),
             &PixelColor::new(0, 0, 0),
         );
+    }
+
+    /// `linebuf` や `linebuf_index` を変更せずに文字列を表示する。
+    fn print(&mut self, s: &str) {
+        self.draw_cursor(false);
+
+        let newline = |term: &mut Self| {
+            term.cursor = if term.cursor.y() < ROWS as i32 - 1 {
+                Vector2D::new(0, term.cursor.y() + 1)
+            } else {
+                term.scroll1();
+                Vector2D::new(0, term.cursor.y())
+            };
+        };
+
+        for &c in s.as_bytes() {
+            if c == b'\n' {
+                newline(self);
+            } else {
+                font::write_ascii(
+                    &mut *self.window.write(),
+                    self.calc_curosr_pos(),
+                    c,
+                    &PixelColor::new(255, 255, 255),
+                );
+                if self.cursor.x() == COLUMNS as i32 - 1 {
+                    newline(self)
+                } else {
+                    self.cursor += Vector2D::new(1, 0);
+                }
+            }
+        }
+
+        self.draw_cursor(true);
+    }
+
+    fn execute_line(&mut self) {
+        let mut command = vec![];
+        self.linebuf[..self.linebuf_index].clone_into(&mut command);
+        self.linebuf_index = 0;
+        self.print("\n");
+
+        let command = str::from_utf8(&command).unwrap();
+        let splited: Vec<_> = command.split(' ').filter(|s| !s.is_empty()).collect();
+
+        let Some(&command) = splited.first() else {
+            return;
+        };
+        match command {
+            "echo" => {
+                if let Some(first_arg) = splited.get(1) {
+                    self.print(first_arg);
+                }
+                self.print("\n");
+            }
+            command => {
+                self.print("no such command: ");
+                self.print(command);
+                self.print("\n");
+            }
+        }
     }
 }
 
