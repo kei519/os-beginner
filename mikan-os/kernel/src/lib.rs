@@ -25,6 +25,7 @@ pub mod pci;
 pub mod segment;
 pub mod sync;
 pub mod task;
+pub mod terminal;
 pub mod timer;
 pub mod usb;
 pub mod util;

@@ -9,7 +9,7 @@ use uefi::table::boot::MemoryMap;
 
 use kernel::{
     acpi::RSDP,
-    asmfunc::{cli, sti},
+    asmfunc::{self, cli, sti},
     console::{self, PanicConsole},
     error::Result,
     font,
@@ -23,6 +23,7 @@ use kernel::{
     message::{LayerOperation, Message, MessageType},
     mouse, paging, pci, printk, printkln, segment,
     task::{self, Stack},
+    terminal,
     timer::{self, Timer, TIMER_MANAGER},
     window::Window,
     xhci::{self, XHC},
@@ -158,6 +159,10 @@ fn main(acpi_table: &RSDP) -> Result<()> {
         .init_context(task_b, 45, task_b_window_id)
         .wake_up(-1)
         .id();
+    let task_terminal_id = task::new_task()
+        .init_context(terminal::task_terminal, 0, 0)
+        .wake_up(-1)
+        .id();
 
     xhci::init();
     mouse::init();
@@ -219,6 +224,17 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                         &mut layer_manager.layer(text_window_id).window().write(),
                     );
                     layer_manager.draw_id(text_window_id);
+
+                    asmfunc::cli();
+                    task::send_message(
+                        task_terminal_id,
+                        Message {
+                            ty: MessageType::TimerTimeout(timer),
+                            src_task: 1,
+                        },
+                    )
+                    .unwrap();
+                    asmfunc::sti();
                 }
             }
             MessageType::KeyPush { ascii, keycode, .. } => {

@@ -40,6 +40,9 @@ impl Window {
     pub const TOP_LEFT_MARGIN: Vector2D<i32> = Vector2D::new(4, 24);
     pub const BOTTOM_RIGHT_MARGIN: Vector2D<i32> = Vector2D::new(4, 4);
 
+    pub const MARGIN_X: u32 = (Self::TOP_LEFT_MARGIN.x() + Self::BOTTOM_RIGHT_MARGIN.x()) as u32;
+    pub const MARGIN_Y: u32 = (Self::TOP_LEFT_MARGIN.y() + Self::BOTTOM_RIGHT_MARGIN.y()) as u32;
+
     pub fn new_base(width: u32, height: u32, shadow_format: PixelFormat) -> Self {
         WindowBase::new(width, height, shadow_format).into()
     }
@@ -120,28 +123,55 @@ impl Window {
 
     /// ウィンドウの中にテキスト描画用のスペースを描画する。
     pub fn draw_text_box(&mut self, pos: Vector2D<i32>, size: Vector2D<i32>) {
-        let mut fill_rect = |pos, size, c| self.fill_rectangle(pos, size, &PixelColor::to_color(c));
+        self.draw_text_box_with_color(
+            pos,
+            size,
+            &PixelColor::to_color(0xffffff),
+            &PixelColor::to_color(0xc6c6c6),
+            &PixelColor::to_color(0x848484),
+        )
+    }
+
+    pub fn draw_text_box_with_color(
+        &mut self,
+        pos: Vector2D<i32>,
+        size: Vector2D<i32>,
+        background: &PixelColor,
+        border_light: &PixelColor,
+        border_dark: &PixelColor,
+    ) {
+        let mut fill_rect = |pos, size, c| self.fill_rectangle(pos, size, c);
 
         // fill main box
         fill_rect(
             pos + Vector2D::new(1, 1),
             size - Vector2D::new(2, 2),
-            0xffffff,
+            background,
         );
 
         // draw border lines
-        fill_rect(pos, Vector2D::new(size.x(), 1), 0x848484);
-        fill_rect(pos, Vector2D::new(1, size.y()), 0x848484);
+        fill_rect(pos, Vector2D::new(size.x(), 1), border_dark);
+        fill_rect(pos, Vector2D::new(1, size.y()), border_dark);
         fill_rect(
             pos + Vector2D::new(0, size.y()),
             Vector2D::new(size.x(), 1),
-            0xc6c6c6,
+            border_light,
         );
         fill_rect(
             pos + Vector2D::new(size.x(), 0),
             Vector2D::new(1, size.y()),
-            0xc6c6c6,
+            border_light,
         );
+    }
+
+    pub fn draw_terminal(&mut self, pos: Vector2D<i32>, size: Vector2D<i32>) {
+        self.draw_text_box_with_color(
+            pos,
+            size,
+            &PixelColor::to_color(0x000000),
+            &PixelColor::to_color(0xc6c6c6),
+            &PixelColor::to_color(0x848484),
+        )
     }
 
     pub fn draw_window_title(&mut self, active: bool) {
