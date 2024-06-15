@@ -260,7 +260,7 @@ impl LayerManager {
     /// * id - レイヤーの ID。
     /// * new_height - 新しい高さ。マイナス値の場合は非表示にする。
     /// また、現在表示されているレイヤー数以上を指定した場合、最前面に配置される。
-    pub fn up_down(&mut self, id: u32, mut new_height: i32) {
+    pub fn up_down(&mut self, id: u32, new_height: i32) {
         // 負値は非表示
         if new_height < 0 {
             self.hide(id);
@@ -268,10 +268,11 @@ impl LayerManager {
         }
 
         // 表示されているレイヤー数以上は最前面
-        if new_height > self.layer_stack.len() as i32 {
-            new_height = self.layer_stack.len() as i32;
-        }
-        let mut new_pos = new_height as usize;
+        let new_pos = if new_height > self.layer_stack.len() as i32 {
+            self.layer_stack.len()
+        } else {
+            new_height as usize
+        };
 
         let old_pos = self.layer_stack.iter().position(|item| *item == id);
         // 元々表示されていなかった場合は挿入するだけ
@@ -281,9 +282,11 @@ impl LayerManager {
         };
 
         // 元々表示されていた場合は、自分が抜ける分位置を下げる必要がある
-        if new_pos == self.layer_stack.len() {
-            new_pos -= 1;
-        }
+        let new_pos = if new_pos == self.layer_stack.len() {
+            new_pos - 1
+        } else {
+            new_pos
+        };
         self.layer_stack.remove(old_pos);
         self.layer_stack.insert(new_pos, id);
     }
