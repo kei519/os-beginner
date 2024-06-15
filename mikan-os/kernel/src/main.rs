@@ -20,7 +20,7 @@ use kernel::{
     log,
     logger::{set_log_level, LogLevel},
     memory_manager,
-    message::{LayerOperation, Message, MessageType},
+    message::{Message, MessageType},
     mouse, paging, pci, printk, printkln, segment,
     task::{self, Stack},
     terminal,
@@ -288,8 +288,13 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                     );
                 }
             }
-            MessageType::Layer { op, layer_id, pos } => {
-                layer::process_layer_message(op, layer_id, pos);
+            MessageType::Layer {
+                op,
+                layer_id,
+                pos,
+                size,
+            } => {
+                layer::process_layer_message(op, layer_id, pos, size);
                 // 呼び出してきたタスクがあるはずだから、unwrap は失敗しない
                 task::send_message(msg.src_task, MessageType::LayerFinish.into()).unwrap();
             }
@@ -327,13 +332,7 @@ fn task_b(task_id: u64, data: i64, layer_id: u32) {
             &PixelColor::to_color(0),
         );
 
-        let mut msg: Message = MessageType::Layer {
-            op: LayerOperation::Draw,
-            layer_id,
-            pos: Vector2D::default(),
-        }
-        .into();
-        msg.src_task = task_id;
+        let msg: Message = Message::from_draw(task_id, layer_id);
 
         cli();
         task::send_message(1, msg).unwrap();

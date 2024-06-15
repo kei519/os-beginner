@@ -43,12 +43,18 @@ pub fn init() {
     LAYER_MANAGER.init(layer_manager);
 }
 
-pub fn process_layer_message(op: LayerOperation, layer_id: u32, pos: Vector2D<i32>) {
+pub fn process_layer_message(
+    op: LayerOperation,
+    layer_id: u32,
+    pos: Vector2D<i32>,
+    size: Vector2D<i32>,
+) {
     let mut manager = LAYER_MANAGER.lock_wait();
     match op {
         LayerOperation::Move => manager.r#move(layer_id, pos),
         LayerOperation::MoveRelative => manager.move_relative(layer_id, pos),
         LayerOperation::Draw => manager.draw_id(layer_id),
+        LayerOperation::DrawArea => manager.draw_area(layer_id, Rectangle { pos, size }),
     }
 }
 
@@ -196,31 +202,46 @@ impl LayerManager {
     /// # Remarks
     /// 有効な ID を指定していない場合は `panic` する。
     pub fn draw_id(&mut self, id: u32) {
-        let mut draw = false;
-        // 借用の問題で、最初に指定領域を用意しておく
-        let area = Rectangle {
-            pos: self.layer(id).pos,
-            size: self.layer(id).window().read().base().size(),
-        };
+        self.draw_area(
+            id,
+            Rectangle {
+                pos: Vector2D::new(0, 0),
+                size: Vector2D::new(-1, -1),
+            },
+        )
+    }
 
+    pub fn draw_area(&mut self, id: u32, mut area: Rectangle<i32>) {
+        let mut window_area = None;
         for layer_id in &self.layer_stack {
-            // 指定された ID 以降は、指定された ID と重なる領域を全て描画する
+            // layer_stack の中に入っているのは layers の中に入っているものに限られるため、
+            // unwrap は必ず成功する
+            let layer = self.layers.get_mut(layer_id).unwrap();
             if *layer_id == id {
-                draw = true;
+                let mut wnd_area = Rectangle {
+                    pos: layer.pos,
+                    size: layer.window.read().base().size(),
+                };
+                // area.size が正の場合は area.pos から area.size 分だけ描画する
+                if area.size.x() >= 0 || area.size.y() >= 0 {
+                    area.pos += wnd_area.pos;
+                    wnd_area = wnd_area & area;
+                }
+                window_area = Some(wnd_area);
             }
-            if draw {
-                self.layers
-                    .get_mut(layer_id)
-                    .unwrap()
-                    .draw_to(&mut self.back_buffer, &area)
+            // layer_id より上のレイヤーでは window_area が Some になっているはずなので、
+            // 上のレイヤーは全て描画される
+            if let Some(area) = window_area {
+                layer.draw_to(&mut self.back_buffer, &area);
             }
         }
 
-        // バックバッファをフレームバッファにコピー
-        self.screen
-            .lock_wait()
-            .copy(area.pos, &self.back_buffer, &area)
-            .unwrap();
+        if let Some(area) = window_area {
+            self.screen
+                .lock_wait()
+                .copy(area.pos, &self.back_buffer, &area)
+                .unwrap();
+        }
     }
 
     /// 指定されたレイヤを非表示にする。

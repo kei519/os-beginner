@@ -2,9 +2,9 @@ use alloc::sync::Arc;
 
 use crate::{
     asmfunc,
-    graphics::{PixelColor, PixelWrite, Vector2D, FB_CONFIG},
+    graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, FB_CONFIG},
     layer::LAYER_MANAGER,
-    message::{LayerOperation, Message, MessageType},
+    message::{Message, MessageType},
     sync::SharedLock,
     task,
     window::Window,
@@ -35,16 +35,9 @@ pub fn task_terminal(task_id: u64, _: i64, _: u32) {
         };
 
         if let MessageType::TimerTimeout(_) = msg.ty {
-            terminal.blink_cursor();
+            let area = terminal.blink_cursor();
 
-            let msg = Message {
-                ty: MessageType::Layer {
-                    op: LayerOperation::Draw,
-                    layer_id: terminal.layer_id,
-                    pos: Vector2D::new(0, 0),
-                },
-                src_task: task_id,
-            };
+            let msg = Message::from_draw_area(task_id, terminal.layer_id, area);
             asmfunc::cli();
             task::send_message(1, msg).unwrap();
             asmfunc::sti();
@@ -87,9 +80,15 @@ impl Terminal {
         }
     }
 
-    pub fn blink_cursor(&mut self) {
+    pub fn blink_cursor(&mut self) -> Rectangle<i32> {
         self.cursor_visible = !self.cursor_visible;
         self.draw_cursor();
+
+        Rectangle {
+            pos: Window::TOP_LEFT_MARGIN
+                + Vector2D::new(4 + 8 * self.cursor.x(), 5 + 16 * self.cursor.y()),
+            size: Vector2D::new(7, 15),
+        }
     }
 
     fn draw_cursor(&mut self) {
