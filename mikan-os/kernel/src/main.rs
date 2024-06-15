@@ -237,7 +237,11 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                     asmfunc::sti();
                 }
             }
-            MessageType::KeyPush { ascii, keycode, .. } => {
+            MessageType::KeyPush {
+                ascii,
+                keycode,
+                modifier,
+            } => {
                 if active == text_window_id {
                     // `input_text_window(ascii)` の代わり
                     'input_text_window: {
@@ -280,6 +284,20 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                     } else if ascii == b'w' {
                         printkln!("wakeup task_b: {:?}", task::wake_up(taskb_id, -1));
                     }
+                } else if active == 7 {
+                    asmfunc::cli();
+                    task::send_message(
+                        task_terminal_id,
+                        Message {
+                            ty: MessageType::KeyPush {
+                                modifier,
+                                keycode,
+                                ascii,
+                            },
+                            src_task: 1,
+                        },
+                    ).unwrap();
+                    asmfunc::sti();
                 } else {
                     printkln!(
                         "key push not handled: keycode {:02x}, ascii {:02x}",
