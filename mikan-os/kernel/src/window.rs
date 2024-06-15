@@ -70,7 +70,7 @@ impl Window {
     }
 
     pub fn deactivate(&mut self) {
-        self.base_mut().activate();
+        self.base_mut().deactivate();
         if matches!(self, Self::Toplevel { .. }) {
             self.draw_window_title(false);
         }
