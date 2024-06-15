@@ -248,6 +248,14 @@ impl Terminal {
                 }
                 self.print("\n");
             }
+            "clear" => {
+                self.window.write().fill_rectangle(
+                    Vector2D::new(4, 4),
+                    Vector2D::new(8 * COLUMNS as i32, 16 * ROWS as i32),
+                    &PixelColor::new(0, 0, 0),
+                );
+                self.cursor = Vector2D::new(self.cursor.x(), 0);
+            }
             command => {
                 self.print("no such command: ");
                 self.print(command);
