@@ -55,6 +55,18 @@ pub struct ClassCode {
 }
 
 impl ClassCode {
+    pub fn base(&self) -> u8 {
+        self.base
+    }
+
+    pub fn sub(&self) -> u8 {
+        self.sub
+    }
+
+    pub fn interface(&self) -> u8 {
+        self.interface
+    }
+
     /// ベースクラスが等しいかどうか。
     pub fn match_base(&self, b: u8) -> bool {
         b == self.base

@@ -2,13 +2,14 @@ use alloc::{borrow::ToOwned, sync::Arc, vec::Vec};
 use core::str;
 
 // フォーマッターに勝手に vec::self にされてしまうので、マクロは別に読み込む
-use alloc::vec;
+use alloc::{format, vec};
 
 use crate::{
     asmfunc, font,
     graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, FB_CONFIG},
     layer::{LAYER_MANAGER, LAYER_TASK_MAP},
     message::{Message, MessageType},
+    pci,
     sync::SharedLock,
     task,
     window::Window,
@@ -255,6 +256,23 @@ impl Terminal {
                     &PixelColor::new(0, 0, 0),
                 );
                 self.cursor = Vector2D::new(self.cursor.x(), 0);
+            }
+            "lspci" => {
+                for dev in pci::DEVICES.read().iter() {
+                    let vendor_id = dev.read_vendor_id();
+                    let s = format!(
+                        "{:02x}:{:02x}.{} vend={:04x} head={:02x} class={:02x}.{:02x}:{:02x}\n",
+                        dev.bus(),
+                        dev.device(),
+                        dev.function(),
+                        vendor_id,
+                        dev.header_type(),
+                        dev.class_code().base(),
+                        dev.class_code().sub(),
+                        dev.class_code().interface(),
+                    );
+                    self.print(&s);
+                }
             }
             command => {
                 self.print("no such command: ");
