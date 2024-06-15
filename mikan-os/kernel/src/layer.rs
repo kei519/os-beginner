@@ -358,7 +358,11 @@ impl LayerManager {
         self.active_layer = id;
         if id > 0 {
             self.layer(id).window().write().activate();
-            self.up_down(id, self.get_height(self.mouse_layer) - 1);
+            if self.layer_stack.iter().any(|&layer| layer == id) {
+                self.up_down(id, self.get_height(self.mouse_layer) - 1);
+            } else {
+                self.up_down(id, self.get_height(self.mouse_layer));
+            }
             self.draw_id(id);
         }
     }
