@@ -37,8 +37,7 @@ pub fn task_terminal(task_id: u64, _: i64, _: u32) {
         if let MessageType::TimerTimeout(_) = msg.ty {
             let area = terminal.blink_cursor();
 
-            // let msg = Message::from_draw_area(task_id, terminal.layer_id, area);
-            let msg = Message::from_draw(task_id, terminal.layer_id);
+            let msg = Message::from_draw_area(task_id, terminal.layer_id, area);
             asmfunc::cli();
             task::send_message(1, msg).unwrap();
             asmfunc::sti();

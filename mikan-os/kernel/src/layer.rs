@@ -4,11 +4,8 @@ use crate::{
     frame_buffer::FrameBuffer,
     frame_buffer_config::{FrameBufferConfig, PixelFormat},
     graphics::{self, PixelWrite as _, Rectangle, Vector2D, FB_CONFIG},
-    log,
-    logger::LogLevel,
     message::LayerOperation,
     sync::{OnceMutex, SharedLock},
-    timer,
     window::Window,
 };
 
@@ -56,28 +53,8 @@ pub fn process_layer_message(
     match op {
         LayerOperation::Move => manager.r#move(layer_id, pos),
         LayerOperation::MoveRelative => manager.move_relative(layer_id, pos),
-        LayerOperation::Draw => {
-            if layer_id == 7 {
-                let start = timer::lapic_timer_elapsed();
-                manager.draw_id(layer_id);
-                let elapsed = timer::lapic_timer_elapsed() - start;
-                drop(manager);
-                log!(LogLevel::Warn, "draw layer 7: elapsed = {}", elapsed);
-                return;
-            }
-            manager.draw_id(layer_id);
-        }
-        LayerOperation::DrawArea => {
-            if layer_id == 7 {
-                let start = timer::lapic_timer_elapsed();
-                manager.draw_area(layer_id, Rectangle { pos, size });
-                let elapsed = timer::lapic_timer_elapsed() - start;
-                drop(manager);
-                log!(LogLevel::Warn, "draw layer 7: elapsed = {}", elapsed);
-                return;
-            }
-            manager.draw_area(layer_id, Rectangle { pos, size })
-        }
+        LayerOperation::Draw => manager.draw_id(layer_id),
+        LayerOperation::DrawArea => manager.draw_area(layer_id, Rectangle { pos, size }),
     }
 }
 
