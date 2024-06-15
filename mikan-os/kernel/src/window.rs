@@ -267,11 +267,30 @@ impl Window {
     /// * position - 描画する位置。
     /// * area - 転送する領域。
     pub fn draw_to(&self, dst: &mut FrameBuffer, pos: Vector2D<i32>, area: &Rectangle<i32>) {
-        self.base().draw_to(dst, pos, area)
+        match self {
+            Self::Base(base) => base.draw_to(dst, pos, area),
+            Self::Toplevel { base, .. } => {
+                let pos = pos + Self::TOP_LEFT_MARGIN;
+                let area = Rectangle {
+                    pos: area.pos + Self::TOP_LEFT_MARGIN,
+                    size: area.size,
+                };
+                base.draw_to(dst, pos, &area);
+            }
+        }
     }
 
     pub fn r#move(&mut self, dst_pos: Vector2D<i32>, src: &Rectangle<i32>) {
-        self.base_mut().r#move(dst_pos, src)
+        match self {
+            Self::Base(base) => base.r#move(dst_pos, src),
+            Self::Toplevel { base, .. } => {
+                let src = Rectangle {
+                    pos: src.pos + Self::TOP_LEFT_MARGIN,
+                    size: src.size,
+                };
+                base.r#move(dst_pos + Self::TOP_LEFT_MARGIN, &src)
+            }
+        }
     }
 
     /// ウィンドウの透過色を設定する。
@@ -281,7 +300,10 @@ impl Window {
 
     /// 指定された位置のピクセルへの排他参照を返す。
     pub fn at(&mut self, pos: Vector2D<i32>) -> &mut PixelColor {
-        self.base_mut().at_mut(pos)
+        match self {
+            Self::Base(base) => base.at_mut(pos),
+            Self::Toplevel { base, .. } => base.at_mut(pos + Self::TOP_LEFT_MARGIN),
+        }
     }
 }
 

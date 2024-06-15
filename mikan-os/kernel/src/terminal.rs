@@ -37,7 +37,8 @@ pub fn task_terminal(task_id: u64, _: i64, _: u32) {
 
         match msg.ty {
             MessageType::TimerTimeout(_) => {
-                let area = terminal.blink_cursor();
+                let mut area = terminal.blink_cursor();
+                area.pos += Window::TOP_LEFT_MARGIN;
 
                 let msg = Message::from_draw_area(task_id, terminal.layer_id, area);
                 asmfunc::cli();
@@ -49,7 +50,8 @@ pub fn task_terminal(task_id: u64, _: i64, _: u32) {
                 keycode,
                 ascii,
             } => {
-                let area = terminal.input_key(modifier, keycode, ascii);
+                let mut area = terminal.input_key(modifier, keycode, ascii);
+                area.pos += Window::TOP_LEFT_MARGIN;
                 let msg = Message::from_draw_area(task_id, terminal.layer_id, area);
                 asmfunc::cli();
                 task::send_message(1, msg).unwrap();
@@ -143,7 +145,7 @@ impl Terminal {
             0x08 => {
                 if self.cursor.x() > 0 {
                     self.cursor -= Vector2D::new(1, 0);
-                    self.window.write().base_mut().draw_rectangle(
+                    self.window.write().draw_rectangle(
                         self.calc_curosr_pos(),
                         Vector2D::new(8, 16),
                         &PixelColor::new(0, 0, 0),
@@ -158,7 +160,7 @@ impl Terminal {
                     self.linebuf[self.linebuf_index] = ascii;
                     self.linebuf_index += 1;
                     font::write_ascii(
-                        self.window.write().base_mut(),
+                        &mut *self.window.write(),
                         self.calc_curosr_pos(),
                         ascii,
                         &PixelColor::new(255, 255, 255),
@@ -185,18 +187,16 @@ impl Terminal {
     }
 
     fn calc_curosr_pos(&self) -> Vector2D<i32> {
-        Window::TOP_LEFT_MARGIN + Vector2D::new(4 + 8 * self.cursor.x(), 4 + 16 * self.cursor.y())
+        Vector2D::new(4 + 8 * self.cursor.x(), 4 + 16 * self.cursor.y())
     }
 
     fn scroll1(&mut self) {
         let move_src = Rectangle {
-            pos: Window::TOP_LEFT_MARGIN + Vector2D::new(4, 4 + 16),
+            pos: Vector2D::new(4, 4 + 16),
             size: Vector2D::new(8 * COLUMNS as i32, 16 * (ROWS as i32 - 1)),
         };
         let mut window = self.window.write();
-        window
-            .base_mut()
-            .r#move(Window::TOP_LEFT_MARGIN + Vector2D::new(4, 4), &move_src);
+        window.r#move(Vector2D::new(4, 4), &move_src);
         window.fill_rectangle(
             Vector2D::new(4, 4 + 16 * self.cursor.y()),
             Vector2D::new(8 * COLUMNS as i32, 16),
