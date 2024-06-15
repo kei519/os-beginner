@@ -82,21 +82,6 @@ fn draw_text_cursor(visible: bool, index: i32, window: &mut Window) {
     window.fill_rectangle(pos, Vector2D::new(7, 15), &color);
 }
 
-/// `task_b()` 用のウィンドウを初期化、登録しそのレイヤー ID を返す。
-fn initialize_task_b_window() -> u32 {
-    let window = Window::new_toplevel(160, 52, FB_CONFIG.as_ref().pixel_format, "TaskB Window");
-
-    let mut manager = LAYER_MANAGER.lock_wait();
-    let id = manager.new_layer(window);
-    manager.activate(id);
-    manager
-        .layer(id)
-        .set_draggable(true)
-        .r#move(Vector2D::new(100, 100));
-    manager.up_down(id, i32::MAX);
-    id
-}
-
 // この呼び出しの前にスタック領域を変更するため、でかい構造体をそのまま渡せなくなる
 // それを避けるために参照で渡す
 #[custom_attribute::kernel_entry(KERNEL_MAIN_STACK, STACK_SIZE = 1024 * 1024)]
@@ -136,7 +121,6 @@ fn main(acpi_table: &RSDP) -> Result<()> {
 
     let main_window_id = initialize_main_window();
     let text_window_id = initialize_text_window();
-    let task_b_window_id = initialize_task_b_window();
 
     // FIXME: 最初に登録されるレイヤーは背景ウィンドウなので、`layer_id` 1 を表示すれば
     //        必ず全て表示されるが、ハードコードは良くなさそう
@@ -155,10 +139,6 @@ fn main(acpi_table: &RSDP) -> Result<()> {
 
     task::init();
     let main_task = task::current_task();
-    let taskb_id = task::new_task()
-        .init_context(task_b, 45, task_b_window_id)
-        .wake_up(-1)
-        .id();
     let task_terminal_id = task::new_task()
         .init_context(terminal::task_terminal, 0, 0)
         .wake_up(-1)
@@ -278,12 +258,6 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                         }
                         manager.draw_id(text_window_id);
                     }
-                } else if active == task_b_window_id {
-                    if ascii == b's' {
-                        printkln!("sleep task_b: {:?}", task::sleep(taskb_id));
-                    } else if ascii == b'w' {
-                        printkln!("wakeup task_b: {:?}", task::wake_up(taskb_id, -1));
-                    }
                 } else if let Some(task_id) = LAYER_TASK_MAP
                     .lock_wait()
                     .iter()
@@ -323,61 +297,6 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                 task::send_message(msg.src_task, MessageType::LayerFinish.into()).unwrap();
             }
             MessageType::LayerFinish => {}
-        }
-    }
-}
-
-fn task_b(task_id: u64, data: i64, layer_id: u32) {
-    printkln!(
-        "task_b: task_id={}, data={}, layer_id={}",
-        task_id,
-        data,
-        layer_id
-    );
-    let window = LAYER_MANAGER.lock_wait().layer(layer_id).window();
-
-    cli();
-    let task = task::current_task();
-    sti();
-
-    let mut count = 0;
-    loop {
-        count += 1;
-        let mut window = window.write();
-        window.fill_rectangle(
-            Vector2D::new(20, 4),
-            Vector2D::new(8 * 10, 16),
-            &PixelColor::to_color(0xc6c6c6),
-        );
-        font::write_string(
-            &mut *window,
-            Vector2D::new(20, 4),
-            format!("{:010}", count).as_bytes(),
-            &PixelColor::to_color(0),
-        );
-
-        let msg: Message = Message::from_draw(task_id, layer_id);
-
-        cli();
-        task::send_message(1, msg).unwrap();
-        sti();
-
-        loop {
-            // receive_message は task.msgsがロックに包まれているから、
-            // 割り込みを禁止する必要はない
-            match task.receive_message() {
-                Some(msg) => {
-                    if matches!(msg.ty, MessageType::LayerFinish) {
-                        break;
-                    }
-                }
-                None => {
-                    cli();
-                    task.sleep();
-                    sti();
-                    continue;
-                }
-            }
         }
     }
 }
