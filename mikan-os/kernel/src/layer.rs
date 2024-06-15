@@ -5,7 +5,7 @@ use crate::{
     frame_buffer_config::{FrameBufferConfig, PixelFormat},
     graphics::{self, PixelWrite as _, Rectangle, Vector2D, FB_CONFIG},
     message::LayerOperation,
-    sync::{OnceMutex, SharedLock},
+    sync::{Mutex, OnceMutex, SharedLock},
     window::Window,
 };
 
@@ -13,6 +13,8 @@ pub static LAYER_MANAGER: OnceMutex<LayerManager> = OnceMutex::new();
 
 /// 本当のフレームバッファを表す `FrameBuffer`。
 pub static SCREEN: OnceMutex<FrameBuffer> = OnceMutex::new();
+
+pub static LAYER_TASK_MAP: Mutex<BTreeMap<u32, u64>> = Mutex::new(BTreeMap::new());
 
 pub fn init() {
     let fb_config = FB_CONFIG.as_ref().clone();

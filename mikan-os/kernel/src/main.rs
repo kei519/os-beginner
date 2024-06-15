@@ -16,7 +16,7 @@ use kernel::{
     frame_buffer_config::FrameBufferConfig,
     graphics::{PixelColor, PixelWrite, Vector2D, FB_CONFIG},
     interrupt, keyboard,
-    layer::{self, LAYER_MANAGER, SCREEN},
+    layer::{self, LAYER_MANAGER, LAYER_TASK_MAP, SCREEN},
     log,
     logger::{set_log_level, LogLevel},
     memory_manager,
@@ -284,10 +284,14 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                     } else if ascii == b'w' {
                         printkln!("wakeup task_b: {:?}", task::wake_up(taskb_id, -1));
                     }
-                } else if active == 7 {
+                } else if let Some(task_id) = LAYER_TASK_MAP
+                    .lock_wait()
+                    .iter()
+                    .find_map(|(&layer, &task)| if layer == active { Some(task) } else { None })
+                {
                     asmfunc::cli();
                     task::send_message(
-                        task_terminal_id,
+                        task_id,
                         Message {
                             ty: MessageType::KeyPush {
                                 modifier,
@@ -296,7 +300,8 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                             },
                             src_task: 1,
                         },
-                    ).unwrap();
+                    )
+                    .unwrap();
                     asmfunc::sti();
                 } else {
                     printkln!(
@@ -304,6 +309,7 @@ fn main(acpi_table: &RSDP) -> Result<()> {
                         keycode,
                         ascii
                     );
+                    continue;
                 }
             }
             MessageType::Layer {

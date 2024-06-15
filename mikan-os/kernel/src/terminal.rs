@@ -5,7 +5,7 @@ use alloc::sync::Arc;
 use crate::{
     asmfunc, font,
     graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, FB_CONFIG},
-    layer::LAYER_MANAGER,
+    layer::{LAYER_MANAGER, LAYER_TASK_MAP},
     log,
     logger::LogLevel,
     message::{Message, MessageType},
@@ -23,6 +23,9 @@ pub fn task_terminal(task_id: u64, _: i64, _: u32) {
         manager.r#move(terminal.layer_id, Vector2D::new(100, 200));
         manager.activate(terminal.layer_id);
     }
+    LAYER_TASK_MAP
+        .lock_wait()
+        .insert(terminal.layer_id, task_id);
     asmfunc::sti();
 
     loop {
@@ -139,7 +142,7 @@ impl Terminal {
                     self.cursor = Vector2D::new(0, self.cursor.y());
                     self.scroll1();
                 }
-                draw_area.pos = Window::TOP_LEFT_MARGIN;
+                draw_area.pos = Vector2D::new(0, 0);
                 draw_area.size = self.window.read().size();
             }
             0x08 => {
