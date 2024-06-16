@@ -1,8 +1,8 @@
 use alloc::{collections::VecDeque, format, string::String, sync::Arc, vec::Vec};
-use core::str;
+use core::{mem, str};
 
 use crate::{
-    asmfunc, font,
+    asmfunc, fat, font,
     graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, FB_CONFIG},
     layer::{LAYER_MANAGER, LAYER_TASK_MAP},
     message::{Message, MessageType},
@@ -294,6 +294,37 @@ impl Terminal {
                         dev.class_code().sub(),
                         dev.class_code().interface(),
                     );
+                    self.print(&s);
+                }
+            }
+            "ls" => {
+                let image = fat::BOOT_VOLUME_IMAGE.get();
+                let entries_per_cluster =
+                    image.byts_per_sec() as usize / mem::size_of::<fat::DirectoryEntry>();
+                let root_dir_entries = fat::get_sector_by_cluster::<fat::DirectoryEntry>(
+                    image.root_clus() as u64,
+                    entries_per_cluster,
+                );
+
+                for entry in root_dir_entries {
+                    let (base, ext) = fat::read_name(entry);
+                    if base[0] == 0x00 {
+                        break;
+                    } else if base[0] == 0x5e {
+                        continue;
+                    } else if entry.attr == fat::Attribute::LongName as u8 {
+                        continue;
+                    }
+
+                    let s = if !ext.is_empty() {
+                        format!(
+                            "{}.{}\n",
+                            str::from_utf8(base).unwrap(),
+                            str::from_utf8(ext).unwrap()
+                        )
+                    } else {
+                        format!("{}\n", str::from_utf8(base).unwrap())
+                    };
                     self.print(&s);
                 }
             }

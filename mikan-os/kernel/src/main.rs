@@ -12,7 +12,7 @@ use kernel::{
     asmfunc::{self, cli, sti},
     console::{self, PanicConsole},
     error::Result,
-    font,
+    fat, font,
     frame_buffer_config::FrameBufferConfig,
     graphics::{PixelColor, PixelWrite, Vector2D, FB_CONFIG},
     interrupt, keyboard,
@@ -118,6 +118,7 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
     paging::init();
     interrupt::init();
 
+    fat::init(volume_image);
     pci::init()?;
 
     let main_window_id = initialize_main_window();
@@ -148,24 +149,6 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
     xhci::init();
     mouse::init();
     keyboard::init();
-
-    let mut p = volume_image as *const u8;
-    unsafe {
-        printkln!("Volume Image: at {:p}", p);
-        for i in 0..16 {
-            printk!("{:04x}", i * 16);
-            for _ in 0..8 {
-                printk!(" {:02x}", *p);
-                p = p.add(1);
-            }
-            printk!(" ");
-            for _ in 0..8 {
-                printk!(" {:02x}", *p);
-                p = p.add(1);
-            }
-            printkln!();
-        }
-    }
 
     let mut text_window_index = 0;
     loop {

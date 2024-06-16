@@ -7,6 +7,7 @@ pub mod asmfunc;
 pub mod bitfield;
 pub mod console;
 pub mod error;
+pub mod fat;
 pub mod font;
 pub mod font_data;
 pub mod frame_buffer;
