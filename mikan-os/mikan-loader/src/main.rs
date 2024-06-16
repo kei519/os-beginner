@@ -26,7 +26,7 @@ use uefi::{
         console::gop::{GraphicsOutput, PixelFormat},
         loaded_image::LoadedImage,
         media::{
-            file::{Directory, File, FileAttribute, FileInfo, FileMode, RegularFile},
+            file::{Directory, File, FileAttribute, FileHandle, FileInfo, FileMode, RegularFile},
             fs::SimpleFileSystem,
         },
     },
@@ -37,7 +37,7 @@ use uefi::{
         },
         runtime::Time,
     },
-    CStr16, Guid,
+    CStr16, Error, Guid, Result,
 };
 
 /// メモリマップを渡されたファイルに保存する。
@@ -253,6 +253,54 @@ fn copy_load_segments(src_base: usize, phdrs: &[Elf64Phdr]) {
     }
 }
 
+fn read_file(
+    system_table: &mut SystemTable<Boot>,
+    mut file: FileHandle,
+) -> Result<&'static mut [u8]> {
+    // ファイル情報を取得
+    const FILE_INFO_SIZE: usize = size_of::<u64>() * 2
+        + size_of::<Time>() * 3
+        + size_of::<FileAttribute>()
+        // （恐らく）ここまでがファイル名以外の情報のためのサイズ
+        // ここからはファイル名のための情報
+        // 文字スライスが null 終端されていない代わりに、長さの情報を持っている（と思われる）
+        + size_of::<usize>()
+        // FAT のファイル名は 11 文字と制限されているから、11文字分あれば十分
+        + size_of::<u16>() * 11;
+
+    // ファイル情報保持のためのバッファ
+    let mut file_info_buffer = [0u8; FILE_INFO_SIZE];
+    let file_info = match file.get_info::<FileInfo>(&mut file_info_buffer) {
+        Err(e) => {
+            error!("Failed to get file info: {}", e);
+            halt();
+        }
+        Ok(info) => info,
+    };
+
+    let file_size = file_info.file_size();
+
+    // ファイル全体を扱うオブジェクトから、レギュラーファイル用オブジェクトに変換
+    let mut file = match file.into_regular_file() {
+        None => {
+            error!("Opend file isn't a regular file");
+            return Err(Error::new(Status::UNSUPPORTED, ()));
+        }
+        Some(file) => file,
+    };
+
+    // ファイル展開用のプールを取得
+    let buffer_addr = system_table
+        .boot_services()
+        .allocate_pool(MemoryType::LOADER_DATA, file_size as usize)?;
+    let buffer = unsafe { slice::from_raw_parts_mut(buffer_addr, file_size as usize) };
+
+    // ファイルを展開
+    file.read(buffer)?;
+
+    Ok(buffer)
+}
+
 #[entry]
 fn efi_main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     // 恐らく log を使えるようにしているのではないか
@@ -357,7 +405,7 @@ fn efi_main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status
     };
 
     // `\kernel.elf` を開く
-    let mut kernel_file =
+    let kernel_file =
         match root_dir.open(cstr16!("\\kernel"), FileMode::Read, FileAttribute::empty()) {
             Err(e) => {
                 error!("Failed to open kernel: {}", e);
@@ -366,60 +414,16 @@ fn efi_main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status
             Ok(file) => file,
         };
 
-    // カーネルファイル情報を取得
-    const FILE_INFO_SIZE: usize = size_of::<u64>() * 2
-        + size_of::<Time>() * 3
-        + size_of::<FileAttribute>()
-        // （恐らく）ここまでがファイル名以外の情報のためのサイズ
-        // ここからはファイル名のための情報
-        // 文字スライスが null 終端されていない代わりに、長さの情報を持っている（と思われる）
-        + size_of::<usize>()
-        + size_of::<u16>() * "\\kernel".len();
-    // ファイル情報保持のためのバッファ
-    let mut file_info_buffer = [0u8; FILE_INFO_SIZE];
-    let file_info = match kernel_file.get_info::<FileInfo>(&mut file_info_buffer) {
-        Err(e) => {
-            error!("Failed to get kernel info: {}", e);
-            halt();
-        }
-        Ok(info) => info,
-    };
-
-    let kernel_file_size = file_info.file_size();
-
-    // ファイル全体を扱うオブジェクトから、レギュラーファイル用オブジェクトに変換
-    let mut kernel_file = match kernel_file.into_regular_file() {
-        None => {
-            error!("kernel isn't a regular file");
-            halt();
-        }
-        Some(file) => file,
-    };
-
-    // カーネル一時展開用のプールを取得
-    let kernel_buffer_addr = match system_table
-        .boot_services()
-        .allocate_pool(MemoryType::LOADER_DATA, kernel_file_size as usize)
-    {
-        Err(e) => {
-            error!("Failed to allocate pool: {}", e);
-            halt();
-        }
+    let kernel_buffer = match read_file(&mut system_table, kernel_file) {
         Ok(buf) => buf,
-    };
-    let kernel_buffer =
-        unsafe { slice::from_raw_parts_mut(kernel_buffer_addr, kernel_file_size as usize) };
-
-    // カーネルを一時的に展開
-    match kernel_file.read(kernel_buffer) {
         Err(e) => {
-            error!("can't read kernel in pool: {}", e);
+            error!("error: {}", e);
             halt();
         }
-        Ok(_) => (),
-    }
+    };
 
     // kernel.elf の ELF ヘッダを取得
+    let kernel_buffer_addr = kernel_buffer.as_ptr();
     let kernel_ehdr = unsafe { *(kernel_buffer_addr as *const Elf64Ehdr) };
     let phdr_addr = kernel_buffer_addr as usize + kernel_ehdr.phoff as usize;
     let kernel_phdrs =
