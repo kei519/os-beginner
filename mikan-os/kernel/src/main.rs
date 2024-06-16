@@ -4,7 +4,7 @@
 extern crate alloc;
 
 use alloc::format;
-use core::{arch::asm, panic::PanicInfo};
+use core::{arch::asm, ffi::c_void, panic::PanicInfo};
 use uefi::table::boot::MemoryMap;
 
 use kernel::{
@@ -91,17 +91,18 @@ fn kernel_entry(
     kernel_base: usize,
     kernel_size: usize,
     acpi_table: &RSDP,
+    volume_image: *mut c_void,
 ) {
     // メモリアロケータの初期化
     memory_manager::GLOBAL.init(memory_map, kernel_base, kernel_size);
     FB_CONFIG.init(frame_buffer_config.clone());
 
-    if let Err(err) = main(acpi_table) {
+    if let Err(err) = main(acpi_table, volume_image) {
         printkln!("{}", err);
     }
 }
 
-fn main(acpi_table: &RSDP) -> Result<()> {
+fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
     layer::init();
     console::init();
 
@@ -147,6 +148,24 @@ fn main(acpi_table: &RSDP) -> Result<()> {
     xhci::init();
     mouse::init();
     keyboard::init();
+
+    let mut p = volume_image as *const u8;
+    unsafe {
+        printkln!("Volume Image: at {:p}", p);
+        for i in 0..16 {
+            printk!("{:04x}", i * 16);
+            for _ in 0..8 {
+                printk!(" {:02x}", *p);
+                p = p.add(1);
+            }
+            printk!(" ");
+            for _ in 0..8 {
+                printk!(" {:02x}", *p);
+                p = p.add(1);
+            }
+            printkln!();
+        }
+    }
 
     let mut text_window_index = 0;
     loop {

@@ -18,7 +18,7 @@ use core::{
 use elf::{Elf64Phdr, ProgramType};
 use graphics::FrameBufferConfig;
 use graphics::GraphicsInfo;
-use log::error;
+use log::{error, info};
 use uefi::{
     data_types::Identify,
     prelude::*,
@@ -26,6 +26,7 @@ use uefi::{
         console::gop::{GraphicsOutput, PixelFormat},
         loaded_image::LoadedImage,
         media::{
+            block::BlockIO,
             file::{Directory, File, FileAttribute, FileHandle, FileInfo, FileMode, RegularFile},
             fs::SimpleFileSystem,
         },
@@ -33,7 +34,7 @@ use uefi::{
     table::{
         boot::{
             AllocateType, MemoryDescriptor, MemoryMap, MemoryType, OpenProtocolAttributes,
-            OpenProtocolParams, SearchType,
+            OpenProtocolParams, ScopedProtocol, SearchType,
         },
         runtime::Time,
     },
@@ -301,6 +302,55 @@ fn read_file(
     Ok(buffer)
 }
 
+fn open_block_io_protocol_for_loaded_image(
+    system_table: &SystemTable<Boot>,
+    image_handle: Handle,
+) -> Result<ScopedProtocol<'_, BlockIO>> {
+    unsafe {
+        let loaded_image = match system_table
+            .boot_services()
+            .open_protocol::<LoadedImage>(
+                OpenProtocolParams {
+                    handle: image_handle,
+                    agent: image_handle,
+                    controller: None,
+                },
+                OpenProtocolAttributes::GetProtocol,
+            )?
+            .device()
+        {
+            Some(image) => image,
+            None => return Err(uefi::Error::new(Status::ABORTED, ())),
+        };
+
+        system_table.boot_services().open_protocol::<BlockIO>(
+            OpenProtocolParams {
+                handle: loaded_image,
+                agent: image_handle,
+                controller: None,
+            },
+            OpenProtocolAttributes::GetProtocol,
+        )
+    }
+}
+
+fn read_block(
+    system_table: &SystemTable<Boot>,
+    block_io: &mut BlockIO,
+    media_id: u32,
+    read_bytes: u64,
+) -> Result<&'static mut [u8]> {
+    let read_bytes = read_bytes as usize;
+
+    let buffer_addr = system_table
+        .boot_services()
+        .allocate_pool(MemoryType::LOADER_DATA, read_bytes)?;
+
+    let buffer = unsafe { slice::from_raw_parts_mut(buffer_addr, read_bytes) };
+    block_io.read_blocks(media_id, 0, buffer)?;
+    Ok(buffer)
+}
+
 #[entry]
 fn efi_main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     // 恐らく log を使えるようにしているのではないか
@@ -485,6 +535,61 @@ fn efi_main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status
         }
     }
 
+    // "\fat_disk" もしくは外部接続の IO デバイスを読み込む
+    let volume_image = match root_dir.open(
+        cstr16!("\\fat_disk"),
+        FileMode::Read,
+        FileAttribute::empty(),
+    ) {
+        Ok(file) => match read_file(&mut system_table, file) {
+            Ok(buf) => buf,
+            Err(e) => {
+                error!("failed to read volume file: {}", e);
+                halt();
+            }
+        },
+        Err(_) => {
+            // "\fat_disk" が見つからなかった場合
+            let block_io =
+                match open_block_io_protocol_for_loaded_image(&system_table, image_handle) {
+                    Ok(prot) => prot,
+                    Err(e) => {
+                        error!("failed to read blocks: {}", e);
+                        halt();
+                    }
+                };
+
+            let media = block_io.media();
+            let volume_bytes = media.block_size() as u64 * (media.last_block() + 1);
+            let volume_bytes = if volume_bytes > 16 * 1024 * 1024 {
+                16 * 1024 * 1024
+            } else {
+                volume_bytes
+            };
+
+            info!(
+                "Reading {} bytes (Present {}, BockSize {}, LastBlock {})",
+                volume_bytes,
+                media.is_media_present(),
+                media.block_size(),
+                media.last_block(),
+            );
+
+            match read_block(
+                &system_table,
+                block_io.get_mut().unwrap(),
+                media.media_id(),
+                volume_bytes,
+            ) {
+                Ok(buf) => buf,
+                Err(e) => {
+                    error!("failed to read blocks: {}", e);
+                    halt();
+                }
+            }
+        }
+    };
+
     // UEFI のブートサービスを終了する
     let (system_table, _) = system_table.exit_boot_services(MemoryType(0));
 
@@ -535,6 +640,7 @@ fn efi_main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status
         usize,
         usize,
         *const c_void,
+        *mut c_void,
     ) = unsafe { transmute(kernel_ehdr.entry) };
     entry_point(
         &config,
@@ -542,6 +648,7 @@ fn efi_main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status
         kernel_first_addr,
         kernel_last_addr - kernel_first_addr,
         acpi_table,
+        volume_image.as_mut_ptr() as *mut c_void,
     );
 
     halt()
