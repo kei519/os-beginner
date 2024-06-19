@@ -1,11 +1,17 @@
-use core::{ffi::c_void, ptr};
+use core::{ffi::c_void, mem, ptr};
 
 use crate::util::OnceStatic;
 
+pub const END_OF_CLUSTER_CHAIN: u64 = 0x0fff_ffff;
+
 pub static BOOT_VOLUME_IMAGE: OnceStatic<&'static BPB> = OnceStatic::new();
+pub static BYTES_PER_CLUSTER: OnceStatic<u64> = OnceStatic::new();
 
 pub fn init(volume_image: *mut c_void) {
     BOOT_VOLUME_IMAGE.init(unsafe { &*(volume_image as *const BPB) });
+
+    let image = BOOT_VOLUME_IMAGE.get();
+    BYTES_PER_CLUSTER.init(image.byts_per_sec() as u64 * image.sec_per_clus() as u64);
 }
 
 pub fn get_sector_by_cluster<T>(cluster: u64, len: usize) -> &'static [T] {
@@ -29,6 +35,50 @@ pub fn read_name(entry: &DirectoryEntry) -> (&[u8], &[u8]) {
         .unwrap_or(0);
 
     (&entry.name[..base_len], &entry.name[8..8 + ext_len])
+}
+
+// `directory_cluster` が `0` のときはルートディレクトリで探索する。
+pub fn find_file(name: &str, mut directory_cluster: u64) -> Option<&'static DirectoryEntry> {
+    if directory_cluster == 0 {
+        directory_cluster = BOOT_VOLUME_IMAGE.get().root_clus() as u64
+    }
+
+    while directory_cluster != END_OF_CLUSTER_CHAIN {
+        let dir = get_sector_by_cluster::<DirectoryEntry>(
+            directory_cluster,
+            BYTES_PER_CLUSTER.get() as usize / mem::size_of::<DirectoryEntry>(),
+        );
+        for file in dir {
+            if file.name[0] == 0 {
+                return None;
+            }
+            if file.name_is_equal(name) {
+                return Some(file);
+            }
+        }
+
+        directory_cluster = next_cluster(directory_cluster);
+    }
+
+    None
+}
+
+pub fn next_cluster(cluster: u64) -> u64 {
+    let image = BOOT_VOLUME_IMAGE.get();
+    let fat_offset = image.rsvd_sec_cnt() * image.byts_per_sec();
+    let fat = unsafe {
+        &*ptr::slice_from_raw_parts(
+            (image.as_ptr().byte_add(fat_offset as usize)) as *const u32,
+            image.fat_sz32() as usize * image.byts_per_sec() as usize / mem::size_of::<u32>(),
+        )
+    };
+
+    let next = fat[cluster as usize];
+    if next > 0x0fff_fff8 {
+        END_OF_CLUSTER_CHAIN
+    } else {
+        next as u64
+    }
 }
 
 #[repr(packed)]
@@ -164,6 +214,37 @@ pub struct DirectoryEntry {
     pub wrt_date: u16,
     pub fst_clus_lo: u16,
     pub file_size: u32,
+}
+
+impl DirectoryEntry {
+    pub fn first_cluster(&self) -> u32 {
+        (self.fst_clus_hl as u32) << 16 | self.fst_clus_lo as u32
+    }
+
+    fn name_is_equal(&self, name: &str) -> bool {
+        // `name` を名前と拡張子に分割
+        let (base, ext) = match name.rsplit_once('.') {
+            Some(res) => (res.0, res.1),
+            None => (name, ""),
+        };
+        if base.len() > 8 || ext.len() > 3 {
+            return false;
+        }
+
+        let base = base
+            .as_bytes()
+            .iter()
+            .map(|c| c.to_ascii_uppercase())
+            .chain((base.len()..8).map(|_| 0x20));
+        let ext = ext
+            .as_bytes()
+            .iter()
+            .map(|c| c.to_ascii_uppercase())
+            .chain((ext.len()..3).map(|_| 0x20));
+        let name = base.chain(ext);
+
+        self.name.into_iter().eq(name)
+    }
 }
 
 #[repr(u8)]

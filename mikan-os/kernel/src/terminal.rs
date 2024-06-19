@@ -1,5 +1,5 @@
 use alloc::{collections::VecDeque, format, string::String, sync::Arc, vec::Vec};
-use core::{mem, str};
+use core::{cmp, mem, str};
 
 use crate::{
     asmfunc, fat, font,
@@ -226,7 +226,7 @@ impl Terminal {
     }
 
     /// `linebuf` や `linebuf_index` を変更せずに文字列を表示する。
-    fn print(&mut self, s: &str) {
+    fn print(&mut self, s: &[u8]) {
         self.draw_cursor(false);
 
         let newline = |term: &mut Self| {
@@ -238,7 +238,7 @@ impl Terminal {
             };
         };
 
-        for &c in s.as_bytes() {
+        for &c in s {
             if c == b'\n' {
                 newline(self);
             } else {
@@ -265,12 +265,13 @@ impl Terminal {
         let Some(&command) = splited.first() else {
             return;
         };
+        let args: Vec<_> = splited.into_iter().skip(1).collect();
         match command {
             "echo" => {
-                if let Some(first_arg) = splited.get(1) {
-                    self.print(first_arg);
+                if let Some(first_arg) = args.first() {
+                    self.print(first_arg.as_bytes());
                 }
-                self.print("\n");
+                self.print(b"\n");
             }
             "clear" => {
                 self.window.write().fill_rectangle(
@@ -294,7 +295,7 @@ impl Terminal {
                         dev.class_code().sub(),
                         dev.class_code().interface(),
                     );
-                    self.print(&s);
+                    self.print(s.as_bytes());
                 }
             }
             "ls" => {
@@ -326,6 +327,32 @@ impl Terminal {
                         format!("{}\n", str::from_utf8(base).unwrap())
                     };
                     self.print(&s);
+                }
+            }
+            "cat" => {
+                let Some(file_name) = args.first() else {
+                    self.print("Usage: cat <file>\n");
+                    return;
+                };
+                let Some(file_entry) = fat::find_file(file_name, 0) else {
+                    self.print(format!("no such file: {}\n", file_name).as_str());
+                    return;
+                };
+
+                let mut cluster = file_entry.first_cluster() as u64;
+                let mut remain_bytes = file_entry.file_size;
+
+                self.draw_cursor(false);
+                let bytes_per_cluster = fat::BYTES_PER_CLUSTER.get();
+                while cluster != 0 && cluster != fat::END_OF_CLUSTER_CHAIN {
+                    let s = fat::get_sector_by_cluster::<u8>(
+                        cluster,
+                        cmp::min(bytes_per_cluster as _, remain_bytes as _),
+                    );
+
+                    self.print(s);
+                    remain_bytes -= s.len() as u32;
+                    cluster = fat::next_cluster(cluster);
                 }
             }
             command => {
