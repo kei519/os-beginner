@@ -111,7 +111,7 @@ impl Terminal {
             cmd_history,
             cmd_history_index: -1,
         };
-        ret.print(">");
+        ret.print(b">");
         ret
     }
 
@@ -160,7 +160,7 @@ impl Terminal {
                 };
 
                 self.execute_line(command);
-                self.print(">");
+                self.print(b">");
                 draw_area.pos = Vector2D::new(0, 0);
                 draw_area.size = self.window.read().size();
             }
@@ -326,16 +326,16 @@ impl Terminal {
                     } else {
                         format!("{}\n", str::from_utf8(base).unwrap())
                     };
-                    self.print(&s);
+                    self.print(s.as_bytes());
                 }
             }
             "cat" => {
                 let Some(file_name) = args.first() else {
-                    self.print("Usage: cat <file>\n");
+                    self.print(b"Usage: cat <file>\n");
                     return;
                 };
                 let Some(file_entry) = fat::find_file(file_name, 0) else {
-                    self.print(format!("no such file: {}\n", file_name).as_str());
+                    self.print(format!("no such file: {}\n", file_name).as_bytes());
                     return;
                 };
 
@@ -356,9 +356,9 @@ impl Terminal {
                 }
             }
             command => {
-                self.print("no such command: ");
-                self.print(command);
-                self.print("\n");
+                self.print(b"no such command: ");
+                self.print(command.as_bytes());
+                self.print(b"\n");
             }
         }
     }
