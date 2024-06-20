@@ -3,6 +3,7 @@ skip_core_tasks = true
 
 [env]
 DEVENV_DIR = "../devenv"
+MIKANOS_DIR = "."
 
 [tasks.default]
 dependencies = ["run"]
@@ -24,7 +25,7 @@ cargo build --release --features=not-check
 '''
 
 [tasks.build]
-dependencies = ["build-loader", "build-kernel"]
+dependencies = ["build-loader", "build-kernel", "build-apps"]
 
 [tasks.run]
 command = "${DEVENV_DIR}/run_qemu.sh"
@@ -98,7 +99,7 @@ args = [
 ]
 
 [tasks.debug-build]
-dependencies = ["debug-build-loader", "debug-build-kernel"]
+dependencies = ["debug-build-loader", "debug-build-kernel", "build-apps"]
 
 [tasks.debug-build-loader]
 script = '''
@@ -136,3 +137,18 @@ args = ["check", "--manifest-path", "kernel/Cargo.toml", "--color", "always"]
 [tasks.clippy]
 command = "cargo"
 args = ["clippy", "--manifest-path", "kernel/Cargo.toml", "--color", "always"]
+
+[tasks.build-apps]
+script='''
+#!/bin/bash -ex
+
+if [ ! -d "apps" ]; then
+	exit 0
+fi
+
+for MK in $(ls apps/*/Makefile); do
+	APP_DIR=$(dirname $MK)
+	APP=$(basename $APP_DIR)
+	make ${MAKE_OPTS:-} -C $APP_DIR $APP
+done
+'''
