@@ -2,7 +2,9 @@ use alloc::{collections::VecDeque, format, string::String, sync::Arc, vec::Vec};
 use core::{cmp, mem, str};
 
 use crate::{
-    asmfunc, fat, font,
+    asmfunc,
+    fat::{self, DirectoryEntry, BYTES_PER_CLUSTER, END_OF_CLUSTER_CHAIN},
+    font,
     graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, FB_CONFIG},
     layer::{LAYER_MANAGER, LAYER_TASK_MAP},
     message::{Message, MessageType},
@@ -260,15 +262,14 @@ impl Terminal {
     }
 
     fn execute_line(&mut self, command: String) {
-        let splited: Vec<_> = command.split(' ').filter(|s| !s.is_empty()).collect();
+        let args: Vec<_> = command.split(' ').filter(|s| !s.is_empty()).collect();
 
-        let Some(&command) = splited.first() else {
+        let Some(&command) = args.first() else {
             return;
         };
-        let args: Vec<_> = splited.into_iter().skip(1).collect();
         match command {
             "echo" => {
-                if let Some(first_arg) = args.first() {
+                if let Some(first_arg) = args.get(1) {
                     self.print(first_arg.as_bytes());
                 }
                 self.print(b"\n");
@@ -330,7 +331,7 @@ impl Terminal {
                 }
             }
             "cat" => {
-                let Some(file_name) = args.first() else {
+                let Some(file_name) = args.get(1) else {
                     self.print(b"Usage: cat <file>\n");
                     return;
                 };
@@ -355,11 +356,14 @@ impl Terminal {
                     cluster = fat::next_cluster(cluster);
                 }
             }
-            command => {
-                self.print(b"no such command: ");
-                self.print(command.as_bytes());
-                self.print(b"\n");
-            }
+            command => match fat::find_file(command, 0) {
+                Some(file_entry) => self.execute_file(file_entry),
+                None => {
+                    self.print(b"no such command: ");
+                    self.print(command.as_bytes());
+                    self.print(b"\n");
+                }
+            },
         }
     }
 
@@ -401,6 +405,25 @@ impl Terminal {
         );
         self.cursor += Vector2D::new(history.len() as i32, 0);
         draw_area
+    }
+
+    fn execute_file(&mut self, file_entry: &DirectoryEntry) {
+        let mut cluster = file_entry.first_cluster() as u64;
+        let mut remain_bytes = file_entry.file_size as _;
+
+        let mut file_buf = Vec::<u8>::with_capacity(remain_bytes);
+
+        while cluster != 0 && cluster != END_OF_CLUSTER_CHAIN {
+            let copy_bytes = cmp::min(BYTES_PER_CLUSTER.get() as _, remain_bytes);
+            file_buf.extend_from_slice(fat::get_sector_by_cluster(cluster, copy_bytes));
+
+            remain_bytes -= copy_bytes;
+            cluster = fat::next_cluster(cluster);
+        }
+
+        type Func = fn();
+        let f: Func = unsafe { mem::transmute(file_buf.as_ptr()) };
+        f();
     }
 }
 
