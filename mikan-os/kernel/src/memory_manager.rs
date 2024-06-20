@@ -8,7 +8,7 @@ use core::{
 use uefi::table::boot::MemoryMap;
 
 use crate::{
-    asmfunc,
+    // asmfunc,
     bitfield::BitField as _,
     memory_map,
     sync::{Mutex, RwLock},
@@ -190,7 +190,7 @@ unsafe impl GlobalAlloc for BitmapMemoryManager {
         // 他のスレッドが同時に空き領域を探して、
         // 空いていた領域を同時に割り当てないようにするため、
         // ロックを取得
-        asmfunc::cli();
+        // asmfunc::cli();
         let _lock = self.locker.lock_wait();
 
         let num_frames = get_num_frames(layout.size());
@@ -210,8 +210,8 @@ unsafe impl GlobalAlloc for BitmapMemoryManager {
             let mut i = 0;
             while i < num_frames {
                 if start_frame_id + i >= self.range_end.read().id() {
-                    drop(_lock);
-                    asmfunc::sti();
+                    // drop(_lock);
+                    // asmfunc::sti();
                     return ptr::null_mut();
                 }
                 if self.is_allocated(FrameId::new(start_frame_id + i)) {
