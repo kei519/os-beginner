@@ -1,0 +1,15 @@
+[package]
+name = "rpn"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "rpn"
+test = false
+bench = false
+
+[profile.release]
+panic = "abort"
+strip = true
+
+[dependencies]

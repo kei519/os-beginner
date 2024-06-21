@@ -6,6 +6,7 @@ pub mod acpi;
 pub mod asmfunc;
 pub mod bitfield;
 pub mod console;
+pub mod elf;
 pub mod error;
 pub mod fat;
 pub mod font;

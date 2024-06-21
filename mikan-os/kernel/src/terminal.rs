@@ -1,8 +1,10 @@
-use alloc::{collections::VecDeque, format, string::String, sync::Arc, vec::Vec};
-use core::{cmp, mem, str};
+use alloc::{collections::VecDeque, ffi::CString, format, string::String, sync::Arc, vec::Vec};
+use core::{cmp, ffi::c_char, mem, ptr, str};
 
 use crate::{
     asmfunc,
+    bitfield::BitField,
+    elf::{Elf64Ehdr, Elf64Phdr, ProgramType},
     fat::{self, DirectoryEntry, BYTES_PER_CLUSTER, END_OF_CLUSTER_CHAIN},
     font,
     graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, FB_CONFIG},
@@ -357,7 +359,7 @@ impl Terminal {
                 }
             }
             command => match fat::find_file(command, 0) {
-                Some(file_entry) => self.execute_file(file_entry),
+                Some(file_entry) => self.execute_file(file_entry, args),
                 None => {
                     self.print(b"no such command: ");
                     self.print(command.as_bytes());
@@ -407,7 +409,7 @@ impl Terminal {
         draw_area
     }
 
-    fn execute_file(&mut self, file_entry: &DirectoryEntry) {
+    fn execute_file(&mut self, file_entry: &DirectoryEntry, args: Vec<&str>) {
         let mut cluster = file_entry.first_cluster() as u64;
         let mut remain_bytes = file_entry.file_size as _;
 
@@ -421,9 +423,50 @@ impl Terminal {
             cluster = fat::next_cluster(cluster);
         }
 
-        type Func = fn();
-        let f: Func = unsafe { mem::transmute(file_buf.as_ptr()) };
-        f();
+        let elf_header: &Elf64Ehdr = unsafe { &*(file_buf.as_ptr() as *const _) };
+        if &elf_header.ident[..4] != b"\x7fELF" {
+            type Func = fn();
+            let f: Func = unsafe { mem::transmute(file_buf.as_ptr()) };
+            f();
+            return;
+        }
+
+        let args: Vec<_> = args
+            .into_iter()
+            .map(|arg| CString::new(arg).unwrap())
+            .collect();
+        let cargs: Vec<_> = args
+            .iter()
+            .map(|arg| arg.as_ptr())
+            .chain((0..1).map(|_| ptr::null()))
+            .collect();
+
+        let program_headers = unsafe {
+            &*ptr::slice_from_raw_parts(
+                file_buf.as_ptr().byte_add(elf_header.phoff as usize) as *const Elf64Phdr,
+                elf_header.phnum as usize,
+            )
+        };
+
+        let exe_program_header = 'l: {
+            for phdr in program_headers {
+                // プログラムヘッダのフラグの0ビット目は Execute かどうかを表す
+                if phdr.r#type == ProgramType::Load as _ && phdr.flags.get_bit(0) {
+                    break 'l phdr;
+                }
+            }
+            self.print(b"This file is not executable.\n");
+            return;
+        };
+        let entry_offset =
+            exe_program_header.offset as usize + (elf_header.entry - exe_program_header.vaddr);
+
+        let entry_addr = unsafe { file_buf.as_ptr().byte_add(entry_offset) };
+        type Func = fn(i32, *const *const c_char) -> i32;
+        let f: Func = unsafe { mem::transmute(entry_addr) };
+        let ret = f(args.len() as i32, cargs.as_ptr());
+
+        self.print(format!("app exited. ret = {}\n", ret).as_bytes());
     }
 }
 
