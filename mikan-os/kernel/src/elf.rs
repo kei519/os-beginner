@@ -2,7 +2,7 @@
 #[derive(Clone, Copy)]
 pub struct Elf64Ehdr {
     pub ident: [u8; 16],
-    pub r#type: u16,
+    pub r#type: ExecuteType,
     pub machine: u16,
     pub version: u32,
     pub entry: usize,
@@ -15,6 +15,16 @@ pub struct Elf64Ehdr {
     pub shentsize: u16,
     pub shnum: u16,
     pub shstrndx: u16,
+}
+
+#[repr(u16)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecuteType {
+    None = 0,
+    Rel = 1,
+    Exec = 2,
+    Dyn = 3,
+    Core = 4,
 }
 
 #[repr(C)]

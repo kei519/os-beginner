@@ -1,15 +1,23 @@
 use alloc::{collections::VecDeque, ffi::CString, format, string::String, sync::Arc, vec::Vec};
-use core::{cmp, ffi::c_char, mem, ptr, str};
+use core::{
+    alloc::{GlobalAlloc, Layout},
+    cmp,
+    ffi::c_char,
+    mem, ptr, slice, str,
+};
 
 use crate::{
     asmfunc,
-    bitfield::BitField,
-    elf::{Elf64Ehdr, Elf64Phdr, ProgramType},
+    elf::{Elf64Ehdr, Elf64Phdr, ExecuteType, ProgramType},
+    error::{Code, Result},
     fat::{self, DirectoryEntry, BYTES_PER_CLUSTER, END_OF_CLUSTER_CHAIN},
     font,
     graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, FB_CONFIG},
     layer::{LAYER_MANAGER, LAYER_TASK_MAP},
+    make_error,
+    memory_manager::{BYTES_PER_FRAME, GLOBAL},
     message::{Message, MessageType},
+    paging::{LinearAddress4Level, PageMapEntry},
     pci,
     sync::SharedLock,
     task,
@@ -441,33 +449,147 @@ impl Terminal {
             .chain((0..1).map(|_| ptr::null()))
             .collect();
 
-        let program_headers = unsafe {
-            &*ptr::slice_from_raw_parts(
-                file_buf.as_ptr().byte_add(elf_header.phoff as usize) as *const Elf64Phdr,
-                elf_header.phnum as usize,
-            )
-        };
+        load_elf(elf_header).unwrap();
 
-        let exe_program_header = 'l: {
-            for phdr in program_headers {
-                // プログラムヘッダのフラグの0ビット目は Execute かどうかを表す
-                if phdr.r#type == ProgramType::Load as _ && phdr.flags.get_bit(0) {
-                    break 'l phdr;
-                }
-            }
-            self.print(b"This file is not executable.\n");
-            return;
-        };
-        let entry_offset =
-            exe_program_header.offset as usize + (elf_header.entry - exe_program_header.vaddr);
-
-        let entry_addr = unsafe { file_buf.as_ptr().byte_add(entry_offset) };
         type Func = fn(i32, *const *const c_char) -> i32;
-        let f: Func = unsafe { mem::transmute(entry_addr) };
+        let f: Func = unsafe { mem::transmute(elf_header.entry) };
         let ret = f(args.len() as i32, cargs.as_ptr());
 
         self.print(format!("app exited. ret = {}\n", ret).as_bytes());
     }
+}
+
+fn load_elf(ehdr: &Elf64Ehdr) -> Result<()> {
+    if ehdr.r#type != ExecuteType::Exec {
+        return Err(make_error!(Code::InvalidFormat));
+    }
+
+    let addr_first = get_first_load_address(ehdr);
+    if addr_first < 0xffff_8000_0000_0000 {
+        return Err(make_error!(Code::InvalidFormat));
+    }
+
+    copy_load_segments(ehdr)?;
+    Ok(())
+}
+
+fn get_first_load_address(ehdr: &Elf64Ehdr) -> usize {
+    for phdr in get_program_headers(ehdr) {
+        if phdr.r#type != ProgramType::Load as _ {
+            continue;
+        }
+        return phdr.vaddr;
+    }
+    0
+}
+
+fn new_page_map() -> Result<&'static mut [PageMapEntry]> {
+    let frame = unsafe {
+        GLOBAL.alloc_zeroed(Layout::from_size_align_unchecked(
+            BYTES_PER_FRAME,
+            BYTES_PER_FRAME,
+        ))
+    };
+    if frame.is_null() {
+        return Err(make_error!(Code::NoEnoughMemory));
+    }
+
+    let e = unsafe {
+        &mut *slice::from_raw_parts_mut(
+            frame as *mut _,
+            BYTES_PER_FRAME / mem::size_of::<PageMapEntry>(),
+        )
+    };
+    Ok(e)
+}
+
+fn set_new_page_map_if_not_present(
+    entry: &mut PageMapEntry,
+) -> Result<&'static mut [PageMapEntry]> {
+    if entry.persent() {
+        return Ok(entry.mut_pointer());
+    }
+
+    let child_map = new_page_map()?;
+    entry.set_pointer(&child_map[0]);
+    entry.set_present(true);
+
+    Ok(child_map)
+}
+
+fn setup_page_map(
+    page_map: &mut [PageMapEntry],
+    page_map_level: i32,
+    mut addr: LinearAddress4Level,
+    mut num_4kpages: usize,
+) -> Result<usize> {
+    while num_4kpages > 0 {
+        let entry_index = addr.part(page_map_level) as usize;
+
+        let child_map = set_new_page_map_if_not_present(&mut page_map[entry_index])?;
+        page_map[entry_index].set_writable(true);
+
+        if page_map_level == 1 {
+            num_4kpages -= 1;
+        } else {
+            num_4kpages = setup_page_map(child_map, page_map_level - 1, addr, num_4kpages)?;
+        }
+
+        if entry_index == 511 {
+            break;
+        }
+
+        addr.set_part(page_map_level, entry_index as u64 + 1);
+        for level in 1..=page_map_level - 1 {
+            addr.set_part(level, 0)
+        }
+    }
+
+    Ok(num_4kpages)
+}
+
+fn setup_page_maps(addr: LinearAddress4Level, num_4kpages: usize) -> Result<()> {
+    let pml4_table =
+        unsafe { &mut *slice::from_raw_parts_mut(asmfunc::get_cr3() as *mut PageMapEntry, 512) };
+    setup_page_map(pml4_table, 4, addr, num_4kpages)?;
+    Ok(())
+}
+
+fn get_program_headers(ehdr: &Elf64Ehdr) -> &[Elf64Phdr] {
+    unsafe {
+        slice::from_raw_parts(
+            (ehdr as *const Elf64Ehdr).byte_add(ehdr.phoff as usize) as *const _,
+            ehdr.phnum as usize,
+        )
+    }
+}
+
+fn copy_load_segments(ehdr: &Elf64Ehdr) -> Result<()> {
+    for phdr in get_program_headers(ehdr) {
+        if phdr.r#type != ProgramType::Load as _ {
+            continue;
+        }
+
+        let dest_addr = LinearAddress4Level {
+            addr: phdr.vaddr as _,
+        };
+        let num_4kpages = (phdr.memsz as usize + 4095) / 4096;
+
+        setup_page_maps(dest_addr, num_4kpages)?;
+
+        unsafe {
+            let src = (ehdr as *const _ as *const u8).add(phdr.offset as usize);
+            let dst = phdr.vaddr as *mut u8;
+            ptr::copy_nonoverlapping(src, dst, phdr.filesz as _);
+            ptr::write_bytes(
+                dst.byte_add(phdr.filesz as _),
+                0,
+                (phdr.memsz - phdr.filesz) as _,
+            );
+        }
+    }
+
+    Ok(())
 }
 
 impl Default for Terminal {
