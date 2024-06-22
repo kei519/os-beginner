@@ -22,7 +22,7 @@ extern "sysv64" fn _start(argc: i32, argv: *const *const c_char) -> i32 {
 }
 
 fn main(args: impl IntoIterator<Item = &'static str>) -> i32 {
-    for arg in args {
+    for arg in args.into_iter().skip(1) {
         match arg {
             "+" => {
                 let b = pop();
