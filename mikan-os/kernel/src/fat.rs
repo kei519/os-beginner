@@ -1,4 +1,6 @@
-use core::{ffi::c_void, mem, ptr};
+use core::{cmp, ffi::c_void, mem, ptr};
+
+use alloc::vec::Vec;
 
 use crate::util::OnceStatic;
 
@@ -79,6 +81,23 @@ pub fn next_cluster(cluster: u64) -> u64 {
     } else {
         next as u64
     }
+}
+
+pub fn load_file(entry: &DirectoryEntry) -> Vec<u8> {
+    let mut cluster = entry.first_cluster() as u64;
+    let mut remain_bytes = entry.file_size as _;
+
+    let mut buf = Vec::<u8>::with_capacity(remain_bytes);
+
+    while cluster != 0 && cluster != END_OF_CLUSTER_CHAIN {
+        let copy_bytes = cmp::min(BYTES_PER_CLUSTER.get() as _, remain_bytes);
+        buf.extend_from_slice(get_sector_by_cluster(cluster, copy_bytes));
+
+        remain_bytes -= copy_bytes;
+        cluster = next_cluster(cluster);
+    }
+
+    buf
 }
 
 #[repr(packed)]

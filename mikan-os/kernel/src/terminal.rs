@@ -10,7 +10,7 @@ use crate::{
     asmfunc,
     elf::{Elf64Ehdr, Elf64Phdr, ExecuteType, ProgramType},
     error::{Code, Result},
-    fat::{self, DirectoryEntry, BYTES_PER_CLUSTER, END_OF_CLUSTER_CHAIN},
+    fat::{self, DirectoryEntry},
     font,
     graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, FB_CONFIG},
     layer::{LAYER_MANAGER, LAYER_TASK_MAP},
@@ -418,18 +418,7 @@ impl Terminal {
     }
 
     fn execute_file(&mut self, file_entry: &DirectoryEntry, args: Vec<&str>) {
-        let mut cluster = file_entry.first_cluster() as u64;
-        let mut remain_bytes = file_entry.file_size as _;
-
-        let mut file_buf = Vec::<u8>::with_capacity(remain_bytes);
-
-        while cluster != 0 && cluster != END_OF_CLUSTER_CHAIN {
-            let copy_bytes = cmp::min(BYTES_PER_CLUSTER.get() as _, remain_bytes);
-            file_buf.extend_from_slice(fat::get_sector_by_cluster(cluster, copy_bytes));
-
-            remain_bytes -= copy_bytes;
-            cluster = fat::next_cluster(cluster);
-        }
+        let file_buf = fat::load_file(file_entry);
 
         let elf_header: &Elf64Ehdr = unsafe { &*(file_buf.as_ptr() as *const _) };
         if &elf_header.ident[..4] != b"\x7fELF" {
@@ -456,6 +445,11 @@ impl Terminal {
         let ret = f(args.len() as i32, cargs.as_ptr());
 
         self.print(format!("app exited. ret = {}\n", ret).as_bytes());
+
+        let addr_first = get_first_load_address(elf_header);
+        clean_page_maps(LinearAddress4Level {
+            addr: addr_first as _,
+        });
     }
 }
 
@@ -590,6 +584,43 @@ fn copy_load_segments(ehdr: &Elf64Ehdr) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn clean_page_maps(addr: LinearAddress4Level) {
+    let pml4_table =
+        unsafe { &mut *slice::from_raw_parts_mut(asmfunc::get_cr3() as *mut PageMapEntry, 512) };
+    // PML4 テーブルの1つしかエントリがないことを仮定している
+    let pdp_table = pml4_table[addr.pml4() as usize].mut_pointer();
+    pml4_table[addr.pml4() as usize].data = 0;
+    clean_page_map(pdp_table, 3);
+
+    unsafe {
+        GLOBAL.dealloc(
+            pdp_table.as_mut_ptr() as _,
+            Layout::from_size_align_unchecked(BYTES_PER_FRAME, BYTES_PER_FRAME),
+        )
+    };
+}
+
+fn clean_page_map(page_maps: &mut [PageMapEntry], page_map_level: i32) {
+    for entry in page_maps {
+        if !entry.persent() {
+            continue;
+        }
+
+        if page_map_level > 1 {
+            clean_page_map(entry.mut_pointer(), page_map_level - 1);
+        }
+
+        let entry_ptr = entry.pointer().as_ptr();
+        unsafe {
+            GLOBAL.dealloc(
+                entry_ptr as _,
+                Layout::from_size_align_unchecked(BYTES_PER_FRAME, BYTES_PER_FRAME),
+            )
+        };
+        entry.data = 0;
+    }
 }
 
 impl Default for Terminal {
