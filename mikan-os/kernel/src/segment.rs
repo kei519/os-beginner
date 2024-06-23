@@ -7,7 +7,7 @@ use crate::{
     x86_descriptor::{DescriptorType, DescriptorTypeEnum, SystemSegmentType},
 };
 
-static GDT: Mutex<[SegmentDescriptor; 3]> = Mutex::new([SegmentDescriptor::default(); 3]);
+static GDT: Mutex<[SegmentDescriptor; 5]> = Mutex::new([SegmentDescriptor::default(); 5]);
 
 pub const KERNEL_CS: u16 = 1 << 3;
 pub const KERNEL_SS: u16 = 2 << 3;
@@ -16,6 +16,8 @@ pub fn setup_segments() {
     let mut gdt = GDT.lock_wait();
     gdt[1] = SegmentDescriptor::code_segment(0, 0xfffff, false, true, false, 0);
     gdt[2] = SegmentDescriptor::data_segment(0, 0xfffff, false, true, true, 0);
+    gdt[3] = SegmentDescriptor::code_segment(0, 0xfffff, false, true, false, 3);
+    gdt[4] = SegmentDescriptor::data_segment(0, 0xfffff, false, true, true, 3);
     load_gdt(
         (size_of::<SegmentDescriptor>() * gdt.len()) as u16 - 1,
         gdt.as_ptr() as u64,

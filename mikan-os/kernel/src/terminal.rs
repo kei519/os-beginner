@@ -1,4 +1,4 @@
-use alloc::{collections::VecDeque, ffi::CString, format, string::String, sync::Arc, vec::Vec};
+use alloc::{collections::VecDeque, format, string::String, sync::Arc, vec::Vec};
 use core::{
     alloc::{GlobalAlloc, Layout},
     cmp,
@@ -367,7 +367,11 @@ impl Terminal {
                 }
             }
             command => match fat::find_file(command, 0) {
-                Some(file_entry) => self.execute_file(file_entry, args),
+                Some(file_entry) => {
+                    if let Err(e) = execute_file(file_entry, args) {
+                        self.print(format!("failed to exec file: {}\n", e).as_bytes());
+                    }
+                }
                 None => {
                     self.print(b"no such command: ");
                     self.print(command.as_bytes());
@@ -416,41 +420,49 @@ impl Terminal {
         self.cursor += Vector2D::new(history.len() as i32, 0);
         draw_area
     }
+}
 
-    fn execute_file(&mut self, file_entry: &DirectoryEntry, args: Vec<&str>) {
-        let file_buf = fat::load_file(file_entry);
+fn execute_file(file_entry: &DirectoryEntry, args: Vec<&str>) -> Result<()> {
+    let file_buf = fat::load_file(file_entry);
 
-        let elf_header: &Elf64Ehdr = unsafe { &*(file_buf.as_ptr() as *const _) };
-        if &elf_header.ident[..4] != b"\x7fELF" {
-            type Func = fn();
-            let f: Func = unsafe { mem::transmute(file_buf.as_ptr()) };
-            f();
-            return;
-        }
-
-        let args: Vec<_> = args
-            .into_iter()
-            .map(|arg| CString::new(arg).unwrap())
-            .collect();
-        let cargs: Vec<_> = args
-            .iter()
-            .map(|arg| arg.as_ptr())
-            .chain((0..1).map(|_| ptr::null()))
-            .collect();
-
-        load_elf(elf_header).unwrap();
-
-        type Func = fn(i32, *const *const c_char) -> i32;
-        let f: Func = unsafe { mem::transmute(elf_header.entry) };
-        let ret = f(args.len() as i32, cargs.as_ptr());
-
-        self.print(format!("app exited. ret = {}\n", ret).as_bytes());
-
-        let addr_first = get_first_load_address(elf_header);
-        clean_page_maps(LinearAddress4Level {
-            addr: addr_first as _,
-        });
+    let elf_header: &Elf64Ehdr = unsafe { &*(file_buf.as_ptr() as *const _) };
+    if &elf_header.ident[..4] != b"\x7fELF" {
+        type Func = fn();
+        let f: Func = unsafe { mem::transmute(file_buf.as_ptr()) };
+        f();
+        return Ok(());
     }
+
+    load_elf(elf_header).unwrap();
+
+    let stack_frame_addr = LinearAddress4Level {
+        addr: 0xffff_ffff_ffff_e000,
+    };
+    setup_page_maps(stack_frame_addr, 1)?;
+
+    let args_frame_addr = LinearAddress4Level {
+        addr: 0xffff_ffff_ffff_f000,
+    };
+    setup_page_maps(args_frame_addr, 1)?;
+    let arg_buf =
+        unsafe { slice::from_raw_parts_mut(args_frame_addr.addr as *mut u8, BYTES_PER_FRAME) };
+    let argc = make_arg_vector(args, arg_buf)?;
+
+    asmfunc::call_app(
+        argc as _,
+        args_frame_addr.addr as _,
+        3 << 3 | 3,
+        4 << 3 | 3,
+        elf_header.entry as _,
+        stack_frame_addr.addr + BYTES_PER_FRAME as u64 - 8,
+    );
+
+    let addr_first = get_first_load_address(elf_header);
+    clean_page_maps(LinearAddress4Level {
+        addr: addr_first as _,
+    });
+
+    Ok(())
 }
 
 fn load_elf(ehdr: &Elf64Ehdr) -> Result<()> {
@@ -522,6 +534,7 @@ fn setup_page_map(
 
         let child_map = set_new_page_map_if_not_present(&mut page_map[entry_index])?;
         page_map[entry_index].set_writable(true);
+        page_map[entry_index].set_user(true);
 
         if page_map_level == 1 {
             num_4kpages -= 1;
@@ -621,6 +634,36 @@ fn clean_page_map(page_maps: &mut [PageMapEntry], page_map_level: i32) {
         };
         entry.data = 0;
     }
+}
+
+/// 引数を配置し、引数の数を返す。
+/// ただし `args` は32個まで。
+fn make_arg_vector(args: Vec<&str>, buf: &mut [u8]) -> Result<usize> {
+    let len = args.len();
+    if len >= 32 {
+        return Err(make_error!(Code::InvalidFormat, "too many args"));
+    }
+
+    if buf.len() < 32 * mem::size_of::<*const c_char>() {
+        return Err(make_error!(Code::BufferTooSmall));
+    }
+
+    let mut cur = 32 * mem::size_of::<*const c_char>();
+    for (i, arg) in args.into_iter().enumerate() {
+        // null 文字分多く必要
+        if cur + arg.len() + 1 >= buf.len() {
+            return Err(make_error!(Code::BufferTooSmall));
+        }
+
+        unsafe {
+            *(buf.as_ptr() as *mut *const c_char).add(i) =
+                buf.as_ptr().byte_add(cur) as *const c_char;
+        }
+        buf[cur..cur + arg.len()].clone_from_slice(arg.as_bytes());
+        cur += arg.len() + 1;
+        buf[cur - 1] = 0;
+    }
+    Ok(len)
 }
 
 impl Default for Terminal {

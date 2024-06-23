@@ -40,11 +40,12 @@ fn main(args: impl IntoIterator<Item = &'static str>) -> i32 {
         }
     }
 
-    if unsafe { STACK_PTR } < 0 {
+    let _ret = if unsafe { STACK_PTR } < 0 {
         0
     } else {
         pop() as _
-    }
+    };
+    loop {}
 }
 
 fn pop() -> i64 {
