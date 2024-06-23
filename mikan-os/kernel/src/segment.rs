@@ -17,7 +17,7 @@ pub fn setup_segments() {
     gdt[1] = SegmentDescriptor::code_segment(0, 0xfffff, false, true, false, 0);
     gdt[2] = SegmentDescriptor::data_segment(0, 0xfffff, false, true, true, 0);
     load_gdt(
-        (size_of::<SegmentDescriptor>() * gdt.len()) as u16,
+        (size_of::<SegmentDescriptor>() * gdt.len()) as u16 - 1,
         gdt.as_ptr() as u64,
     );
 }
