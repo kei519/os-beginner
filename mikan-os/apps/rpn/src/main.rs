@@ -2,7 +2,7 @@
 #![no_main]
 
 use core::{
-    arch::asm,
+    arch::{asm, global_asm},
     ffi::{c_char, CStr},
     panic::PanicInfo,
     ptr,
@@ -28,14 +28,17 @@ fn main(args: impl IntoIterator<Item = &'static str>) -> i32 {
                 let b = pop();
                 let a = pop();
                 push(a + b);
+                log_string(LogLevel::Warn, c"+")
             }
             "-" => {
                 let b = pop();
                 let a = pop();
                 push(a - b);
+                log_string(LogLevel::Warn, c"-")
             }
             arg => {
                 push(arg.parse().unwrap());
+                log_string(LogLevel::Warn, c"#")
             }
         }
     }
@@ -45,6 +48,7 @@ fn main(args: impl IntoIterator<Item = &'static str>) -> i32 {
     } else {
         pop() as _
     };
+    log_string(LogLevel::Warn, c"hello, this is rpn");
     loop {}
 }
 
@@ -68,4 +72,31 @@ fn panic(_: &PanicInfo) -> ! {
     loop {
         unsafe { asm!("hlt") };
     }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[repr(C)]
+pub enum LogLevel {
+    Error = 3,
+    Warn = 4,
+    Info = 6,
+    Debug = 7,
+}
+
+fn log_string(loglevel: LogLevel, str: &CStr) {
+    unsafe { log_string_unsafe(loglevel, str.as_ptr()) };
+}
+
+extern "sysv64" {
+    fn log_string_unsafe(loglevel: LogLevel, str: *const c_char);
+}
+
+global_asm! { r#"
+.global log_string_unsafe
+log_string_unsafe:
+    mov eax, 0x80000000
+    mov r10, rcx
+    syscall
+    ret
+"#
 }
