@@ -17,20 +17,12 @@ pub fn init() {
     {
         let mut idt = IDT.lock_wait();
         idt[InterruptVector::XHCI as usize].set_idt_entry(
-            InterruptDescriptorAttribute::new(
-                x86_descriptor::SystemSegmentType::InterruptGate,
-                0,
-                true,
-            ),
+            InterruptDescriptorAttribute::new(x86_descriptor::SystemSegmentType::InterruptGate, 0),
             int_handler_xhci,
             cs,
         );
         idt[InterruptVector::LAPICTimer as usize].set_idt_entry(
-            InterruptDescriptorAttribute::new(
-                x86_descriptor::SystemSegmentType::InterruptGate,
-                0,
-                true,
-            ),
+            InterruptDescriptorAttribute::new(x86_descriptor::SystemSegmentType::InterruptGate, 0),
             int_handler_lapic_timer,
             cs,
         );
@@ -130,11 +122,11 @@ impl InterruptDescriptorAttribute {
         Self { etc_1: 0, etc_2: 0 }
     }
 
-    pub fn new(r#type: SystemSegmentType, descriptor_privilege_level: u8, present: bool) -> Self {
+    pub fn new(r#type: SystemSegmentType, descriptor_privilege_level: u8) -> Self {
         let mut etc_2 = 0;
         etc_2.set_bits(..4, DescriptorType::system_segment(r#type).into());
         etc_2.set_bits(5..7, descriptor_privilege_level);
-        etc_2.set_bit(7, present);
+        etc_2.set_bit(7, true); // present
         Self { etc_1: 0, etc_2 }
     }
 
