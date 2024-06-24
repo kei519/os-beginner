@@ -78,6 +78,10 @@ pub fn load_tr(sel: u16) {
     unsafe { asm!("ltr {:x}", in(reg) sel) };
 }
 
+pub fn write_msr(msr: u32, value: u64) {
+    unsafe { write_msr_unsafe(msr, value) };
+}
+
 extern "C" {
     fn io_out_32_unsafe(addr: u16, data: u32);
     fn io_in_32_unsafe(addr: u16) -> u32;
@@ -91,6 +95,8 @@ extern "C" {
     fn switch_context_unsafe(next_ctx: &TaskContext, current_ctx: &TaskContext);
     fn restore_context_unsafe(task_ctx: &TaskContext);
     fn call_app_unsafe(argc: i32, argv: *const *const c_char, cs: u16, ss: u16, rip: u64, rsp: u64);
+    fn write_msr_unsafe(msr: u32, value: u64);
+    pub fn syscall_entry();
 }
 
 global_asm! { r#"
@@ -258,4 +264,43 @@ call_app_unsafe:
     push r8 # RIP
     retfq
     # アプリケーションが ret してもここには来ない
+
+.global write_msr_unsafe
+write_msr_unsafe:
+    mov rdx, rsi
+    shr rdx, 32
+    mov eax, esi
+    mov ecx, edi
+    # ECX で指定されたレジスタへ EDX:EAX の64ビットを書き込む
+    wrmsr
+    ret
+
+.global syscall_entry
+syscall_entry:
+    push rbp
+    push rcx # original RIP
+    push r11 # original rflags
+
+    mov rbp, rsp
+
+    # 第4引数の調整
+    mov rcx, r10
+
+    # MikanOS のシステムコール番号は 0x8000_0000 以降だから、下位15ビットのみを使う
+    and eax, 0x7fffffff
+
+    # RSP が16の倍数になるように調整（RSP が減ってもスタックが伸びるだけなので問題ない）
+    and rsp, 0xfffffffffffffff0
+
+    call [SYSCALL_TABLE + 8 * eax]
+    # rbx, r12-r15 は callee-saved なので呼び出し側では保存しない
+    # rax は戻り値用なので呼び出し側では保存しない
+
+    mov rsp, rbp
+
+    pop r11
+    pop rcx
+    pop rbp
+
+    sysretq
 "# }

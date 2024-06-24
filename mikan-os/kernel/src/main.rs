@@ -21,7 +21,7 @@ use kernel::{
     logger::{set_log_level, LogLevel},
     memory_manager,
     message::{Message, MessageType},
-    mouse, paging, pci, printk, printkln, segment,
+    mouse, paging, pci, printk, printkln, segment, syscall,
     task::{self, Stack},
     terminal,
     timer::{self, Timer, TIMER_MANAGER},
@@ -138,6 +138,8 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
         .lock_wait()
         .add_timer(Timer::new(timer_05sec, textbox_cursor_timer));
     let mut textbox_cursor_visible = false;
+
+    syscall::init();
 
     task::init();
     let main_task = task::current_task();

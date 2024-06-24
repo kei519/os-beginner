@@ -25,8 +25,9 @@ pub fn setup_segments() {
     let mut gdt = GDT.lock_wait();
     gdt[1] = SegmentDescriptor::code_segment(0, 0xfffff, false, true, false, 0);
     gdt[2] = SegmentDescriptor::data_segment(0, 0xfffff, false, true, true, 0);
-    gdt[3] = SegmentDescriptor::code_segment(0, 0xfffff, false, true, false, 3);
-    gdt[4] = SegmentDescriptor::data_segment(0, 0xfffff, false, true, true, 3);
+    // sysret 時のセグメントの設定のされ方が変なため、上と逆転している
+    gdt[3] = SegmentDescriptor::data_segment(0, 0xfffff, false, true, true, 3);
+    gdt[4] = SegmentDescriptor::code_segment(0, 0xfffff, false, true, false, 3);
     load_gdt(
         (size_of::<SegmentDescriptor>() * gdt.len()) as u16 - 1,
         gdt.as_ptr() as u64,

@@ -16,6 +16,42 @@ pub enum LogLevel {
     Debug = 7,
 }
 
+impl TryFrom<i32> for LogLevel {
+    type Error = ();
+    fn try_from(value: i32) -> Result<Self, ()> {
+        match value {
+            3 => Ok(Self::Error),
+            4 => Ok(Self::Warn),
+            6 => Ok(Self::Info),
+            7 => Ok(Self::Debug),
+            _ => Err(()),
+        }
+    }
+}
+
+macro_rules! impl_try_from_for_loglevel {
+    () => {};
+    (,) => {};
+    ($type:ty, $( $types:ty ),+) => {
+        impl_try_from_for_loglevel!($type,);
+        impl_try_from_for_loglevel!($( $types ),+);
+    };
+    ($type:ty,) => {
+        impl_try_from_for_loglevel!($type);
+    };
+    ($type:ty) => {
+        impl TryFrom<$type> for LogLevel {
+            type Error = ();
+            fn try_from(value: $type) -> Result<Self, ()> {
+                use ::core::convert::TryInto as _;
+                (value as i32).try_into()
+            }
+        }
+    };
+}
+
+impl_try_from_for_loglevel!(i8, u8, i16, u16, u32, i64, u64, i128, u128, isize, usize);
+
 static LOG_LEVEL: RwLock<LogLevel> = RwLock::new(LogLevel::Warn);
 
 pub fn set_log_level(level: LogLevel) {

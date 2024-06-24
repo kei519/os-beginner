@@ -449,8 +449,8 @@ fn execute_file(file_entry: &DirectoryEntry, args: Vec<&str>) -> Result<()> {
     asmfunc::call_app(
         argc as _,
         args_frame_addr.addr as _,
-        3 << 3 | 3,
         4 << 3 | 3,
+        3 << 3 | 3,
         elf_header.entry as _,
         stack_frame_addr.addr + BYTES_PER_FRAME as u64 - 8,
     );

@@ -314,7 +314,7 @@ impl InterruptFrame {
 
 pub fn print_hex(value: u64, width: i32, pos: Vector2D<i32>, screen: &mut FrameBuffer) {
     for i in 0..width {
-        let x = (value >> 4 * (width - i - 1) as u64).get_bits(..4) as u8;
+        let x = (value >> (4 * (width - i - 1) as u64)).get_bits(..4) as u8;
         let x = x + if x >= 10 { b'a' - 10 } else { b'0' };
         font::write_ascii(
             screen,
@@ -325,6 +325,8 @@ pub fn print_hex(value: u64, width: i32, pos: Vector2D<i32>, screen: &mut FrameB
     }
 }
 
+#[allow(clippy::erasing_op)]
+#[allow(clippy::identity_op)]
 pub fn print_frame(frame: &InterruptFrame, exp_name: &str) {
     let mut screen = SCREEN.lock_wait();
     let writer = &mut *screen;
