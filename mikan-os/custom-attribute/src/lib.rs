@@ -209,6 +209,20 @@ pub fn kernel_entry(attr: TokenStream, item: TokenStream) -> TokenStream {
 pub fn interrupt(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut ast = parse_macro_input!(item as ItemFn);
 
+    // スタックの最上部がエラーコードかどうかは、割り込みハンドラの引数の数で決める。
+    let error_code_is_required = match ast.sig.inputs.len() {
+        1 => false,
+        2 => true,
+        _ => {
+            return syn::Error::new(
+                ast.sig.inputs.last().span(),
+                "引数の数は 1 または 2 である必要があります。",
+            )
+            .to_compile_error()
+            .into()
+        }
+    };
+
     let old_ident = ast.sig.ident.clone();
     // 新しい関数名は "impl" と乱数を元の名前の後ろにつける
     let new_fn_name = format!("{}_impl_{}", old_ident, rand::thread_rng().gen::<usize>());
@@ -249,7 +263,8 @@ pub fn interrupt(_attr: TokenStream, item: TokenStream) -> TokenStream {
     push rcx
     push rbx
     cld
-    lea rdi, [rbp + 0x08]
+    {2}
+    {3}
     call {1}
     pop rbx
     pop rcx
@@ -265,7 +280,18 @@ pub fn interrupt(_attr: TokenStream, item: TokenStream) -> TokenStream {
     pop rbp
     iretq
 "###,
-        old_ident, new_fn_name,
+        old_ident,
+        new_fn_name,
+        if error_code_is_required {
+            "lea rdi, [rbp + 0x10]"
+        } else {
+            "lea rdi, [rbp + 0x08]"
+        },
+        if error_code_is_required {
+            "mov rsi, [rbp + 0x08]"
+        } else {
+            ""
+        },
     );
 
     // 呼び出し部分を元の関数名として宣言、定義する
