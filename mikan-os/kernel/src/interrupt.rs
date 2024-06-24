@@ -3,35 +3,118 @@ use core::{arch::global_asm, mem};
 use crate::{
     asmfunc,
     bitfield::BitField as _,
+    font,
+    frame_buffer::FrameBuffer,
+    graphics::{PixelColor, Vector2D},
+    layer::SCREEN,
     message::MessageType,
+    segment::KERNEL_CS,
     sync::Mutex,
     task,
-    x86_descriptor::{self, DescriptorType, SystemSegmentType},
+    x86_descriptor::{DescriptorType, SystemSegmentType},
 };
 
 static IDT: Mutex<[InterruptDescriptor; 256]> =
     Mutex::new([InterruptDescriptor::const_default(); 256]);
 
 pub fn init() {
-    let cs = asmfunc::get_cs();
-    {
-        let mut idt = IDT.lock_wait();
-        idt[InterruptVector::XHCI as usize].set_idt_entry(
-            InterruptDescriptorAttribute::new(x86_descriptor::SystemSegmentType::InterruptGate, 0),
-            int_handler_xhci,
-            cs,
-        );
-        idt[InterruptVector::LAPICTimer as usize].set_idt_entry(
-            InterruptDescriptorAttribute::new(x86_descriptor::SystemSegmentType::InterruptGate, 0),
-            int_handler_lapic_timer,
-            cs,
-        );
-        asmfunc::load_idt(
-            (mem::size_of::<InterruptDescriptor>() * idt.len()) as u16 - 1,
-            idt.as_ptr() as u64,
-        )
-    }
+    let mut idt = IDT.lock_wait();
+    let mut set_idt_entry = |irq: usize, handler| idt[irq].set_idt_entry(handler, KERNEL_CS);
+
+    set_idt_entry(InterruptVector::XHCI as _, int_handler_xhci);
+    set_idt_entry(InterruptVector::LAPICTimer as _, int_handler_lapic_timer);
+    set_idt_entry(0, int_handler_de);
+    set_idt_entry(1, int_handler_db);
+    set_idt_entry(3, int_handler_bp);
+    set_idt_entry(4, int_handler_of);
+    set_idt_entry(5, int_handler_br);
+    set_idt_entry(6, int_handler_ud);
+    set_idt_entry(7, int_handler_nm);
+    set_idt_entry(8, int_handler_df);
+    set_idt_entry(10, int_handler_ts);
+    set_idt_entry(11, int_handler_np);
+    set_idt_entry(12, int_handler_ss);
+    set_idt_entry(13, int_handler_gp);
+    set_idt_entry(14, int_handler_pf);
+    set_idt_entry(16, int_handler_mf);
+    set_idt_entry(17, int_handler_ac);
+    set_idt_entry(18, int_handler_mc);
+    set_idt_entry(19, int_handler_xm);
+    set_idt_entry(20, int_handler_ve);
+    asmfunc::load_idt(
+        (mem::size_of::<InterruptDescriptor>() * idt.len()) as u16 - 1,
+        idt.as_ptr() as u64,
+    )
 }
+
+/// エラーコード付きのデフォルトの割り込みハンドラを定義する。
+/// 割り込みハンドラ名は `int_handler_$arg` になる。（ただし `$arg` は全て小文字にされる）
+macro_rules! fault_handler_with_error {
+    ($fault_name:ident) => {
+        ::paste::paste! {
+            #[::custom_attribute::interrupt]
+            fn [<int_handler_ $fault_name:lower>](
+                frame: &$crate::interrupt::InterruptFrame,
+                error_code: u64
+            ) {
+                $crate::interrupt::print_frame(
+                    frame,
+                    concat!("#", ::core::stringify!([< $fault_name:upper >])),
+                );
+                let mut screen = $crate::layer::SCREEN.lock_wait();
+                let writer = &mut *screen;
+                $crate::font::write_string(
+                    writer,
+                    Vector2D::new(500, 16 * 4),
+                    b"ERR",
+                    &$crate::graphics::PixelColor::new(0, 0, 0),
+                );
+                $crate::interrupt::print_hex(
+                    error_code,
+                    16,
+                    Vector2D::new(500 + 8 * 4, 16 * 4),
+                    writer);
+                $crate::asmfunc::halt();
+            }
+        }
+    };
+}
+
+/// エラーコードなしのデフォルトの割り込みハンドラを定義する。
+/// 割り込みハンドラ名は `int_handler_$arg` になる。（ただし `$arg` は全て小文字にされる）
+macro_rules! fault_handler_no_error {
+    ($fault_name:ident) => {
+        ::paste::paste! {
+            #[::custom_attribute::interrupt]
+            fn [<int_handler_ $fault_name:lower>](frame: &$crate::interrupt::InterruptFrame) {
+                $crate::interrupt::print_frame(
+                    frame,
+                    concat!("#", ::core::stringify!([< $fault_name:upper >])),
+                );
+                $crate::asmfunc::halt();
+            }
+        }
+    };
+}
+
+fault_handler_no_error!(DE);
+fault_handler_no_error!(DB);
+fault_handler_no_error!(BP);
+fault_handler_no_error!(OF);
+fault_handler_no_error!(BR);
+fault_handler_no_error!(UD);
+fault_handler_no_error!(NM);
+fault_handler_with_error!(DF);
+fault_handler_with_error!(TS);
+fault_handler_with_error!(NP);
+fault_handler_with_error!(SS);
+fault_handler_with_error!(GP);
+fault_handler_with_error!(PF);
+fault_handler_no_error!(MF);
+fault_handler_with_error!(AC);
+fault_handler_no_error!(MC);
+fault_handler_no_error!(XM);
+fault_handler_no_error!(VE);
 
 #[custom_attribute::interrupt]
 fn int_handler_xhci(_frame: &InterruptFrame) {
@@ -176,12 +259,8 @@ impl InterruptDescriptor {
         }
     }
 
-    pub fn set_idt_entry(
-        &mut self,
-        attr: InterruptDescriptorAttribute,
-        entry: unsafe extern "C" fn(),
-        segment_selector: u16,
-    ) {
+    pub fn set_idt_entry(&mut self, entry: unsafe extern "C" fn(), segment_selector: u16) {
+        let attr = InterruptDescriptorAttribute::new(SystemSegmentType::InterruptGate, 0);
         let offset = entry as *const fn() as u64;
         self.attr = attr;
         self.offset_low = offset as u16;
@@ -231,4 +310,59 @@ impl InterruptFrame {
     pub fn ss(&self) -> u64 {
         self.ss
     }
+}
+
+pub fn print_hex(value: u64, width: i32, pos: Vector2D<i32>, screen: &mut FrameBuffer) {
+    for i in 0..width {
+        let x = (value >> 4 * (width - i - 1) as u64).get_bits(..4) as u8;
+        let x = x + if x >= 10 { b'a' - 10 } else { b'0' };
+        font::write_ascii(
+            screen,
+            pos + Vector2D::new(8 * i, 0),
+            x,
+            &PixelColor::new(0, 0, 0),
+        );
+    }
+}
+
+pub fn print_frame(frame: &InterruptFrame, exp_name: &str) {
+    let mut screen = SCREEN.lock_wait();
+    let writer = &mut *screen;
+    font::write_string(
+        writer,
+        Vector2D::new(500, 16 * 0),
+        exp_name.as_bytes(),
+        &PixelColor::new(0, 0, 0),
+    );
+
+    font::write_string(
+        writer,
+        Vector2D::new(500, 16 * 1),
+        b"CS:RIP",
+        &PixelColor::new(0, 0, 0),
+    );
+    print_hex(frame.cs(), 4, Vector2D::new(500 + 8 * 7, 16 * 1), writer);
+    print_hex(frame.rip(), 16, Vector2D::new(500 + 8 * 12, 16 * 1), writer);
+
+    font::write_string(
+        writer,
+        Vector2D::new(500, 16 * 2),
+        b"RFLAGS",
+        &PixelColor::new(0, 0, 0),
+    );
+    print_hex(
+        frame.rflags(),
+        16,
+        Vector2D::new(500 + 8 * 7, 16 * 2),
+        writer,
+    );
+
+    font::write_string(
+        writer,
+        Vector2D::new(500, 16 * 3),
+        b"SS:RSP",
+        &PixelColor::new(0, 0, 0),
+    );
+    print_hex(frame.ss(), 4, Vector2D::new(500 + 8 * 7, 16 * 3), writer);
+    print_hex(frame.rsp(), 16, Vector2D::new(500 + 8 * 12, 16 * 3), writer);
 }
