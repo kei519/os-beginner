@@ -6,6 +6,7 @@ use core::{
 use crate::{
     asmfunc::{self, load_gdt},
     bitfield::BitField as _,
+    interrupt::InterruptDescriptor,
     log,
     logger::LogLevel,
     memory_manager::{BYTES_PER_FRAME, GLOBAL},
@@ -34,20 +35,9 @@ pub fn setup_segments() {
     );
 
     // TSS の設定
-    const RSP_FRAMES: usize = 8;
-    let stack0 = unsafe {
-        GLOBAL.alloc(Layout::from_size_align_unchecked(
-            RSP_FRAMES * BYTES_PER_FRAME,
-            16,
-        ))
-    };
-    if stack0.is_null() {
-        log!(LogLevel::Error, "failed to alloacte rsp0");
-        asmfunc::halt();
-    }
-
-    TSS.init(Tss::new(
-        unsafe { stack0.byte_add(RSP_FRAMES * BYTES_PER_FRAME) } as _,
+    TSS.init(Tss::new(allocate_stack_area(8)).set_ist(
+        InterruptDescriptor::IST_FOR_TIMER as _,
+        allocate_stack_area(8),
     ));
 
     let [tss_first, tss_second] =
@@ -303,7 +293,34 @@ impl Tss {
         }
     }
 
+    pub fn set_ist(mut self, ist: usize, stack_addr: u64) -> Self {
+        let index = ist - 1;
+        if index * 2 >= self.ists.len() {
+            self
+        } else {
+            self.ists[index * 2] = stack_addr as _;
+            self.ists[index * 2 + 1] = stack_addr.get_bits(32..) as _;
+            self
+        }
+    }
+
     pub fn as_ptr(&self) -> *const Self {
         self as _
     }
+}
+
+/// `num_4kframes` 分のページを確保し、その領域の最後のアドレスを返す。
+fn allocate_stack_area(num_4kframes: usize) -> u64 {
+    let stk = unsafe {
+        GLOBAL.alloc(Layout::from_size_align_unchecked(
+            num_4kframes * BYTES_PER_FRAME,
+            16,
+        ))
+    };
+    if stk.is_null() {
+        log!(LogLevel::Error, "failed to alloacte area");
+        asmfunc::halt();
+    }
+
+    (stk as usize + num_4kframes * BYTES_PER_FRAME) as _
 }

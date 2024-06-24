@@ -19,10 +19,15 @@ static IDT: Mutex<[InterruptDescriptor; 256]> =
 
 pub fn init() {
     let mut idt = IDT.lock_wait();
-    let mut set_idt_entry = |irq: usize, handler| idt[irq].set_idt_entry(handler, KERNEL_CS);
+    idt[InterruptVector::LAPICTimer as usize].set_idt_entry(
+        int_handler_lapic_timer,
+        KERNEL_CS,
+        InterruptDescriptor::IST_FOR_TIMER,
+    );
+
+    let mut set_idt_entry = |irq: usize, handler| idt[irq].set_idt_entry(handler, KERNEL_CS, 0);
 
     set_idt_entry(InterruptVector::XHCI as _, int_handler_xhci);
-    set_idt_entry(InterruptVector::LAPICTimer as _, int_handler_lapic_timer);
     set_idt_entry(0, int_handler_de);
     set_idt_entry(1, int_handler_db);
     set_idt_entry(3, int_handler_bp);
@@ -205,12 +210,16 @@ impl InterruptDescriptorAttribute {
         Self { etc_1: 0, etc_2: 0 }
     }
 
-    pub fn new(r#type: SystemSegmentType, descriptor_privilege_level: u8) -> Self {
+    pub fn new(r#type: SystemSegmentType, descriptor_privilege_level: u8, ist: u8) -> Self {
+        let mut etc_1 = 0;
+        etc_1.set_bits(..3, ist);
+
         let mut etc_2 = 0;
         etc_2.set_bits(..4, DescriptorType::system_segment(r#type).into());
         etc_2.set_bits(5..7, descriptor_privilege_level);
         etc_2.set_bit(7, true); // present
-        Self { etc_1: 0, etc_2 }
+
+        Self { etc_1, etc_2 }
     }
 
     pub fn interrupt_stack_table(&self) -> u8 {
@@ -248,6 +257,9 @@ pub struct InterruptDescriptor {
 }
 
 impl InterruptDescriptor {
+    /// タイマー割り込みの IST（Interrupt Stack Table）。
+    pub const IST_FOR_TIMER: u8 = 1;
+
     pub const fn const_default() -> Self {
         Self {
             offset_low: 0,
@@ -259,8 +271,8 @@ impl InterruptDescriptor {
         }
     }
 
-    pub fn set_idt_entry(&mut self, entry: unsafe extern "C" fn(), segment_selector: u16) {
-        let attr = InterruptDescriptorAttribute::new(SystemSegmentType::InterruptGate, 0);
+    pub fn set_idt_entry(&mut self, entry: unsafe extern "C" fn(), segment_selector: u16, ist: u8) {
+        let attr = InterruptDescriptorAttribute::new(SystemSegmentType::InterruptGate, 0, ist);
         let offset = entry as *const fn() as u64;
         self.attr = attr;
         self.offset_low = offset as u16;
