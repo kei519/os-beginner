@@ -322,9 +322,7 @@ impl Terminal {
                     let (base, ext) = fat::read_name(entry);
                     if base[0] == 0x00 {
                         break;
-                    } else if base[0] == 0x5e {
-                        continue;
-                    } else if entry.attr == fat::Attribute::LongName as u8 {
+                    } else if base[0] == 0x5e || entry.attr == fat::Attribute::LongName as u8 {
                         continue;
                     }
 
