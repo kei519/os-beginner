@@ -1,6 +1,6 @@
 use core::{
     arch::asm,
-    mem,
+    mem, ptr,
     sync::atomic::{AtomicBool, AtomicI32, Ordering},
 };
 
@@ -51,8 +51,8 @@ pub fn init() {
     timer_manager.add_timer(Timer::new(timeout, TASK_TIMER_VALUE));
 }
 
-pub fn switch_task(current_sleep: bool) {
-    unsafe { TASK_MANAGER.switch_task(current_sleep) };
+pub fn switch_task(current_ctx: &TaskContext) {
+    unsafe { TASK_MANAGER.switch_task(current_ctx) };
 }
 
 pub fn new_task() -> &'static mut Task {
@@ -299,7 +299,20 @@ impl TaskManager {
             .unwrap()
     }
 
-    fn switch_task(&mut self, current_sleep: bool) {
+    fn switch_task(&mut self, current_ctx: &TaskContext) {
+        let current_task = self.rotete_current_run_queue(false);
+
+        let current_task_ctx_addr = current_task.context() as *const _ as usize;
+        unsafe { ptr::copy_nonoverlapping(current_ctx as _, current_task_ctx_addr as _, 1) };
+        let next_task = self.current_task();
+
+        if next_task != current_task {
+            asmfunc::restore_context(next_task.context());
+        }
+    }
+
+    /// ランキューの並び替えを行い、直前まで実行されていたタスクの [`Arc<Task>`][Arc] を返す。
+    fn rotete_current_run_queue(&mut self, current_sleep: bool) -> Arc<Task> {
         let current_task = self.current_que_mut().pop_front().unwrap();
         if !current_sleep {
             self.current_que_mut().push_back(current_task.clone());
@@ -318,9 +331,7 @@ impl TaskManager {
             }
         }
 
-        let next_task = self.current_task();
-
-        asmfunc::switch_context(next_task.context(), current_task.context());
+        current_task
     }
 
     fn sleep(&mut self, id: u64) -> Result<()> {
@@ -333,7 +344,8 @@ impl TaskManager {
 
         // 現在実行中のタスクならタスクスイッチするだけで良い
         if self.current_task() == task {
-            self.switch_task(true);
+            let current_task = self.rotete_current_run_queue(true);
+            asmfunc::switch_context(self.current_task().context(), current_task.context());
             return Ok(());
         }
 

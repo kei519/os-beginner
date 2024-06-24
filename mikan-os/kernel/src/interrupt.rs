@@ -1,11 +1,11 @@
-use core::mem;
+use core::{arch::global_asm, mem};
 
 use crate::{
     asmfunc,
     bitfield::BitField as _,
     message::MessageType,
     sync::Mutex,
-    task, timer,
+    task,
     x86_descriptor::{self, DescriptorType, SystemSegmentType},
 };
 
@@ -48,10 +48,75 @@ fn int_handler_xhci(_frame: &InterruptFrame) {
     notify_end_of_interrupt();
 }
 
-#[custom_attribute::interrupt]
-fn int_handler_lapic_timer(_frame: &InterruptFrame) {
-    timer::lapic_timer_on_interrupt();
+extern "C" {
+    fn int_handler_lapic_timer();
 }
+
+global_asm! {r#"
+.global int_handler_lapic_timer
+int_handler_lapic_timer: # int_handler_lapic_timer()
+    push rbp
+    mov rbp, rsp
+
+    # スタック上に TaskContex 型の構造を構築する
+    sub rsp, 512
+    fxsave [rsp]
+    push r15
+    push r14
+    push r13
+    push r12
+    push r11
+    push r10
+    push r9
+    push r8
+    push qword ptr [rbp]        # RBP
+    push qword ptr [rbp + 0x20] # RSP
+    push rsi
+    push rdi
+    push rdx
+    push rcx
+    push rbx
+    push rax
+
+    mov ax, gs
+    mov bx, fs
+    mov rcx, cr3
+
+    push rax          # GS
+    push rbx          # FS
+    push [rbp + 0x28] # SS
+    push [rbp + 0x10] # CS
+
+    push rbp          # reserved1
+    push [rbp + 0x18] # RFLAGS
+    push [rbp + 0x08] # RIP
+    push rcx          # CR3
+
+    mov rdi, rsp
+    call lapic_timer_on_interrupt
+
+    add rsp, 8 * 8 # CR3 から GS までを無視
+    pop rax
+    pop rbx
+    pop rcx
+    pop rdx
+    pop rdi
+    pop rsi
+    add rsp, 8 * 2 # RSP, RBP を無視
+    pop r8
+    pop r9
+    pop r10
+    pop r11
+    pop r12
+    pop r13
+    pop r14
+    pop r15
+    fxrstor [rsp]
+
+    mov rsp, rbp
+    pop rbp
+    iretq
+"#}
 
 #[repr(packed)]
 #[derive(Debug, Clone, Copy)]

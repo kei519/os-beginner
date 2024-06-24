@@ -53,6 +53,10 @@ pub fn switch_context(next_ctx: &TaskContext, current_ctx: &TaskContext) {
     unsafe { switch_context_unsafe(next_ctx, current_ctx) }
 }
 
+pub fn restore_context(task_ctx: &TaskContext) {
+    unsafe { restore_context_unsafe(task_ctx) }
+}
+
 pub fn sti() {
     unsafe { asm!("sti") }
 }
@@ -85,6 +89,7 @@ extern "C" {
     fn set_cr3_unsafe(value: u64);
     fn get_cr3_unsafe() -> u64;
     fn switch_context_unsafe(next_ctx: &TaskContext, current_ctx: &TaskContext);
+    fn restore_context_unsafe(task_ctx: &TaskContext);
     fn call_app_unsafe(argc: i32, argv: *const *const c_char, cs: u16, ss: u16, rip: u64, rsp: u64);
 }
 
@@ -203,7 +208,10 @@ switch_context_unsafe: # switch_context_unsafe(next_ctx, current_ctx)
     mov [rsi + 0x38], RDX
 
     fxsave [rsi + 0xc0]
+    # fall through to restore_context_unsafe
 
+.global restore_context_unsafe
+restore_context_unsafe:
     # iret 用のスタックフレーム
     push qword ptr [rdi + 0x28] # SS
     push qword ptr [rdi + 0x70] # RSP

@@ -7,7 +7,7 @@ use crate::{
     interrupt::{self, InterruptVector},
     message::MessageType,
     sync::OnceMutex,
-    task,
+    task::{self, TaskContext},
 };
 
 const COUNT_MAX: u32 = u32::MAX;
@@ -75,7 +75,8 @@ pub fn stop_lapic_timer() {
     unsafe { *INITIAL_COUNT = 0 };
 }
 
-pub fn lapic_timer_on_interrupt() {
+#[no_mangle]
+pub fn lapic_timer_on_interrupt(ctx_stack: &TaskContext) {
     let task_timer_timeout = match TIMER_MANAGER.lock() {
         Some(mut manager) => manager.tick(),
         None => false,
@@ -83,7 +84,7 @@ pub fn lapic_timer_on_interrupt() {
     interrupt::notify_end_of_interrupt();
 
     if task_timer_timeout {
-        task::switch_task(false);
+        task::switch_task(ctx_stack);
     }
 }
 
