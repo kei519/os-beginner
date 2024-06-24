@@ -4,12 +4,12 @@
 extern crate alloc;
 
 use alloc::format;
-use core::{arch::asm, ffi::c_void, panic::PanicInfo};
+use core::{ffi::c_void, panic::PanicInfo};
 use uefi::table::boot::MemoryMap;
 
 use kernel::{
     acpi::RSDP,
-    asmfunc::{self, cli, sti},
+    asmfunc::{self, cli, halt, sti},
     console::{self, PanicConsole},
     error::Result,
     fat, font,
@@ -310,12 +310,4 @@ fn panic(info: &PanicInfo) -> ! {
     // エラーのたびに新しいインスタンスを作るので、最後に発生したエラーが表示される
     write!(&mut PanicConsole::new(), "{}", info).unwrap();
     halt()
-}
-
-fn halt() -> ! {
-    loop {
-        unsafe {
-            asm!("hlt");
-        }
-    }
 }

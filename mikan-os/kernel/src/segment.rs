@@ -1,16 +1,25 @@
-use core::mem::size_of;
+use core::{
+    alloc::{GlobalAlloc, Layout},
+    mem::{self, size_of},
+};
 
 use crate::{
     asmfunc::{self, load_gdt},
     bitfield::BitField as _,
+    log,
+    logger::LogLevel,
+    memory_manager::{BYTES_PER_FRAME, GLOBAL},
     sync::Mutex,
+    util::OnceStatic,
     x86_descriptor::{DescriptorType, DescriptorTypeEnum, SystemSegmentType},
 };
 
-static GDT: Mutex<[SegmentDescriptor; 5]> = Mutex::new([SegmentDescriptor::default(); 5]);
+static GDT: Mutex<[SegmentDescriptor; 7]> = Mutex::new([SegmentDescriptor::default(); 7]);
+static TSS: OnceStatic<Tss> = OnceStatic::new();
 
 pub const KERNEL_CS: u16 = 1 << 3;
 pub const KERNEL_SS: u16 = 2 << 3;
+pub const TSS_SEL: u16 = 5 << 3;
 
 pub fn setup_segments() {
     let mut gdt = GDT.lock_wait();
@@ -22,6 +31,31 @@ pub fn setup_segments() {
         (size_of::<SegmentDescriptor>() * gdt.len()) as u16 - 1,
         gdt.as_ptr() as u64,
     );
+
+    // TSS の設定
+    const RSP_FRAMES: usize = 8;
+    let stack0 = unsafe {
+        GLOBAL.alloc(Layout::from_size_align_unchecked(
+            RSP_FRAMES * BYTES_PER_FRAME,
+            16,
+        ))
+    };
+    if stack0.is_null() {
+        log!(LogLevel::Error, "failed to alloacte rsp0");
+        asmfunc::halt();
+    }
+
+    TSS.init(Tss::new(
+        unsafe { stack0.byte_add(RSP_FRAMES * BYTES_PER_FRAME) } as _,
+    ));
+
+    let [tss_first, tss_second] =
+        SegmentDescriptor::tss(TSS.as_ref().as_ptr() as _, (mem::size_of::<Tss>() - 1) as _);
+    gdt[5] = tss_first;
+    gdt[6] = tss_second;
+
+    // TR の設定
+    asmfunc::load_tr(TSS_SEL);
 }
 
 pub fn init() {
@@ -75,6 +109,16 @@ impl SegmentDescriptor {
             etc_2,
             base_high,
         }
+    }
+
+    pub fn tss(base: u64, limit: u32) -> [Self; 2] {
+        let first = Self::system_segment(base as u32, limit, SystemSegmentType::TSSAvailable, 0);
+        let second = Self {
+            limit_low: base.get_bits(32..48) as _,
+            base_low: base.get_bits(48..) as _,
+            ..Default::default()
+        };
+        [first, second]
     }
 
     /// コードセグメントを表すディスクリプタを作る。
@@ -227,5 +271,38 @@ impl SegmentDescriptor {
     /// Granuality ビットを取得する。
     pub fn granalarity(&self) -> bool {
         self.etc_2.get_bit(7)
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq, Hash)]
+#[repr(C)]
+pub struct Tss {
+    reseved0: u32,
+    rsp0_low: u32,
+    rsp0_high: u32,
+    rsp1_low: u32,
+    rsp1_high: u32,
+    rsp2_low: u32,
+    rsp2_high: u32,
+    reserved1: u32,
+    reserved2: u32,
+    ists: [u32; 2 * 7],
+    reserved3: u32,
+    reserved4: u32,
+    reserved5: u16,
+    io_base: u16,
+}
+
+impl Tss {
+    pub fn new(rsp0: u64) -> Self {
+        Self {
+            rsp0_low: rsp0 as _,
+            rsp0_high: rsp0.get_bits(32..) as _,
+            ..Default::default()
+        }
+    }
+
+    pub fn as_ptr(&self) -> *const Self {
+        self as _
     }
 }

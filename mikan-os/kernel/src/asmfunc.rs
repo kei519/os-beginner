@@ -70,6 +70,10 @@ pub fn call_app(argc: i32, argv: *const *const c_char, cs: u16, ss: u16, rip: u6
     unsafe { call_app_unsafe(argc, argv, cs, ss, rip, rsp) };
 }
 
+pub fn load_tr(sel: u16) {
+    unsafe { asm!("ltr {:x}", in(reg) sel) };
+}
+
 extern "C" {
     fn io_out_32_unsafe(addr: u16, data: u32);
     fn io_in_32_unsafe(addr: u16) -> u32;
