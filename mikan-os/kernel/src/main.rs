@@ -152,6 +152,10 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
     mouse::init();
     keyboard::init();
 
+    // debug 時のみライブラリのテストを動かす。
+    #[cfg(debug_assertions)]
+    test_lib();
+
     let mut text_window_index = 0;
     loop {
         let tick = TIMER_MANAGER.lock_wait().current_tick();
@@ -312,4 +316,39 @@ fn panic(info: &PanicInfo) -> ! {
     // エラーのたびに新しいインスタンスを作るので、最後に発生したエラーが表示される
     write!(&mut PanicConsole::new(), "{}", info).unwrap();
     halt()
+}
+
+#[cfg(debug_assertions)]
+fn test_lib() {
+    use alloc::string::String;
+
+    use kernel::collections::HashMap;
+
+    let mut map = HashMap::<String, _>::new();
+
+    assert_eq!(map.cap(), 0);
+    assert!(map.get("hoge").is_none());
+
+    map.insert("hoge".into(), 1);
+    assert_eq!(map.get("hoge").unwrap(), &1);
+    assert_eq!(map.cap(), 16);
+
+    map.insert("fuga".into(), 98);
+    assert_eq!(map.get("fuga").unwrap(), &98);
+
+    for i in 100..200 {
+        map.insert(format!("{}", i), -i);
+        if i < 178 {
+            assert!(map.get("178").is_none());
+        } else {
+            assert_eq!(map.get("178").unwrap(), &-178);
+        }
+    }
+    assert!(map.cap() >= 102);
+
+    for i in (0..50).map(|i| 100 + i * 2) {
+        assert_eq!(map.remove(&format!("{}", i)).unwrap(), -i);
+    }
+
+    log!(LogLevel::Info, "tests in test_lib() all succeeds");
 }
