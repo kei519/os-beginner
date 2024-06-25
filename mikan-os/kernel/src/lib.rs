@@ -5,6 +5,7 @@ extern crate alloc;
 pub mod acpi;
 pub mod asmfunc;
 pub mod bitfield;
+pub mod collections;
 pub mod console;
 pub mod elf;
 pub mod error;
