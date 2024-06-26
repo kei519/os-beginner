@@ -1,12 +1,14 @@
 use core::ffi::CStr;
 
 use crate::{
-    asmfunc, log,
+    asmfunc,
+    errno::ErrNo,
+    log,
     logger::LogLevel,
     msr::{IA32_EFER, IA32_FMASK, IA32_LSTAR, IA32_STAR},
 };
 
-pub type SyscallFuncType = extern "sysv64" fn(u64, u64, u64, u64, u64, u64) -> i64;
+pub type SyscallFuncType = extern "sysv64" fn(u64, u64, u64, u64, u64, u64) -> Result;
 
 #[no_mangle]
 pub static SYSCALL_TABLE: [SyscallFuncType; 1] = [log_string];
@@ -20,17 +22,46 @@ pub fn init() {
     asmfunc::write_msr(IA32_FMASK, 0);
 }
 
-extern "sysv64" fn log_string(arg1: u64, arg2: u64, _: u64, _: u64, _: u64, _: u64) -> i64 {
+#[repr(C)]
+pub struct Result {
+    value: u64,
+    error: i32,
+}
+
+impl Result {
+    fn new(value: u64, error: impl Into<i32>) -> Self {
+        Self {
+            value,
+            error: error.into(),
+        }
+    }
+
+    fn value(value: u64) -> Self {
+        Self::new(value, 0)
+    }
+
+    fn error(error: impl Into<i32>) -> Self {
+        Self::new(0, error)
+    }
+}
+
+impl From<ErrNo> for Result {
+    fn from(value: ErrNo) -> Self {
+        Self::error(value)
+    }
+}
+
+extern "sysv64" fn log_string(arg1: u64, arg2: u64, _: u64, _: u64, _: u64, _: u64) -> Result {
     let log_level: LogLevel = match arg1.try_into() {
         Ok(level) => level,
-        Err(_) => return -1,
+        Err(_) => return ErrNo::EPERM.into(),
     };
 
     let s = match unsafe { CStr::from_ptr(arg2 as _) }.to_str() {
         Ok(s) => s,
-        Err(_) => return -1,
+        Err(_) => return ErrNo::EINVAL.into(),
     };
 
     log!(log_level, "{}", s);
-    0
+    Result::value(s.len() as _)
 }
