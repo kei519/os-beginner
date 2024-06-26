@@ -578,7 +578,10 @@ fn copy_load_segments(ehdr: &Elf64Ehdr) -> Result<()> {
         let dest_addr = LinearAddress4Level {
             addr: phdr.vaddr as _,
         };
-        let num_4kpages = (phdr.memsz as usize + 4095) / 4096;
+
+        // `phdr.vaddr` が 4 KB アラインされているわけではないので、
+        // 4 KB アラインの先頭から数える必要がある
+        let num_4kpages = ((phdr.vaddr & 0xfff) + phdr.memsz as usize + 4095) / 4096;
 
         setup_page_maps(dest_addr, num_4kpages)?;
 
