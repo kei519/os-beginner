@@ -1,6 +1,8 @@
 #![no_std]
 #![cfg(target_arch = "x86_64")]
 
+// TODO: エントリーポイント処理をプロセスマクロにする
+
 mod syscall;
 
 pub mod buf;
