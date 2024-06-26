@@ -14,15 +14,36 @@ pub fn halt() -> ! {
 }
 
 pub fn io_out_32(addr: u16, data: u32) {
-    unsafe { io_out_32_unsafe(addr, data) }
+    unsafe {
+        asm!(
+            "out dx, eax",
+            in("dx") addr,
+            in("eax") data,
+        )
+    };
 }
 
 pub fn io_in_32(addr: u16) -> u32 {
-    unsafe { io_in_32_unsafe(addr) }
+    let data;
+    unsafe {
+        asm!(
+            "in eax, dx",
+            in("dx") addr,
+            out("eax") data,
+        )
+    };
+    data
 }
 
 pub fn get_cs() -> u16 {
-    unsafe { get_cs_unsafe() }
+    let cs;
+    unsafe {
+        asm!(
+            "mov {cs:x}, cs",
+            cs = out(reg) cs,
+        )
+    };
+    cs
 }
 
 pub fn load_idt(limit: u16, offset: u64) {
@@ -34,7 +55,15 @@ pub fn load_gdt(limit: u16, offset: u64) {
 }
 
 pub fn set_ds_all(value: u16) {
-    unsafe { set_ds_all_unsafe(value) }
+    unsafe {
+        asm!(
+            "mov ds, {v:x}",
+            "mov es, {v:x}",
+            "mov fs, {v:x}",
+            "mov gs, {v:x}",
+            v = in(reg) value,
+        )
+    };
 }
 
 pub fn set_cs_ss(cs: u16, ss: u16) {
@@ -42,11 +71,23 @@ pub fn set_cs_ss(cs: u16, ss: u16) {
 }
 
 pub fn set_cr3(value: u64) {
-    unsafe { set_cr3_unsafe(value) }
+    unsafe {
+        asm!(
+            "mov cr3, {v}",
+            v = in(reg) value,
+        )
+    };
 }
 
 pub fn get_cr3() -> u64 {
-    unsafe { get_cr3_unsafe() }
+    let cr3;
+    unsafe {
+        asm!(
+            "mov {v}, cr3",
+            v = out(reg) cr3,
+        )
+    }
+    cr3
 }
 
 pub fn switch_context(next_ctx: &TaskContext, current_ctx: &TaskContext) {
@@ -79,46 +120,27 @@ pub fn load_tr(sel: u16) {
 }
 
 pub fn write_msr(msr: u32, value: u64) {
-    unsafe { write_msr_unsafe(msr, value) };
+    unsafe {
+        asm!(
+            "wrmsr",
+            in("eax") value as u32,
+            in("edx") (value >> 32) as u32,
+            in("ecx") msr,
+        )
+    }
 }
 
 extern "C" {
-    fn io_out_32_unsafe(addr: u16, data: u32);
-    fn io_in_32_unsafe(addr: u16) -> u32;
-    fn get_cs_unsafe() -> u16;
     fn load_idt_unsafe(limit: u16, offset: u64);
     fn load_gdt_unsafe(limit: u16, offset: u64);
-    fn set_ds_all_unsafe(value: u16);
     fn set_cs_ss_unsafe(cs: u16, ss: u16);
-    fn set_cr3_unsafe(value: u64);
-    fn get_cr3_unsafe() -> u64;
     fn switch_context_unsafe(next_ctx: &TaskContext, current_ctx: &TaskContext);
     fn restore_context_unsafe(task_ctx: &TaskContext);
     fn call_app_unsafe(argc: i32, argv: *const *const c_char, cs: u16, ss: u16, rip: u64, rsp: u64);
-    fn write_msr_unsafe(msr: u32, value: u64);
     pub fn syscall_entry();
 }
 
 global_asm! { r#"
-.global io_out_32_unsafe
-io_out_32_unsafe:
-    mov dx, di
-    mov eax, esi
-    out dx, eax
-    ret
-
-.global io_in_32_unsafe
-io_in_32_unsafe:
-    mov dx, di
-    in eax, dx
-    ret
-
-.global get_cs_unsafe
-get_cs_unsafe:
-    xor eax, eax
-    mov ax, cs
-    ret
-
 .global load_idt_unsafe
 load_idt_unsafe:
     push rbp
@@ -143,14 +165,6 @@ load_gdt_unsafe:
     pop rbp
     ret
 
-.global set_ds_all_unsafe
-set_ds_all_unsafe:
-    mov ds, di
-    mov es, di
-    mov fs, di
-    mov gs, di
-    ret
-
 .global set_cs_ss_unsafe
 set_cs_ss_unsafe:
     push rbp
@@ -163,16 +177,6 @@ set_cs_ss_unsafe:
 .next:
     mov rsp, rbp
     pop rbp
-    ret
-
-.global set_cr3_unsafe
-set_cr3_unsafe:
-    mov cr3, rdi
-    ret
-
-.global get_cr3_unsafe
-get_cr3_unsafe:
-    mov rax, cr3
     ret
 
 .global switch_context_unsafe
@@ -264,16 +268,6 @@ call_app_unsafe:
     push r8 # RIP
     retfq
     # アプリケーションが ret してもここには来ない
-
-.global write_msr_unsafe
-write_msr_unsafe:
-    mov rdx, rsi
-    shr rdx, 32
-    mov eax, esi
-    mov ecx, edi
-    # ECX で指定されたレジスタへ EDX:EAX の64ビットを書き込む
-    wrmsr
-    ret
 
 .global syscall_entry
 syscall_entry:
