@@ -3,11 +3,14 @@ use core::{
     alloc::{GlobalAlloc, Layout},
     cmp,
     ffi::c_char,
-    mem, ptr, slice, str,
+    mem,
+    ops::{Deref, DerefMut},
+    ptr, slice, str,
 };
 
 use crate::{
     asmfunc,
+    collections::HashMap,
     elf::{Elf64Ehdr, Elf64Phdr, ExecuteType, ProgramType},
     error::{Code, Result},
     fat::{self, DirectoryEntry},
@@ -19,13 +22,58 @@ use crate::{
     message::{Message, MessageType},
     paging::{LinearAddress4Level, PageMapEntry},
     pci,
-    sync::SharedLock,
+    sync::{Mutex, SharedLock},
     task,
     window::Window,
 };
 
+// WARNING: 1つのターミナルから複数のタスクを呼べるようになると危険！
+/// `task_id` をキー、[TerminalRef] を値とした辞書。
+///
+/// [TerminalRef] は生きている [Terminal] のアドレスを持っていないといけないので、
+/// 危険な値を外から追加されないように、プライベートにしておく。
+///
+/// # Safety
+///
+/// 取得した値を保持され続けると UB が起こる。
+/// Terminal が `drop()` されたときには必ずここから削除すること。
+static TERMINALS: Mutex<HashMap<u64, TerminalRef>> = Mutex::new(HashMap::new());
+
+/// `task_id` に紐づいた [Terminal] への [TerminalRef] を返す。
+///
+/// # Safety
+///
+/// [Terminal] の外部からは取得しないこと。
+pub fn get_term(task_id: u64) -> Option<TerminalRef> {
+    TERMINALS.lock_wait().get(&task_id).copied()
+}
+
+/// [Terminal] のアドレスを保持し、参照を得るための構造体。
+#[derive(Debug, Clone, Copy)]
+pub struct TerminalRef(usize);
+
+impl Deref for TerminalRef {
+    type Target = Terminal;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { mem::transmute(self.0) }
+    }
+}
+
+impl DerefMut for TerminalRef {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { mem::transmute(self.0) }
+    }
+}
+
+impl From<&Terminal> for TerminalRef {
+    fn from(value: &Terminal) -> Self {
+        Self(value as *const _ as _)
+    }
+}
+
 pub fn task_terminal(task_id: u64, _: i64, _: u32) {
-    let mut terminal = Terminal::new();
+    let mut terminal = Terminal::new(task_id);
     asmfunc::cli();
     let task = task::current_task();
     {
@@ -37,6 +85,7 @@ pub fn task_terminal(task_id: u64, _: i64, _: u32) {
         .lock_wait()
         .insert(terminal.layer_id, task_id);
     asmfunc::sti();
+    TERMINALS.lock_wait().insert(task_id, (&terminal).into());
 
     loop {
         // task.msgs は Mutex のため、cli は必要ない
@@ -81,6 +130,7 @@ const LINE_MAX: usize = 128;
 
 pub struct Terminal {
     layer_id: u32,
+    task_id: u64,
     window: Arc<SharedLock<Window>>,
     cursor: Vector2D<i32>,
     cursor_visible: bool,
@@ -91,7 +141,7 @@ pub struct Terminal {
 }
 
 impl Terminal {
-    pub fn new() -> Self {
+    pub fn new(task_id: u64) -> Self {
         let mut window = Window::new_toplevel(
             COLUMNS as u32 * 8 + 8 + Window::MARGIN_X,
             ROWS as u32 * 16 + 8 + Window::MARGIN_Y,
@@ -115,6 +165,7 @@ impl Terminal {
 
         let mut ret = Self {
             layer_id,
+            task_id,
             window,
             cursor: Vector2D::new(0, 0),
             cursor_visible: false,
@@ -123,6 +174,7 @@ impl Terminal {
             cmd_history,
             cmd_history_index: -1,
         };
+
         ret.print(b">");
         ret
     }
@@ -134,6 +186,57 @@ impl Terminal {
             pos: self.calc_curosr_pos(),
             size: Vector2D::new(7, 15),
         }
+    }
+
+    /// `linebuf` や `linebuf_index` を変更せずに文字列を表示する。
+    pub fn print(&mut self, s: &[u8]) {
+        let cursor_before = self.calc_curosr_pos();
+        self.draw_cursor(false);
+
+        let newline = |term: &mut Self| {
+            term.cursor = if term.cursor.y() < ROWS as i32 - 1 {
+                Vector2D::new(0, term.cursor.y() + 1)
+            } else {
+                term.scroll1();
+                Vector2D::new(0, term.cursor.y())
+            };
+        };
+
+        for &c in s {
+            if c == b'\n' {
+                newline(self);
+            } else {
+                font::write_ascii(
+                    &mut *self.window.write(),
+                    self.calc_curosr_pos(),
+                    c,
+                    &PixelColor::new(255, 255, 255),
+                );
+                if self.cursor.x() == COLUMNS as i32 - 1 {
+                    newline(self)
+                } else {
+                    self.cursor += Vector2D::new(1, 0);
+                }
+            }
+        }
+
+        self.draw_cursor(true);
+        let cursor_after = self.calc_curosr_pos();
+
+        let draw_pos = Window::TOP_LEFT_MARGIN + Vector2D::new(0, cursor_before.y());
+        let draw_size = Vector2D::new(
+            self.window.read().width() as _,
+            cursor_after.y() - cursor_before.y() + 16,
+        );
+        let draw_area = Rectangle {
+            pos: draw_pos,
+            size: draw_size,
+        };
+
+        let msg = Message::from_draw_area(self.task_id, self.layer_id, draw_area);
+        asmfunc::cli();
+        task::send_message(1, msg).unwrap();
+        asmfunc::sti();
     }
 
     fn input_key(&mut self, _modifier: u8, keycode: u8, ascii: u8) -> Rectangle<i32> {
@@ -235,40 +338,6 @@ impl Terminal {
             Vector2D::new(8 * COLUMNS as i32, 16),
             &PixelColor::new(0, 0, 0),
         );
-    }
-
-    /// `linebuf` や `linebuf_index` を変更せずに文字列を表示する。
-    fn print(&mut self, s: &[u8]) {
-        self.draw_cursor(false);
-
-        let newline = |term: &mut Self| {
-            term.cursor = if term.cursor.y() < ROWS as i32 - 1 {
-                Vector2D::new(0, term.cursor.y() + 1)
-            } else {
-                term.scroll1();
-                Vector2D::new(0, term.cursor.y())
-            };
-        };
-
-        for &c in s {
-            if c == b'\n' {
-                newline(self);
-            } else {
-                font::write_ascii(
-                    &mut *self.window.write(),
-                    self.calc_curosr_pos(),
-                    c,
-                    &PixelColor::new(255, 255, 255),
-                );
-                if self.cursor.x() == COLUMNS as i32 - 1 {
-                    newline(self)
-                } else {
-                    self.cursor += Vector2D::new(1, 0);
-                }
-            }
-        }
-
-        self.draw_cursor(true);
     }
 
     fn execute_line(&mut self, command: String) {
@@ -417,6 +486,13 @@ impl Terminal {
         );
         self.cursor += Vector2D::new(history.len() as i32, 0);
         draw_area
+    }
+}
+
+impl Drop for Terminal {
+    fn drop(&mut self) {
+        // 既にない `Terminal` への参照を今後取得されないように確実に削除する
+        TERMINALS.lock_wait().remove(&self.task_id);
     }
 }
 
@@ -665,10 +741,4 @@ fn make_arg_vector(args: Vec<&str>, buf: &mut [u8]) -> Result<usize> {
         buf[cur - 1] = 0;
     }
     Ok(len)
-}
-
-impl Default for Terminal {
-    fn default() -> Self {
-        Self::new()
-    }
 }

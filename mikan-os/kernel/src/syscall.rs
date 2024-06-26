@@ -1,4 +1,4 @@
-use core::ffi::CStr;
+use core::{ffi::CStr, slice};
 
 use crate::{
     asmfunc,
@@ -6,12 +6,13 @@ use crate::{
     log,
     logger::LogLevel,
     msr::{IA32_EFER, IA32_FMASK, IA32_LSTAR, IA32_STAR},
+    task, terminal,
 };
 
 pub type SyscallFuncType = extern "sysv64" fn(u64, u64, u64, u64, u64, u64) -> Result;
 
 #[no_mangle]
-pub static SYSCALL_TABLE: [SyscallFuncType; 1] = [log_string];
+pub static SYSCALL_TABLE: [SyscallFuncType; 2] = [log_string, put_string];
 
 pub fn init() {
     asmfunc::write_msr(IA32_EFER, 0x0501);
@@ -64,4 +65,20 @@ extern "sysv64" fn log_string(arg1: u64, arg2: u64, _: u64, _: u64, _: u64, _: u
 
     log!(log_level, "{}", s);
     Result::value(s.len() as _)
+}
+
+extern "sysv64" fn put_string(arg1: u64, arg2: u64, arg3: u64, _: u64, _: u64, _: u64) -> Result {
+    let fd = arg1;
+    let s: &[u8] = unsafe { slice::from_raw_parts(arg2 as _, arg3 as _) };
+
+    if fd == 1 {
+        let task_id = task::current_task().id();
+        // システムコールを呼び出す可能性があるのは、ターミナル上で起動したアプリだけなので、
+        // そのターミナルは必ず存在するため、unwrap は必ず成功する
+        let mut terminal = terminal::get_term(task_id).unwrap();
+        terminal.print(s);
+        Result::value(s.len() as _)
+    } else {
+        ErrNo::EBADF.into()
+    }
 }
