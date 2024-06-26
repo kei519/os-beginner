@@ -33,6 +33,7 @@ macro_rules! syscall {
 
 syscall!(log_string, 0x8000_0000, log_level, s);
 syscall!(put_string, 0x8000_0001, fd, buf, len);
+syscall!(exit, 0x8000_0002, code);
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]

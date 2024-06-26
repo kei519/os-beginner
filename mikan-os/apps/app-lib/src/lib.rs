@@ -12,3 +12,8 @@ pub mod stdio;
 pub mod unistd;
 
 pub use errno::ERRNO;
+
+pub fn exit(exit_code: i32) -> ! {
+    unsafe { syscall::__exit(exit_code as _) };
+    core::unreachable!("syscall exit never returns")
+}
