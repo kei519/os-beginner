@@ -4,17 +4,14 @@ use crate::{
     asmfunc, log,
     logger::LogLevel,
     msr::{IA32_EFER, IA32_FMASK, IA32_LSTAR, IA32_STAR},
-    util::OnceStatic,
 };
 
 pub type SyscallFuncType = extern "sysv64" fn(u64, u64, u64, u64, u64, u64) -> i64;
 
 #[no_mangle]
-pub static SYSCALL_TABLE: OnceStatic<[SyscallFuncType; 1]> = OnceStatic::new();
+pub static SYSCALL_TABLE: [SyscallFuncType; 1] = [log_string];
 
 pub fn init() {
-    SYSCALL_TABLE.init([log_string]);
-
     asmfunc::write_msr(IA32_EFER, 0x0501);
     asmfunc::write_msr(IA32_LSTAR, asmfunc::syscall_entry as usize as _);
     // [47:32] が syscall 時に設定されるセグメント
