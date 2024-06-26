@@ -169,6 +169,7 @@ pub struct Task<const STACK_SIZE: usize = 4096> {
     msgs: Mutex<VecDeque<Message>>,
     level: AtomicI32,
     running: AtomicBool,
+    os_stack_ptr: u64,
 }
 
 impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
@@ -193,6 +194,7 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
             msgs: Mutex::new(VecDeque::new()),
             level: Self::DEFAULT_LEVEL.into(),
             running: false.into(),
+            os_stack_ptr: 0,
         }
     }
 
@@ -239,6 +241,10 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
 
     pub fn receive_message(&self) -> Option<Message> {
         self.msgs.lock_wait().pop_front()
+    }
+
+    pub fn os_stack_ptr(&self) -> &u64 {
+        &self.os_stack_ptr
     }
 
     fn set_level(&self, level: i32) -> &Self {

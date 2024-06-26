@@ -12,7 +12,7 @@ use crate::{
 pub type SyscallFuncType = extern "sysv64" fn(u64, u64, u64, u64, u64, u64) -> Result;
 
 #[no_mangle]
-pub static SYSCALL_TABLE: [SyscallFuncType; 2] = [log_string, put_string];
+pub static SYSCALL_TABLE: [SyscallFuncType; 3] = [log_string, put_string, exit];
 
 pub fn init() {
     asmfunc::write_msr(IA32_EFER, 0x0501);
@@ -81,4 +81,11 @@ extern "sysv64" fn put_string(arg1: u64, arg2: u64, arg3: u64, _: u64, _: u64, _
     } else {
         ErrNo::EBADF.into()
     }
+}
+
+extern "sysv64" fn exit(arg1: u64, _: u64, _: u64, _: u64, _: u64, _: u64) -> Result {
+    asmfunc::cli();
+    let task = task::current_task();
+    asmfunc::sti();
+    Result::new(*task.os_stack_ptr(), arg1 as i32)
 }

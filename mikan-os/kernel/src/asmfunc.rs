@@ -111,8 +111,15 @@ pub fn cli() {
 }
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub fn call_app(argc: i32, argv: *const *const c_char, cs: u16, ss: u16, rip: u64, rsp: u64) {
-    unsafe { call_app_unsafe(argc, argv, cs, ss, rip, rsp) };
+pub fn call_app(
+    argc: i32,
+    argv: *const *const c_char,
+    ss: u16,
+    rip: u64,
+    rsp: u64,
+    os_stack_ptr: &u64,
+) {
+    unsafe { call_app_unsafe(argc, argv, ss, rip, rsp, os_stack_ptr as *const _ as _) };
 }
 
 pub fn load_tr(sel: u16) {
@@ -136,7 +143,14 @@ extern "C" {
     fn set_cs_ss_unsafe(cs: u16, ss: u16);
     fn switch_context_unsafe(next_ctx: &TaskContext, current_ctx: &TaskContext);
     fn restore_context_unsafe(task_ctx: &TaskContext);
-    fn call_app_unsafe(argc: i32, argv: *const *const c_char, cs: u16, ss: u16, rip: u64, rsp: u64);
+    fn call_app_unsafe(
+        argc: i32,
+        argv: *const *const c_char,
+        ss: u16,
+        rip: u64,
+        rsp: u64,
+        os_stack_ptr: u64,
+    );
     pub fn syscall_entry();
 }
 
@@ -260,12 +274,21 @@ restore_context_unsafe:
 
 .global call_app_unsafe
 call_app_unsafe:
+    push rbx
+    push rbp
+    push r12
+    push r13
+    push r14
+    push r15
+    mov [r9], rsp
+
     push rbp
     mov rbp, rsp
-    push rcx # SS
-    push r9 # RSP
+    push rdx # SS
+    push r8  # RSP
+    add rdx, 8 # CS = SS + 8 （sysret の規約）
     push rdx # CS
-    push r8 # RIP
+    push rcx # RIP
     retfq
     # アプリケーションが ret してもここには来ない
 
@@ -274,6 +297,7 @@ syscall_entry:
     push rbp
     push rcx # original RIP
     push r11 # original rflags
+    push rax # システムコール番号を保存
 
     mov rbp, rsp
 
@@ -292,9 +316,28 @@ syscall_entry:
 
     mov rsp, rbp
 
+    pop rsi # システムコール番号の復帰
+
+    # 0x8000_0002 の場合は exit 処理
+    cmp esi, 0x80000002
+    je .exit
+
     pop r11
     pop rcx
     pop rbp
 
     sysretq
+
+.exit:
+    mov rsp, rax # RSP
+    mov eax, edx # exit() の引数
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbp
+    pop rbx
+
+    ret # call_app の次の行に飛ぶ
 "# }

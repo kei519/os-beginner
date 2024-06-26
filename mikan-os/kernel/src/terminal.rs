@@ -435,7 +435,7 @@ impl Terminal {
             }
             command => match fat::find_file(command, 0) {
                 Some(file_entry) => {
-                    if let Err(e) = execute_file(file_entry, args) {
+                    if let Err(e) = self.execute_file(file_entry, args) {
                         self.print(format!("failed to exec file: {}\n", e).as_bytes());
                     }
                 }
@@ -487,6 +487,52 @@ impl Terminal {
         self.cursor += Vector2D::new(history.len() as i32, 0);
         draw_area
     }
+
+    fn execute_file(&mut self, file_entry: &DirectoryEntry, args: Vec<&str>) -> Result<()> {
+        let file_buf = fat::load_file(file_entry);
+
+        let elf_header: &Elf64Ehdr = unsafe { &*(file_buf.as_ptr() as *const _) };
+        if &elf_header.ident[..4] != b"\x7fELF" {
+            type Func = fn();
+            let f: Func = unsafe { mem::transmute(file_buf.as_ptr()) };
+            f();
+            return Ok(());
+        }
+
+        load_elf(elf_header).unwrap();
+
+        let stack_frame_addr = LinearAddress4Level {
+            addr: 0xffff_ffff_ffff_e000,
+        };
+        setup_page_maps(stack_frame_addr, 1)?;
+
+        let args_frame_addr = LinearAddress4Level {
+            addr: 0xffff_ffff_ffff_f000,
+        };
+        setup_page_maps(args_frame_addr, 1)?;
+        let arg_buf =
+            unsafe { slice::from_raw_parts_mut(args_frame_addr.addr as *mut u8, BYTES_PER_FRAME) };
+        let argc = make_arg_vector(args, arg_buf)?;
+
+        asmfunc::cli();
+        let task = task::current_task();
+        asmfunc::sti();
+        asmfunc::call_app(
+            argc as _,
+            args_frame_addr.addr as _,
+            3 << 3 | 3,
+            elf_header.entry as _,
+            stack_frame_addr.addr + BYTES_PER_FRAME as u64 - 8,
+            task.os_stack_ptr(),
+        );
+
+        let addr_first = get_first_load_address(elf_header);
+        clean_page_maps(LinearAddress4Level {
+            addr: addr_first as _,
+        });
+
+        Ok(())
+    }
 }
 
 impl Drop for Terminal {
@@ -494,49 +540,6 @@ impl Drop for Terminal {
         // 既にない `Terminal` への参照を今後取得されないように確実に削除する
         TERMINALS.lock_wait().remove(&self.task_id);
     }
-}
-
-fn execute_file(file_entry: &DirectoryEntry, args: Vec<&str>) -> Result<()> {
-    let file_buf = fat::load_file(file_entry);
-
-    let elf_header: &Elf64Ehdr = unsafe { &*(file_buf.as_ptr() as *const _) };
-    if &elf_header.ident[..4] != b"\x7fELF" {
-        type Func = fn();
-        let f: Func = unsafe { mem::transmute(file_buf.as_ptr()) };
-        f();
-        return Ok(());
-    }
-
-    load_elf(elf_header).unwrap();
-
-    let stack_frame_addr = LinearAddress4Level {
-        addr: 0xffff_ffff_ffff_e000,
-    };
-    setup_page_maps(stack_frame_addr, 1)?;
-
-    let args_frame_addr = LinearAddress4Level {
-        addr: 0xffff_ffff_ffff_f000,
-    };
-    setup_page_maps(args_frame_addr, 1)?;
-    let arg_buf =
-        unsafe { slice::from_raw_parts_mut(args_frame_addr.addr as *mut u8, BYTES_PER_FRAME) };
-    let argc = make_arg_vector(args, arg_buf)?;
-
-    asmfunc::call_app(
-        argc as _,
-        args_frame_addr.addr as _,
-        4 << 3 | 3,
-        3 << 3 | 3,
-        elf_header.entry as _,
-        stack_frame_addr.addr + BYTES_PER_FRAME as u64 - 8,
-    );
-
-    let addr_first = get_first_load_address(elf_header);
-    clean_page_maps(LinearAddress4Level {
-        addr: addr_first as _,
-    });
-
-    Ok(())
 }
 
 fn load_elf(ehdr: &Elf64Ehdr) -> Result<()> {
