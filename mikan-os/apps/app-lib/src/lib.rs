@@ -6,3 +6,6 @@ mod syscall;
 pub mod buf;
 pub mod errno;
 pub mod logger;
+pub mod unistd;
+
+pub use errno::ERRNO;
