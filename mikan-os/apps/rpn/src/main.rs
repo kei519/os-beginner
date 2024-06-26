@@ -3,7 +3,7 @@
 
 extern crate app_lib;
 
-use app_lib::{kernel_log, logger::LogLevel, println};
+use app_lib::{exit, kernel_log, logger::LogLevel, println};
 use core::{
     ffi::{c_char, CStr},
     panic::PanicInfo,
@@ -14,13 +14,13 @@ static mut STACK_PTR: isize = -1;
 static mut STACK: [i64; 100] = [0; 100];
 
 #[no_mangle]
-extern "sysv64" fn _start(argc: i32, argv: *const *const c_char) -> i32 {
+extern "sysv64" fn _start(argc: i32, argv: *const *const c_char) {
     let args = unsafe { &*ptr::slice_from_raw_parts(argv, argc as usize) };
     let args = args
         .iter()
         .map(|&p| unsafe { CStr::from_ptr(p) }.to_str().unwrap());
 
-    main(args)
+    exit(main(args))
 }
 
 fn main(args: impl IntoIterator<Item = &'static str>) -> i32 {
@@ -49,8 +49,7 @@ fn main(args: impl IntoIterator<Item = &'static str>) -> i32 {
     };
 
     println!("{}", result);
-
-    loop {}
+    result
 }
 
 fn pop() -> i64 {
