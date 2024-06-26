@@ -118,8 +118,8 @@ pub fn call_app(
     rip: u64,
     rsp: u64,
     os_stack_ptr: &u64,
-) {
-    unsafe { call_app_unsafe(argc, argv, ss, rip, rsp, os_stack_ptr as *const _ as _) };
+) -> i32 {
+    unsafe { call_app_unsafe(argc, argv, ss, rip, rsp, os_stack_ptr as *const _ as _) }
 }
 
 pub fn load_tr(sel: u16) {
@@ -150,7 +150,7 @@ extern "C" {
         rip: u64,
         rsp: u64,
         os_stack_ptr: u64,
-    );
+    ) -> i32;
     pub fn syscall_entry();
 }
 

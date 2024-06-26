@@ -434,11 +434,12 @@ impl Terminal {
                 }
             }
             command => match fat::find_file(command, 0) {
-                Some(file_entry) => {
-                    if let Err(e) = self.execute_file(file_entry, args) {
-                        self.print(format!("failed to exec file: {}\n", e).as_bytes());
+                Some(file_entry) => match self.execute_file(file_entry, args) {
+                    Err(e) => self.print(format!("failed to exec file: {}\n", e).as_bytes()),
+                    Ok(code) => {
+                        self.print(format!("app exited. ret = {}\n", code).as_bytes());
                     }
-                }
+                },
                 None => {
                     self.print(b"no such command: ");
                     self.print(command.as_bytes());
@@ -488,15 +489,14 @@ impl Terminal {
         draw_area
     }
 
-    fn execute_file(&mut self, file_entry: &DirectoryEntry, args: Vec<&str>) -> Result<()> {
+    fn execute_file(&mut self, file_entry: &DirectoryEntry, args: Vec<&str>) -> Result<i32> {
         let file_buf = fat::load_file(file_entry);
 
         let elf_header: &Elf64Ehdr = unsafe { &*(file_buf.as_ptr() as *const _) };
         if &elf_header.ident[..4] != b"\x7fELF" {
-            type Func = fn();
+            type Func = fn() -> i32;
             let f: Func = unsafe { mem::transmute(file_buf.as_ptr()) };
-            f();
-            return Ok(());
+            return Ok(f());
         }
 
         load_elf(elf_header).unwrap();
@@ -517,7 +517,7 @@ impl Terminal {
         asmfunc::cli();
         let task = task::current_task();
         asmfunc::sti();
-        asmfunc::call_app(
+        let ret = asmfunc::call_app(
             argc as _,
             args_frame_addr.addr as _,
             3 << 3 | 3,
@@ -531,7 +531,7 @@ impl Terminal {
             addr: addr_first as _,
         });
 
-        Ok(())
+        Ok(ret)
     }
 }
 
