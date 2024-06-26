@@ -8,6 +8,7 @@ pub mod bitfield;
 pub mod collections;
 pub mod console;
 pub mod elf;
+pub mod errno;
 pub mod error;
 pub mod fat;
 pub mod font;
