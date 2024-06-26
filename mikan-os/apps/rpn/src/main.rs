@@ -1,11 +1,13 @@
 #![no_std]
 #![no_main]
 
+extern crate app_lib;
+
+use app_lib::{kernel_log, logger::LogLevel, println};
 use core::{
-    arch::{asm, global_asm},
     ffi::{c_char, CStr},
     panic::PanicInfo,
-    ptr,
+    ptr, str,
 };
 
 static mut STACK_PTR: isize = -1;
@@ -15,7 +17,7 @@ static mut STACK: [i64; 100] = [0; 100];
 extern "sysv64" fn _start(argc: i32, argv: *const *const c_char) -> i32 {
     let args = unsafe { &*ptr::slice_from_raw_parts(argv, argc as usize) };
     let args = args
-        .into_iter()
+        .iter()
         .map(|&p| unsafe { CStr::from_ptr(p) }.to_str().unwrap());
 
     main(args)
@@ -28,27 +30,26 @@ fn main(args: impl IntoIterator<Item = &'static str>) -> i32 {
                 let b = pop();
                 let a = pop();
                 push(a + b);
-                log_string(LogLevel::Warn, c"+")
             }
             "-" => {
                 let b = pop();
                 let a = pop();
                 push(a - b);
-                log_string(LogLevel::Warn, c"-")
             }
             arg => {
                 push(arg.parse().unwrap());
-                log_string(LogLevel::Warn, c"#")
             }
         }
     }
 
-    let _ret = if unsafe { STACK_PTR } < 0 {
+    let result: i32 = if unsafe { STACK_PTR } < 0 {
         0
     } else {
         pop() as _
     };
-    log_string(LogLevel::Warn, c"hello, this is rpn");
+
+    println!("{}", result);
+
     loop {}
 }
 
@@ -68,35 +69,7 @@ fn push(value: i64) {
 }
 
 #[panic_handler]
-fn panic(_: &PanicInfo) -> ! {
-    loop {
-        unsafe { asm!("hlt") };
-    }
-}
-
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
-#[repr(C)]
-pub enum LogLevel {
-    Error = 3,
-    Warn = 4,
-    Info = 6,
-    Debug = 7,
-}
-
-fn log_string(loglevel: LogLevel, str: &CStr) {
-    unsafe { log_string_unsafe(loglevel, str.as_ptr()) };
-}
-
-extern "sysv64" {
-    fn log_string_unsafe(loglevel: LogLevel, str: *const c_char);
-}
-
-global_asm! { r#"
-.global log_string_unsafe
-log_string_unsafe:
-    mov eax, 0x80000000
-    mov r10, rcx
-    syscall
-    ret
-"#
+fn panic(info: &PanicInfo) -> ! {
+    kernel_log!(LogLevel::Error, "paniced in rpn: {}", info);
+    loop {}
 }

@@ -12,4 +12,5 @@ bench = false
 panic = "abort"
 strip = true
 
-[dependencies]
+[dependencies.app-lib]
+path = "../app-lib"
