@@ -3,7 +3,8 @@ use core::{ffi::CStr, slice};
 use crate::{
     asmfunc,
     errno::ErrNo,
-    graphics::{Vector2D, FB_CONFIG},
+    font,
+    graphics::{PixelColor, Vector2D, FB_CONFIG},
     layer::LAYER_MANAGER,
     log,
     logger::LogLevel,
@@ -15,7 +16,8 @@ use crate::{
 pub type SyscallFuncType = extern "sysv64" fn(u64, u64, u64, u64, u64, u64) -> Result;
 
 #[no_mangle]
-pub static SYSCALL_TABLE: [SyscallFuncType; 4] = [log_string, put_string, exit, open_window];
+pub static SYSCALL_TABLE: [SyscallFuncType; 5] =
+    [log_string, put_string, exit, open_window, win_write_string];
 
 pub fn init() {
     asmfunc::write_msr(IA32_EFER, 0x0501);
@@ -114,4 +116,33 @@ extern "sysv64" fn open_window(w: u64, h: u64, x: u64, y: u64, title: u64, _: u6
     manager.activate(layer_id);
 
     Result::value(layer_id as _)
+}
+
+extern "sysv64" fn win_write_string(
+    layer_id: u64,
+    x: u64,
+    y: u64,
+    color: u64,
+    s: u64,
+    _: u64,
+) -> Result {
+    let layer_id = layer_id as u32;
+    let x = x as i32;
+    let y = y as i32;
+    let color = PixelColor::to_color(color as _);
+    let s = match unsafe { CStr::from_ptr(s as _) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ErrNo::EINVAL.into(),
+    };
+
+    let mut manager = LAYER_MANAGER.lock_wait();
+    font::write_string(
+        &mut *manager.layer(layer_id).window().write(),
+        Vector2D::new(x, y),
+        s.as_bytes(),
+        &color,
+    );
+    manager.draw_id(layer_id);
+
+    Result::value(0)
 }
