@@ -1,6 +1,5 @@
 use core::{
     alloc::{GlobalAlloc, Layout},
-    cmp::Ordering,
     mem::size_of,
     ptr,
 };
@@ -9,16 +8,19 @@ use uefi::table::boot::MemoryMap;
 
 use crate::{
     // asmfunc,
-    asmfunc,
     bitfield::BitField as _,
+    error::{Code, Result},
+    make_error,
     memory_map,
     sync::{Mutex, RwLock},
-    task,
 };
+
+/// メモリーマネージャー。
+pub static MEMORY_MANAGER: BitmapMemoryManager = BitmapMemoryManager::new();
 
 /// グローバルアロケータ。
 #[global_allocator]
-pub static GLOBAL: BitmapMemoryManager = BitmapMemoryManager::new();
+pub static GLOBAL: Global = Global::new();
 
 const KIB: usize = 1024;
 const MIB: usize = 1024 * KIB;
@@ -130,6 +132,39 @@ impl BitmapMemoryManager {
         *self.range_end.write() = FrameId::from_addr(available_end);
     }
 
+    pub fn allocate(&self, num_frames: usize) -> Result<FrameId> {
+        // 他のスレッドが同時に空き領域を探して、
+        // 空いていた領域を同時に割り当てないようにするため、
+        // ロックを取得
+        let _lock = self.locker.lock_wait();
+        let mut start_frame_id = self.range_begin.read().id();
+        loop {
+            let mut i = 0;
+            while i < num_frames {
+                if start_frame_id + i >= self.range_end.read().id() {
+                    return Err(make_error!(Code::NoEnoughMemory));
+                }
+                if self.is_allocated(FrameId::new(start_frame_id + i)) {
+                    break;
+                }
+                i += 1;
+            }
+
+            if i == num_frames {
+                self.mark_allocated(FrameId::new(start_frame_id), num_frames);
+                return Ok(FrameId::new(start_frame_id));
+            }
+
+            start_frame_id += i + 1;
+        }
+    }
+
+    pub fn free(&self, start_frame: FrameId, num_frames: usize) {
+        for i in 0..num_frames {
+            self.set_bit(FrameId::new(start_frame.id() + i), false);
+        }
+    }
+
     /// あるフレームから数フレームを割り当て済みにする。
     ///
     /// * `start_frame` - 割り当て済みにする最初のフレーム。
@@ -187,90 +222,71 @@ impl BitmapMemoryManager {
     }
 }
 
-unsafe impl GlobalAlloc for BitmapMemoryManager {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        // タスクから呼び出された場合は、一時的にそのタスクのランレベルを上げる
-        asmfunc::cli();
-        let task_and_level = task::current_task_checked().map(|task| {
-            let level = task.run_level();
-            task.change_level_running(task::MAX_RUN_LEVEL);
-            (task, level)
-        });
-        asmfunc::sti();
-        // 他のスレッドが同時に空き領域を探して、
-        // 空いていた領域を同時に割り当てないようにするため、
-        // ロックを取得
-        let lock = self.locker.lock_wait();
+/// 割り当てられた領域の先頭から必要な領域を渡し、
+/// 先頭をその分増加させいくだけのメモリ割り当てを行う。
+pub struct Global {
+    /// 現在の先頭アドレスを表す。
+    cur: Mutex<usize>,
+    /// 割り当てられる領域の末尾のアドレスを表す。
+    end: Mutex<usize>,
+}
 
-        let num_frames = get_num_frames(layout.size());
+impl Global {
+    pub const fn new() -> Self {
+        Self {
+            cur: Mutex::new(0),
+            end: Mutex::new(0),
+        }
+    }
 
-        // フレームで見たときのアラインメント
-        let align_frames = layout.align() / BYTES_PER_FRAME;
-        let align_frames = if align_frames == 0 { 1 } else { align_frames };
+    pub fn init(&self, num_frames: usize) {
+        // Sefety: シングルコア時に初期化されるはずなのでロックは取らない
+        if self.is_initialized() {
+            panic!("initialize Global multiple times");
+        }
 
-        let mut start_frame_id = self.range_begin.read().id();
-        let ret = 'ret: loop {
-            // アラインメント調整
-            let res = start_frame_id % align_frames;
-            if res != 0 {
-                start_frame_id += align_frames - res;
-            }
-
-            let mut i = 0;
-            while i < num_frames {
-                if start_frame_id + i >= self.range_end.read().id() {
-                    break 'ret ptr::null_mut();
-                }
-                if self.is_allocated(FrameId::new(start_frame_id + i)) {
-                    break;
-                }
-                i += 1;
-            }
-
-            if i == num_frames {
-                self.mark_allocated(FrameId::new(start_frame_id), num_frames);
-                break 'ret (start_frame_id * BYTES_PER_FRAME) as *mut u8;
-            }
-
-            start_frame_id += i + 1;
+        let start = match MEMORY_MANAGER.allocate(num_frames) {
+            Ok(ptr) => ptr,
+            Err(e) => panic!("{}", e),
         };
 
-        drop(lock);
-        if let Some((task, level)) = task_and_level {
-            task.change_level_running(level);
-        }
-        ret
+        *self.cur.lock_wait() = start.frame() as _;
+        *self.end.lock_wait() = start.frame() as usize + num_frames * BYTES_PER_FRAME;
     }
 
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        let start_frame = FrameId::from_addr(ptr as usize);
-        let num_frames = get_num_frames(layout.size());
+    fn is_initialized(&self) -> bool {
+        *self.cur.lock_wait() != 0
+    }
+}
 
-        for i in 0..num_frames {
-            self.set_bit(FrameId::new(start_frame.id() + i), false);
+unsafe impl GlobalAlloc for Global {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let mut cur = self.cur.lock_wait();
+
+        let start = *cur;
+        // アラインメント調整
+        let start = match start % layout.align() {
+            0 => start,
+            rem => start + layout.align() - rem,
+        };
+
+        // 領域を超えないか確認
+        let end = start + layout.size();
+        if end >= *self.end.lock_wait() {
+            return ptr::null_mut();
         }
+        *cur = end;
+        start as _
     }
 
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        let old_num_frames = get_num_frames(layout.size());
-        let new_num_frames = get_num_frames(new_size);
-        match new_num_frames.cmp(&old_num_frames) {
-            Ordering::Equal => ptr,
-            Ordering::Less => {
-                let de_size = (old_num_frames - new_num_frames) * BYTES_PER_FRAME;
-                let de_ptr = ptr.add(de_size);
-                let de_layout = Layout::from_size_align_unchecked(de_size, layout.align());
-                self.dealloc(de_ptr, de_layout);
-                ptr
-            }
-            Ordering::Greater => {
-                let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
-                let new_ptr = self.alloc(new_layout);
-                ptr::copy_nonoverlapping(ptr, new_ptr, layout.size());
-                self.dealloc(ptr, layout);
-                new_ptr
-            }
-        }
+    unsafe fn dealloc(&self, _: *mut u8, _: Layout) {
+        // 解放は特になにもしない
+    }
+}
+
+impl Default for Global {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

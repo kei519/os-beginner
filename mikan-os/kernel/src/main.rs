@@ -19,7 +19,7 @@ use kernel::{
     layer::{self, LAYER_MANAGER, LAYER_TASK_MAP, SCREEN},
     log,
     logger::{set_log_level, LogLevel},
-    memory_manager,
+    memory_manager::{GLOBAL, MEMORY_MANAGER},
     message::{Message, MessageType},
     mouse, paging, pci, printk, printkln, segment, syscall,
     task::{self, Stack},
@@ -93,9 +93,10 @@ fn kernel_entry(
     acpi_table: &RSDP,
     volume_image: *mut c_void,
 ) {
-    // メモリアロケータの初期化
-    memory_manager::GLOBAL.init(memory_map, kernel_base, kernel_size);
     FB_CONFIG.init(frame_buffer_config.clone());
+    // メモリアロケータの初期化
+    MEMORY_MANAGER.init(memory_map, kernel_base, kernel_size);
+    GLOBAL.init(64 * 512); // 128 MiB 確保
 
     if let Err(err) = main(acpi_table, volume_image) {
         printkln!("{}", err);

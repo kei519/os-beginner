@@ -1,6 +1,5 @@
 use alloc::{collections::VecDeque, format, string::String, sync::Arc, vec::Vec};
 use core::{
-    alloc::{GlobalAlloc, Layout},
     cmp,
     ffi::c_char,
     mem,
@@ -18,7 +17,7 @@ use crate::{
     graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, FB_CONFIG},
     layer::{LAYER_MANAGER, LAYER_TASK_MAP},
     make_error,
-    memory_manager::{BYTES_PER_FRAME, GLOBAL},
+    memory_manager::{FrameId, BYTES_PER_FRAME, MEMORY_MANAGER},
     message::{Message, MessageType},
     paging::{LinearAddress4Level, PageMapEntry},
     pci,
@@ -567,19 +566,12 @@ fn get_first_load_address(ehdr: &Elf64Ehdr) -> usize {
 }
 
 fn new_page_map() -> Result<&'static mut [PageMapEntry]> {
-    let frame = unsafe {
-        GLOBAL.alloc_zeroed(Layout::from_size_align_unchecked(
-            BYTES_PER_FRAME,
-            BYTES_PER_FRAME,
-        ))
-    };
-    if frame.is_null() {
-        return Err(make_error!(Code::NoEnoughMemory));
-    }
+    let frame = MEMORY_MANAGER.allocate(1)?;
+    unsafe { ptr::write_bytes(frame.frame(), 0, BYTES_PER_FRAME) };
 
     let e = unsafe {
         &mut *slice::from_raw_parts_mut(
-            frame as *mut _,
+            frame.frame() as _,
             BYTES_PER_FRAME / mem::size_of::<PageMapEntry>(),
         )
     };
@@ -687,12 +679,7 @@ fn clean_page_maps(addr: LinearAddress4Level) {
     pml4_table[addr.pml4() as usize].data = 0;
     clean_page_map(pdp_table, 3);
 
-    unsafe {
-        GLOBAL.dealloc(
-            pdp_table.as_mut_ptr() as _,
-            Layout::from_size_align_unchecked(BYTES_PER_FRAME, BYTES_PER_FRAME),
-        )
-    };
+    MEMORY_MANAGER.free(FrameId::from_addr(pdp_table.as_mut_ptr() as _), 1);
 }
 
 fn clean_page_map(page_maps: &mut [PageMapEntry], page_map_level: i32) {
@@ -706,12 +693,7 @@ fn clean_page_map(page_maps: &mut [PageMapEntry], page_map_level: i32) {
         }
 
         let entry_ptr = entry.pointer().as_ptr();
-        unsafe {
-            GLOBAL.dealloc(
-                entry_ptr as _,
-                Layout::from_size_align_unchecked(BYTES_PER_FRAME, BYTES_PER_FRAME),
-            )
-        };
+        MEMORY_MANAGER.free(FrameId::from_addr(entry_ptr as _), 1);
         entry.data = 0;
     }
 }

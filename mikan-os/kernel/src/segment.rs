@@ -1,7 +1,4 @@
-use core::{
-    alloc::{GlobalAlloc, Layout},
-    mem::{self, size_of},
-};
+use core::mem::{self, size_of};
 
 use crate::{
     asmfunc::{self, load_gdt},
@@ -9,7 +6,7 @@ use crate::{
     interrupt::InterruptDescriptor,
     log,
     logger::LogLevel,
-    memory_manager::{BYTES_PER_FRAME, GLOBAL},
+    memory_manager::{BYTES_PER_FRAME, MEMORY_MANAGER},
     sync::Mutex,
     util::OnceStatic,
     x86_descriptor::{DescriptorType, DescriptorTypeEnum, SystemSegmentType},
@@ -311,16 +308,13 @@ impl Tss {
 
 /// `num_4kframes` 分のページを確保し、その領域の最後のアドレスを返す。
 fn allocate_stack_area(num_4kframes: usize) -> u64 {
-    let stk = unsafe {
-        GLOBAL.alloc(Layout::from_size_align_unchecked(
-            num_4kframes * BYTES_PER_FRAME,
-            16,
-        ))
+    let stk = match MEMORY_MANAGER.allocate(num_4kframes) {
+        Ok(frame) => frame.frame(),
+        Err(e) => {
+            log!(LogLevel::Error, "failed to allocate area: {}", e);
+            asmfunc::halt();
+        }
     };
-    if stk.is_null() {
-        log!(LogLevel::Error, "failed to alloacte area");
-        asmfunc::halt();
-    }
 
     (stk as usize + num_4kframes * BYTES_PER_FRAME) as _
 }
