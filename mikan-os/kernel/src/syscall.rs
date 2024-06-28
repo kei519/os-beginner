@@ -3,16 +3,19 @@ use core::{ffi::CStr, slice};
 use crate::{
     asmfunc,
     errno::ErrNo,
+    graphics::{Vector2D, FB_CONFIG},
+    layer::LAYER_MANAGER,
     log,
     logger::LogLevel,
     msr::{IA32_EFER, IA32_FMASK, IA32_LSTAR, IA32_STAR},
     task, terminal,
+    window::Window,
 };
 
 pub type SyscallFuncType = extern "sysv64" fn(u64, u64, u64, u64, u64, u64) -> Result;
 
 #[no_mangle]
-pub static SYSCALL_TABLE: [SyscallFuncType; 3] = [log_string, put_string, exit];
+pub static SYSCALL_TABLE: [SyscallFuncType; 4] = [log_string, put_string, exit, open_window];
 
 pub fn init() {
     asmfunc::write_msr(IA32_EFER, 0x0501);
@@ -88,4 +91,27 @@ extern "sysv64" fn exit(arg1: u64, _: u64, _: u64, _: u64, _: u64, _: u64) -> Re
     let task = task::current_task();
     asmfunc::sti();
     Result::new(*task.os_stack_ptr(), arg1 as i32)
+}
+
+extern "sysv64" fn open_window(w: u64, h: u64, x: u64, y: u64, title: u64, _: u64) -> Result {
+    let w = w as u32;
+    let h = h as u32;
+    let x = x as i32;
+    let y = y as i32;
+    let title = match unsafe { CStr::from_ptr(title as _) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ErrNo::EINVAL.into(),
+    };
+
+    let win = Window::new_toplevel(w, h, FB_CONFIG.as_ref().pixel_format, title);
+
+    let mut manager = LAYER_MANAGER.lock_wait();
+    let layer_id = manager.new_layer(win);
+    manager
+        .layer(layer_id)
+        .set_draggable(true)
+        .r#move(Vector2D::new(x, y));
+    manager.activate(layer_id);
+
+    Result::value(layer_id as _)
 }
