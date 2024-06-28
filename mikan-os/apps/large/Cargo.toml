@@ -1,0 +1,15 @@
+[package]
+name = "large"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "large"
+test = false
+bench = false
+
+[profile.release]
+panic = "abort"
+
+[dependencies.app-lib]
+path = "../app-lib"
