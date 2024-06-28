@@ -9,9 +9,11 @@ use uefi::table::boot::MemoryMap;
 
 use crate::{
     // asmfunc,
+    asmfunc,
     bitfield::BitField as _,
     memory_map,
     sync::{Mutex, RwLock},
+    task,
 };
 
 /// グローバルアロケータ。
@@ -187,11 +189,18 @@ impl BitmapMemoryManager {
 
 unsafe impl GlobalAlloc for BitmapMemoryManager {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        // タスクから呼び出された場合は、一時的にそのタスクのランレベルを上げる
+        asmfunc::cli();
+        let task_and_level = task::current_task_checked().map(|task| {
+            let level = task.run_level();
+            task.change_level_running(task::MAX_RUN_LEVEL);
+            (task, level)
+        });
+        asmfunc::sti();
         // 他のスレッドが同時に空き領域を探して、
         // 空いていた領域を同時に割り当てないようにするため、
         // ロックを取得
-        // asmfunc::cli();
-        let _lock = self.locker.lock_wait();
+        let lock = self.locker.lock_wait();
 
         let num_frames = get_num_frames(layout.size());
 
@@ -200,7 +209,7 @@ unsafe impl GlobalAlloc for BitmapMemoryManager {
         let align_frames = if align_frames == 0 { 1 } else { align_frames };
 
         let mut start_frame_id = self.range_begin.read().id();
-        loop {
+        let ret = 'ret: loop {
             // アラインメント調整
             let res = start_frame_id % align_frames;
             if res != 0 {
@@ -210,9 +219,7 @@ unsafe impl GlobalAlloc for BitmapMemoryManager {
             let mut i = 0;
             while i < num_frames {
                 if start_frame_id + i >= self.range_end.read().id() {
-                    // drop(_lock);
-                    // asmfunc::sti();
-                    return ptr::null_mut();
+                    break 'ret ptr::null_mut();
                 }
                 if self.is_allocated(FrameId::new(start_frame_id + i)) {
                     break;
@@ -222,11 +229,17 @@ unsafe impl GlobalAlloc for BitmapMemoryManager {
 
             if i == num_frames {
                 self.mark_allocated(FrameId::new(start_frame_id), num_frames);
-                return (start_frame_id * BYTES_PER_FRAME) as *mut u8;
+                break 'ret (start_frame_id * BYTES_PER_FRAME) as *mut u8;
             }
 
             start_frame_id += i + 1;
+        };
+
+        drop(lock);
+        if let Some((task, level)) = task_and_level {
+            task.change_level_running(level);
         }
+        ret
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {

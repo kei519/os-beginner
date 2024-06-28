@@ -76,6 +76,10 @@ pub fn current_task() -> Arc<Task> {
     unsafe { TASK_MANAGER.current_task() }
 }
 
+pub fn current_task_checked() -> Option<Arc<Task>> {
+    unsafe { TASK_MANAGER.current_task_checked() }
+}
+
 /// ID が `id` のタスクが存在しなかった場合はエラーを返す。
 pub fn send_message(id: u64, msg: Message) -> Result<()> {
     unsafe { TASK_MANAGER.send_message(id, msg) }
@@ -247,6 +251,14 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
         &self.os_stack_ptr
     }
 
+    pub fn change_level_running(&self, level: i32) {
+        unsafe { TASK_MANAGER.change_level_running(self.id, level) };
+    }
+
+    pub fn run_level(&self) -> i32 {
+        self.level.load(Ordering::Relaxed)
+    }
+
     fn set_level(&self, level: i32) -> &Self {
         self.level.store(level, Ordering::Relaxed);
         self
@@ -266,19 +278,19 @@ impl<const N: usize> PartialEq for Task<N> {
 
 impl<const N: usize> Eq for Task<N> {}
 
-const MAX_LEVEL: i32 = 3;
+pub const MAX_RUN_LEVEL: i32 = 3;
 
 pub struct TaskManager {
     tasks: Vec<Arc<Task>>,
     latest_id: u64,
-    running: [VecDeque<Arc<Task>>; MAX_LEVEL as usize + 1],
+    running: [VecDeque<Arc<Task>>; MAX_RUN_LEVEL as usize + 1],
     current_level: i32,
     /// 次回のタスクスイッチ時にランレベルの見直しが必要かどうかを表す。
     level_changed: bool,
 }
 
 impl TaskManager {
-    pub const MAX_LEVEL: i32 = MAX_LEVEL;
+    pub const MAX_LEVEL: i32 = MAX_RUN_LEVEL;
 
     const fn new() -> Self {
         Self {
@@ -290,7 +302,7 @@ impl TaskManager {
                 VecDeque::new(),
                 VecDeque::new(),
             ],
-            current_level: MAX_LEVEL,
+            current_level: MAX_RUN_LEVEL,
             level_changed: false,
         }
     }
@@ -329,7 +341,7 @@ impl TaskManager {
 
         if self.level_changed {
             self.level_changed = false;
-            for lv in (0..=MAX_LEVEL).rev() {
+            for lv in (0..=MAX_RUN_LEVEL).rev() {
                 if !self.running[lv as usize].is_empty() {
                     self.current_level = lv;
                     break;
@@ -398,6 +410,12 @@ impl TaskManager {
     /// つまり、割り込みハンドラから呼び出すべきではない。
     fn current_task(&self) -> Arc<Task> {
         self.current_que().front().unwrap().clone()
+    }
+
+    /// 今走っているタスクを返す。
+    /// ない場合は `None` を返す。
+    fn current_task_checked(&self) -> Option<Arc<Task>> {
+        self.current_que().front().cloned()
     }
 
     /// ID が `id` のタスクが存在しなかった場合はエラーを返す。
