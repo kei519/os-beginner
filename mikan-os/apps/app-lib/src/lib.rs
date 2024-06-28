@@ -35,3 +35,22 @@ pub fn open_window(w: i32, h: i32, x: i32, y: i32, title: impl core::fmt::Displa
         res.value as _
     }
 }
+
+pub fn win_write_string(layer_id: u32, x: i32, y: i32, color: u32, s: impl core::fmt::Display) {
+    use core::fmt::Write as _;
+    let mut buf = [0; 1024];
+    let mut buf = buf::CStrBuf::new_unchecked(&mut buf);
+    write!(buf, "{}", s).unwrap();
+    let res = unsafe {
+        syscall::__win_write_string(
+            layer_id as _,
+            x as _,
+            y as _,
+            color as _,
+            buf.to_cstr().as_ptr() as _,
+        )
+    };
+    if res.error != 0 {
+        ERRNO.store(res.error, core::sync::atomic::Ordering::Relaxed);
+    }
+}
