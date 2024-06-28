@@ -13,4 +13,4 @@ panic = "abort"
 strip = true
 
 [dependencies.app-lib]
-path = "../app-lib"
+path = "../app-lib/app-lib"

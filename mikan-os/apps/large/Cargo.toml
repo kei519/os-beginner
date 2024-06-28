@@ -12,4 +12,4 @@ bench = false
 panic = "abort"
 
 [dependencies.app-lib]
-path = "../app-lib"
+path = "../app-lib/app-lib"
