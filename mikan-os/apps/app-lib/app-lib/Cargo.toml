@@ -3,5 +3,8 @@ name = "app-lib"
 version = "0.1.0"
 edition = "2021"
 
+[dependencies.app-lib-macros]
+path = "../app-lib-macros"
+
 [dependencies]
 paste = "1"
