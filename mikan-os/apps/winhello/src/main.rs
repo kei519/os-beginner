@@ -1,28 +1,16 @@
 #![no_std]
 #![no_main]
 
-use core::{
-    ffi::{c_char, CStr},
-    panic::PanicInfo,
-    ptr,
-    sync::atomic::Ordering,
-};
+use core::{panic::PanicInfo, sync::atomic::Ordering};
 
-use app_lib::{exit, kernel_log, logger::LogLevel, open_window, win_write_string, ERRNO};
+use app_lib::{
+    args::Args, exit, kernel_log, logger::LogLevel, main, open_window, win_write_string, ERRNO,
+};
 
 extern crate app_lib;
 
-#[no_mangle]
-extern "sysv64" fn _start(argc: i32, argv: *const *const c_char) {
-    let args = unsafe { &*ptr::slice_from_raw_parts(argv, argc as usize) };
-    let args = args
-        .iter()
-        .map(|&p| unsafe { CStr::from_ptr(p) }.to_str().unwrap());
-
-    exit(main(args))
-}
-
-fn main(_args: impl IntoIterator<Item = &'static str>) -> i32 {
+#[main]
+fn main(_: Args) -> i32 {
     let layer_id = open_window(200, 100, 10, 10, "winhello");
     if layer_id == 0 {
         exit(ERRNO.load(Ordering::Relaxed));
