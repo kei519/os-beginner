@@ -13,19 +13,21 @@ use crate::{
     msr::{IA32_EFER, IA32_FMASK, IA32_LSTAR, IA32_STAR},
     sync::SharedLock,
     task, terminal,
+    timer::{TIMER_FREQ, TIMER_MANAGER},
     window::Window,
 };
 
 pub type SyscallFuncType = extern "sysv64" fn(u64, u64, u64, u64, u64, u64) -> Result;
 
 #[no_mangle]
-pub static SYSCALL_TABLE: [SyscallFuncType; 6] = [
+pub static SYSCALL_TABLE: [SyscallFuncType; 7] = [
     log_string,
     put_string,
     exit,
     open_window,
     win_write_string,
     win_fill_rectangle,
+    get_current_tick,
 ];
 
 pub fn init() {
@@ -185,4 +187,8 @@ fn do_win_func(f: impl Fn(Arc<SharedLock<Window>>) -> Result, layer_id: u32) -> 
         LAYER_MANAGER.lock_wait().draw_id(layer_id);
     }
     res
+}
+
+extern "sysv64" fn get_current_tick(_: u64, _: u64, _: u64, _: u64, _: u64, _: u64) -> Result {
+    Result::new(TIMER_MANAGER.lock_wait().current_tick(), TIMER_FREQ as i32)
 }
