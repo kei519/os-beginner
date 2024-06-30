@@ -159,9 +159,21 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
 
     let mut text_window_index = 0;
     loop {
-        let tick = TIMER_MANAGER.lock_wait().current_tick();
+        let tick = match TIMER_MANAGER.lock() {
+            Some(manager) => manager.current_tick(),
+            None => {
+                main_task.sleep();
+                continue;
+            }
+        };
         let active = {
-            let mut layer_manager = LAYER_MANAGER.lock_wait();
+            let mut layer_manager = match LAYER_MANAGER.lock() {
+                Some(manager) => manager,
+                None => {
+                    main_task.sleep();
+                    continue;
+                }
+            };
             let window = layer_manager.layer(main_window_id).window();
             window.write().fill_rectangle(
                 Vector2D::new(20, 4),
@@ -206,7 +218,15 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
                         textbox_cursor_timer,
                     ));
                     textbox_cursor_visible = !textbox_cursor_visible;
-                    let mut layer_manager = LAYER_MANAGER.lock_wait();
+                    let mut layer_manager = loop {
+                        match LAYER_MANAGER.lock() {
+                            Some(manager) => break manager,
+                            None => {
+                                main_task.sleep();
+                                continue;
+                            }
+                        }
+                    };
                     draw_text_cursor(
                         textbox_cursor_visible,
                         text_window_index,
