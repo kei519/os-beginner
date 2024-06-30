@@ -55,3 +55,12 @@ pub fn win_write_string(layer_id: u32, x: i32, y: i32, color: u32, s: impl core:
         ERRNO.store(res.error, core::sync::atomic::Ordering::Relaxed);
     }
 }
+
+pub fn win_fill_rectangle(layer_id: u32, x: i32, y: i32, w: i32, h: i32, color: u32) {
+    let res = unsafe {
+        syscall::__win_fill_rectangle(layer_id as _, x as _, y as _, w as _, h as _, color as _)
+    };
+    if res.error != 0 {
+        ERRNO.store(res.error, core::sync::atomic::Ordering::Relaxed);
+    }
+}
