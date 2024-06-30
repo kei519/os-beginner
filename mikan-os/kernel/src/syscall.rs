@@ -4,6 +4,7 @@ use alloc::sync::Arc;
 
 use crate::{
     asmfunc,
+    bitfield::BitField,
     errno::ErrNo,
     font,
     graphics::{PixelColor, PixelWrite as _, Vector2D, FB_CONFIG},
@@ -20,7 +21,7 @@ use crate::{
 pub type SyscallFuncType = extern "sysv64" fn(u64, u64, u64, u64, u64, u64) -> Result;
 
 #[no_mangle]
-pub static SYSCALL_TABLE: [SyscallFuncType; 7] = [
+pub static SYSCALL_TABLE: [SyscallFuncType; 8] = [
     log_string,
     put_string,
     exit,
@@ -28,6 +29,7 @@ pub static SYSCALL_TABLE: [SyscallFuncType; 7] = [
     win_write_string,
     win_fill_rectangle,
     get_current_tick,
+    win_redraw,
 ];
 
 pub fn init() {
@@ -130,7 +132,7 @@ extern "sysv64" fn open_window(w: u64, h: u64, x: u64, y: u64, title: u64, _: u6
 }
 
 extern "sysv64" fn win_write_string(
-    layer_id: u64,
+    layer_id_flags: u64,
     x: u64,
     y: u64,
     color: u64,
@@ -151,12 +153,12 @@ extern "sysv64" fn win_write_string(
             );
             Result::value(0)
         },
-        layer_id as _,
+        layer_id_flags,
     )
 }
 
 extern "sysv64" fn win_fill_rectangle(
-    layer_id: u64,
+    layer_id_flags: u64,
     x: u64,
     y: u64,
     w: u64,
@@ -172,23 +174,44 @@ extern "sysv64" fn win_fill_rectangle(
             );
             Result::value(0)
         },
-        layer_id as _,
+        layer_id_flags,
     )
 }
 
-fn do_win_func(f: impl Fn(Arc<SharedLock<Window>>) -> Result, layer_id: u32) -> Result {
+fn do_win_func(f: impl Fn(Arc<SharedLock<Window>>) -> Result, layer_id_flags: u64) -> Result {
+    let layer_flags = layer_id_flags.get_bits(32..) as u32;
+    let layer_id = layer_id_flags.get_bits(..32) as u32;
+
     let window = match LAYER_MANAGER.lock_wait().find_layer(layer_id) {
         Some(layer) => layer.window(),
         None => return Result::error(ErrNo::EBADF),
     };
 
     let res = f(window);
-    if res.error == 0 {
+    if res.error != 0 {
+        return res;
+    }
+
+    // layer_flags の 0 ビット目が立っていたら再描画しない
+    // つまり特に指定がなければ再描画する
+    if !layer_flags.get_bit(0) {
         LAYER_MANAGER.lock_wait().draw_id(layer_id);
     }
+
     res
 }
 
 extern "sysv64" fn get_current_tick(_: u64, _: u64, _: u64, _: u64, _: u64, _: u64) -> Result {
     Result::new(TIMER_MANAGER.lock_wait().current_tick(), TIMER_FREQ as i32)
+}
+
+extern "sysv64" fn win_redraw(
+    layer_id_flags: u64,
+    _: u64,
+    _: u64,
+    _: u64,
+    _: u64,
+    _: u64,
+) -> Result {
+    do_win_func(|_| Result::value(0), layer_id_flags)
 }
