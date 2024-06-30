@@ -5,7 +5,8 @@ use core::{panic::PanicInfo, sync::atomic::Ordering};
 
 use app_lib::{
     args::Args,
-    graphics, kernel_log,
+    graphics::{self, LayerFlags},
+    kernel_log,
     logger::LogLevel,
     main, println,
     time::{self, TimerInfo},
@@ -39,8 +40,17 @@ fn main(args: Args) -> i32 {
     for _ in 0..num_stars {
         let x = rng.gen_range(0..WIDTH - 2);
         let y = rng.gen_range(0..WIDTH - 2);
-        graphics::win_fill_rectangle(layer_id, 4 + x, 24 + y, 2, 2, 0xfff100);
+        graphics::win_fill_rectangle_with_flags(
+            layer_id,
+            4 + x,
+            24 + y,
+            2,
+            2,
+            0xfff100,
+            LayerFlags::new().set_redraw(false),
+        );
     }
+    graphics::win_redraw(layer_id);
 
     let TimerInfo { tick: tick_end, .. } = time::get_current_tick();
     println!(
