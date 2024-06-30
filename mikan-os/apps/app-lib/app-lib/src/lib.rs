@@ -9,6 +9,7 @@ pub mod errno;
 pub mod graphics;
 pub mod logger;
 pub mod stdio;
+pub mod time;
 pub mod unistd;
 
 pub use app_lib_macros::main;

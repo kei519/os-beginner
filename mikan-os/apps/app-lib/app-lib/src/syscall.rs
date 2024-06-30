@@ -1,6 +1,9 @@
 /// __`$name` という名前で宣言する。
 /// 引数の型は全て [u64]。
 macro_rules! syscall {
+    ($name:ident, $number:expr) => {
+        syscall!($name, $number,);
+    };
     ($name:ident, $number:expr, $($args:ident),*) => {
         ::paste::paste! {
             extern "sysv64" {
@@ -37,6 +40,7 @@ syscall!(exit, 0x8000_0002, code);
 syscall!(open_window, 0x8000_0003, w, h, x, y, title);
 syscall!(win_write_string, 0x8000_0004, layer_id, x, y, color, s);
 syscall!(win_fill_rectangle, 0x8000_0005, layer_id, x, y, w, h, color);
+syscall!(get_current_tick, 0x8000_0006);
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
