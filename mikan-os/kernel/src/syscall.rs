@@ -1,14 +1,17 @@
 use core::{ffi::CStr, slice};
 
+use alloc::sync::Arc;
+
 use crate::{
     asmfunc,
     errno::ErrNo,
     font,
-    graphics::{PixelColor, Vector2D, FB_CONFIG},
+    graphics::{PixelColor, PixelWrite as _, Vector2D, FB_CONFIG},
     layer::LAYER_MANAGER,
     log,
     logger::LogLevel,
     msr::{IA32_EFER, IA32_FMASK, IA32_LSTAR, IA32_STAR},
+    sync::SharedLock,
     task, terminal,
     window::Window,
 };
@@ -16,8 +19,14 @@ use crate::{
 pub type SyscallFuncType = extern "sysv64" fn(u64, u64, u64, u64, u64, u64) -> Result;
 
 #[no_mangle]
-pub static SYSCALL_TABLE: [SyscallFuncType; 5] =
-    [log_string, put_string, exit, open_window, win_write_string];
+pub static SYSCALL_TABLE: [SyscallFuncType; 6] = [
+    log_string,
+    put_string,
+    exit,
+    open_window,
+    win_write_string,
+    win_fill_rectangle,
+];
 
 pub fn init() {
     asmfunc::write_msr(IA32_EFER, 0x0501);
@@ -126,23 +135,54 @@ extern "sysv64" fn win_write_string(
     s: u64,
     _: u64,
 ) -> Result {
-    let layer_id = layer_id as u32;
-    let x = x as i32;
-    let y = y as i32;
-    let color = PixelColor::to_color(color as _);
     let s = match unsafe { CStr::from_ptr(s as _) }.to_str() {
         Ok(s) => s,
         Err(_) => return ErrNo::EINVAL.into(),
     };
+    do_win_func(
+        |win| {
+            font::write_string(
+                &mut *win.write(),
+                Vector2D::new(x as _, y as _),
+                s.as_bytes(),
+                &PixelColor::to_color(color as _),
+            );
+            Result::value(0)
+        },
+        layer_id as _,
+    )
+}
 
-    let mut manager = LAYER_MANAGER.lock_wait();
-    font::write_string(
-        &mut *manager.layer(layer_id).window().write(),
-        Vector2D::new(x, y),
-        s.as_bytes(),
-        &color,
-    );
-    manager.draw_id(layer_id);
+extern "sysv64" fn win_fill_rectangle(
+    layer_id: u64,
+    x: u64,
+    y: u64,
+    w: u64,
+    h: u64,
+    color: u64,
+) -> Result {
+    do_win_func(
+        |win| {
+            win.write().base_mut().fill_rectangle(
+                Vector2D::new(x as _, y as _),
+                Vector2D::new(w as _, h as _),
+                &PixelColor::to_color(color as _),
+            );
+            Result::value(0)
+        },
+        layer_id as _,
+    )
+}
 
-    Result::value(0)
+fn do_win_func(f: impl Fn(Arc<SharedLock<Window>>) -> Result, layer_id: u32) -> Result {
+    let window = match LAYER_MANAGER.lock_wait().find_layer(layer_id) {
+        Some(layer) => layer.window(),
+        None => return Result::error(ErrNo::EBADF),
+    };
+
+    let res = f(window);
+    if res.error == 0 {
+        LAYER_MANAGER.lock_wait().draw_id(layer_id);
+    }
+    res
 }
