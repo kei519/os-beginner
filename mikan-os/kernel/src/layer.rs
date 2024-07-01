@@ -368,6 +368,11 @@ impl LayerManager {
             self.draw_id(id);
         }
     }
+
+    pub fn remove_layer(&mut self, id: u32) {
+        self.hide(id);
+        self.layers.remove(&id);
+    }
 }
 
 /// レイヤーを表す構造体。

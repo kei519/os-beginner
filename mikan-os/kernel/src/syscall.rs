@@ -7,7 +7,7 @@ use crate::{
     bitfield::BitField,
     errno::ErrNo,
     font,
-    graphics::{PixelColor, PixelWrite as _, Vector2D, FB_CONFIG},
+    graphics::{PixelColor, PixelWrite as _, Rectangle, Vector2D, FB_CONFIG},
     layer::LAYER_MANAGER,
     log,
     logger::LogLevel,
@@ -21,7 +21,7 @@ use crate::{
 pub type SyscallFuncType = extern "sysv64" fn(u64, u64, u64, u64, u64, u64) -> Result;
 
 #[no_mangle]
-pub static SYSCALL_TABLE: [SyscallFuncType; 9] = [
+pub static SYSCALL_TABLE: [SyscallFuncType; 10] = [
     log_string,
     put_string,
     exit,
@@ -31,6 +31,7 @@ pub static SYSCALL_TABLE: [SyscallFuncType; 9] = [
     get_current_tick,
     win_redraw,
     win_draw_line,
+    close_window,
 ];
 
 pub fn init() {
@@ -266,4 +267,27 @@ extern "sysv64" fn win_draw_line(
         },
         layer_id_flags,
     )
+}
+
+extern "sysv64" fn close_window(
+    layer_id_flags: u64,
+    _: u64,
+    _: u64,
+    _: u64,
+    _: u64,
+    _: u64,
+) -> Result {
+    let layer_id = layer_id_flags.get_bits(..32) as u32;
+
+    let mut manager = LAYER_MANAGER.lock_wait();
+    let layer = manager.layer(layer_id);
+
+    let pos = layer.pos();
+    let size = layer.window().read().base().size();
+
+    manager.activate(0);
+    manager.remove_layer(layer_id);
+    manager.draw(&Rectangle { pos, size });
+
+    Result::value(0)
 }
