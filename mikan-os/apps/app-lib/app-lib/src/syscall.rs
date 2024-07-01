@@ -69,6 +69,7 @@ syscall!(
     y1,
     color
 );
+syscall!(close_window, 0x8000_0009, layer_id);
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]

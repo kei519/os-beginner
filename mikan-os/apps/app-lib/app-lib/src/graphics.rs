@@ -175,3 +175,7 @@ pub fn win_draw_line_with_flags(
         ERRNO.store(res.error, Relaxed);
     }
 }
+
+pub fn close_window(layer_id: u32) {
+    unsafe { syscall::__close_window(layer_id as _) };
+}
