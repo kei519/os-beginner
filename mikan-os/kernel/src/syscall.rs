@@ -146,7 +146,7 @@ extern "sysv64" fn win_write_string(
     do_win_func(
         |win| {
             font::write_string(
-                &mut *win.write(),
+                win.write().base_mut(),
                 Vector2D::new(x as _, y as _),
                 s.as_bytes(),
                 &PixelColor::to_color(color as _),
