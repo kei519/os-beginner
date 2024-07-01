@@ -59,6 +59,16 @@ syscall!(
 );
 syscall!(get_current_tick, 0x8000_0006);
 syscall!(win_redraw, 0x8000_0007, layer_id_flags);
+syscall!(
+    win_draw_line,
+    0x8000_0008,
+    layer_id_flags,
+    x0,
+    y0,
+    x1,
+    y1,
+    color
+);
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]

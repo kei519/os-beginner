@@ -135,3 +135,43 @@ pub fn win_redraw_with_flags(layer_id: u32, flags: LayerFlags) {
         ERRNO.store(res.error, Relaxed);
     }
 }
+
+pub fn win_draw_line(layer_id: u32, x0: i32, y0: i32, x1: i32, y1: i32, color: u32) {
+    let res = unsafe {
+        syscall::__win_draw_line(
+            layer_id as u64,
+            x0 as _,
+            y0 as _,
+            x1 as _,
+            y1 as _,
+            color as _,
+        )
+    };
+    if res.error != 0 {
+        ERRNO.store(res.error, Relaxed);
+    }
+}
+
+pub fn win_draw_line_with_flags(
+    layer_id: u32,
+    x0: i32,
+    y0: i32,
+    x1: i32,
+    y1: i32,
+    color: u32,
+    flags: LayerFlags,
+) {
+    let res = unsafe {
+        syscall::__win_draw_line(
+            layer_id as u64 | (flags.0 as u64) << 32,
+            x0 as _,
+            y0 as _,
+            x1 as _,
+            y1 as _,
+            color as _,
+        )
+    };
+    if res.error != 0 {
+        ERRNO.store(res.error, Relaxed);
+    }
+}
