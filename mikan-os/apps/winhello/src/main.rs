@@ -3,7 +3,14 @@
 
 use core::{panic::PanicInfo, sync::atomic::Ordering};
 
-use app_lib::{args::Args, exit, graphics, kernel_log, logger::LogLevel, main, ERRNO};
+use app_lib::{
+    args::Args,
+    errno::ErrNo,
+    events::{self, AppEvent},
+    exit, graphics, kernel_log,
+    logger::LogLevel,
+    main, println, ERRNO,
+};
 
 extern crate app_lib;
 
@@ -18,6 +25,21 @@ fn main(_: Args) -> i32 {
     graphics::win_write_string(layer_id, 24, 40, 0x00c000, "hello world!");
     graphics::win_write_string(layer_id, 40, 56, 0x0000c0, "hello world!");
 
+    let mut events = [AppEvent::Null; 1];
+    loop {
+        let n = events::read_event(&mut events);
+        if n == 0 {
+            println!(
+                "ReadEvent failed: {}",
+                ErrNo::from(ERRNO.load(Ordering::Relaxed)),
+            );
+            break;
+        }
+        match events[0] {
+            AppEvent::Quit => break,
+            _ => println!("unknow event: type = {}", events[0] as i32),
+        }
+    }
     graphics::close_window(layer_id);
     0
 }
