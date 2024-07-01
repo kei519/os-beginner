@@ -30,6 +30,7 @@ strip = true
 custom-attribute = { path = "../custom-attribute" }
 uefi = "0.26.0"
 paste = "1"
+libm = "0.2"
 
 [build-dependencies]
 cmake = "0.1"

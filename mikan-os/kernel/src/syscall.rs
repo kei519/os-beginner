@@ -1,4 +1,4 @@
-use core::{ffi::CStr, slice};
+use core::{ffi::CStr, mem, slice};
 
 use alloc::sync::Arc;
 
@@ -21,7 +21,7 @@ use crate::{
 pub type SyscallFuncType = extern "sysv64" fn(u64, u64, u64, u64, u64, u64) -> Result;
 
 #[no_mangle]
-pub static SYSCALL_TABLE: [SyscallFuncType; 8] = [
+pub static SYSCALL_TABLE: [SyscallFuncType; 9] = [
     log_string,
     put_string,
     exit,
@@ -30,6 +30,7 @@ pub static SYSCALL_TABLE: [SyscallFuncType; 8] = [
     win_fill_rectangle,
     get_current_tick,
     win_redraw,
+    win_draw_line,
 ];
 
 pub fn init() {
@@ -214,4 +215,55 @@ extern "sysv64" fn win_redraw(
     _: u64,
 ) -> Result {
     do_win_func(|_| Result::value(0), layer_id_flags)
+}
+
+extern "sysv64" fn win_draw_line(
+    layer_id_flags: u64,
+    x0: u64,
+    y0: u64,
+    x1: u64,
+    y1: u64,
+    color: u64,
+) -> Result {
+    do_win_func(
+        move |win| {
+            let (mut x0, mut y0, mut x1, mut y1) = (x0 as i32, y0 as i32, x1 as i32, y1 as i32);
+            let color = PixelColor::to_color(color as u32);
+
+            let dx = x1 - x0 + (x1 - x0).signum();
+            let dy = y1 - y0 + (y1 - y0).signum();
+
+            if dx == 0 && dy == 0 {
+                win.write().base_mut().write(Vector2D::new(x0, y0), &color);
+                return Result::value(0);
+            }
+
+            if dx.abs() >= dy.abs() {
+                if dx < 0 {
+                    mem::swap(&mut x0, &mut x1);
+                    mem::swap(&mut y0, &mut y1);
+                }
+                let roundish = if y1 >= y0 { libm::floor } else { libm::ceil };
+                let m = dy as f64 / dx as f64;
+                for x in x0..=x1 {
+                    let y = roundish(m * (x - x0) as f64 + y0 as f64) as i32;
+                    win.write().base_mut().write(Vector2D::new(x, y), &color);
+                }
+            } else {
+                if dy < 0 {
+                    mem::swap(&mut x0, &mut x1);
+                    mem::swap(&mut y0, &mut y1);
+                }
+                let roundish = if x1 >= 0 { libm::floor } else { libm::ceil };
+                let m = dx as f64 / dy as f64;
+                for y in y0..=y1 {
+                    let x = roundish(m * (y - y0) as f64 + x0 as f64) as i32;
+                    win.write().base_mut().write(Vector2D::new(x, y), &color);
+                }
+            }
+
+            Result::value(0)
+        },
+        layer_id_flags,
+    )
 }
