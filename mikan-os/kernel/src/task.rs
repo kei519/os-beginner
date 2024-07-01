@@ -85,6 +85,11 @@ pub fn send_message(id: u64, msg: Message) -> Result<()> {
     unsafe { TASK_MANAGER.send_message(id, msg) }
 }
 
+#[no_mangle]
+pub fn get_current_task_os_stack_pointer() -> u64 {
+    *unsafe { TASK_MANAGER.current_task().os_stack_ptr() }
+}
+
 #[repr(C, align(16))]
 #[derive(Debug)]
 pub struct TaskContext {

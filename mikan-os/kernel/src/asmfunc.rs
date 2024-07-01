@@ -307,7 +307,41 @@ syscall_entry:
     # MikanOS のシステムコール番号は 0x8000_0000 以降だから、下位15ビットのみを使う
     and eax, 0x7fffffff
 
+    # システムコールを OS 用スタックで実行するための準備
     # RSP が16の倍数になるように調整（RSP が減ってもスタックが伸びるだけなので問題ない）
+    and rsp, 0xfffffffffffffff0
+
+    push rax
+    push rdx
+
+    # レジスタの保存
+    push rcx
+    push rsi
+    push rdi
+    push r8
+    push r9
+    push r10
+
+    cli
+    call get_current_task_os_stack_pointer
+    sti
+
+    # レジスタの復帰
+    pop r10
+    pop r9
+    pop r8
+    pop rdi
+    pop rsi
+    pop rcx
+
+    mov rdx, [rsp + 0] # RDX
+    mov [rax - 16], rdx
+    mov rdx, [rsp + 8] # rax
+    mov [rax - 8], rdx
+
+    lea rsp, [rax - 16]
+    pop rdx
+    pop rax
     and rsp, 0xfffffffffffffff0
 
     call [SYSCALL_TABLE + 8 * eax]

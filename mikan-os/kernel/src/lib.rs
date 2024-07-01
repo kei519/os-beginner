@@ -3,6 +3,7 @@
 extern crate alloc;
 
 pub mod acpi;
+pub mod app_event;
 pub mod asmfunc;
 pub mod bitfield;
 pub mod collections;

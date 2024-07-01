@@ -3,14 +3,17 @@ use core::{ffi::CStr, mem, slice};
 use alloc::sync::Arc;
 
 use crate::{
+    app_event::AppEvent,
     asmfunc,
     bitfield::BitField,
     errno::ErrNo,
     font,
     graphics::{PixelColor, PixelWrite as _, Rectangle, Vector2D, FB_CONFIG},
-    layer::LAYER_MANAGER,
+    keyboard::{LCONTROL_BIT, RCONTROL_BIT},
+    layer::{LAYER_MANAGER, LAYER_TASK_MAP},
     log,
     logger::LogLevel,
+    message::MessageType,
     msr::{IA32_EFER, IA32_FMASK, IA32_LSTAR, IA32_STAR},
     sync::SharedLock,
     task, terminal,
@@ -21,7 +24,7 @@ use crate::{
 pub type SyscallFuncType = extern "sysv64" fn(u64, u64, u64, u64, u64, u64) -> Result;
 
 #[no_mangle]
-pub static SYSCALL_TABLE: [SyscallFuncType; 10] = [
+pub static SYSCALL_TABLE: [SyscallFuncType; 11] = [
     log_string,
     put_string,
     exit,
@@ -32,6 +35,7 @@ pub static SYSCALL_TABLE: [SyscallFuncType; 10] = [
     win_redraw,
     win_draw_line,
     close_window,
+    read_event,
 ];
 
 pub fn init() {
@@ -129,6 +133,11 @@ extern "sysv64" fn open_window(w: u64, h: u64, x: u64, y: u64, title: u64, _: u6
         .set_draggable(true)
         .r#move(Vector2D::new(x, y));
     manager.activate(layer_id);
+
+    asmfunc::cli();
+    let task_id = task::current_task().id();
+    asmfunc::sti();
+    LAYER_TASK_MAP.lock_wait().insert(layer_id, task_id);
 
     Result::value(layer_id as _)
 }
@@ -288,6 +297,54 @@ extern "sysv64" fn close_window(
     manager.activate(0);
     manager.remove_layer(layer_id);
     manager.draw(&Rectangle { pos, size });
+    LAYER_TASK_MAP.lock_wait().remove(&layer_id);
 
     Result::value(0)
+}
+
+extern "sysv64" fn read_event(events: u64, len: u64, _: u64, _: u64, _: u64, _: u64) -> Result {
+    if events < 0x8000_0000_0000_0000 {
+        return ErrNo::EFAULT.into();
+    }
+
+    // ここで良くわからない配列（へのポインタ）を &[AppEvents] に変換しているが、
+    // 読み込みは行わないので UB は起きないはず
+    let app_events = unsafe { slice::from_raw_parts_mut(events as *mut AppEvent, len as _) };
+
+    asmfunc::cli();
+    let task = task::current_task();
+    asmfunc::sti();
+
+    let mut i = 0;
+    while i < app_events.len() {
+        // receive_message はロックを取得してから処理するから、cli は必要ない
+        let msg = match task.receive_message() {
+            Some(msg) => msg,
+            None => {
+                if i == 0 {
+                    task.sleep();
+                    continue;
+                } else {
+                    break;
+                }
+            }
+        };
+
+        match msg.ty {
+            MessageType::KeyPush {
+                modifier, keycode, ..
+            } => {
+                // 20 は Q
+                if keycode == 20
+                    && (modifier.get_bit(LCONTROL_BIT) || modifier.get_bit(RCONTROL_BIT))
+                {
+                    app_events[i] = AppEvent::Quit;
+                    i += 1;
+                }
+            }
+            ty => log!(LogLevel::Info, "uncaught event type: {:?}", ty),
+        }
+    }
+
+    Result::value(i as _)
 }
