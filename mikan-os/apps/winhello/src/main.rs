@@ -17,6 +17,8 @@ fn main(_: Args) -> i32 {
     graphics::win_write_string(layer_id, 7, 24, 0xc00000, "hello world!");
     graphics::win_write_string(layer_id, 24, 40, 0x00c000, "hello world!");
     graphics::win_write_string(layer_id, 40, 56, 0x0000c0, "hello world!");
+
+    graphics::close_window(layer_id);
     0
 }
 
