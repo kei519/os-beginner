@@ -20,6 +20,10 @@ pub enum AppEvent {
         press: bool,
         button: u8,
     },
+    Timer {
+        timeout: u64,
+        value: i32,
+    },
 }
 
 impl AppEvent {
