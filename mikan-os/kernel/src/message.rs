@@ -93,6 +93,12 @@ pub enum MessageType {
         dy: i32,
         buttons: u8,
     },
+    MouseButton {
+        x: i32,
+        y: i32,
+        press: bool,
+        button: i32,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

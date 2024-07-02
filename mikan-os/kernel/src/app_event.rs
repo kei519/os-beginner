@@ -10,6 +10,12 @@ pub enum AppEvent {
         dy: i32,
         buttons: u8,
     },
+    MouseButton {
+        x: i32,
+        y: i32,
+        press: bool,
+        button: i32,
+    },
 }
 
 impl Default for AppEvent {

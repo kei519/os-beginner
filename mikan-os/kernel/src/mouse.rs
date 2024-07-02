@@ -77,7 +77,12 @@ pub fn mouse_observer(buttons: u8, displacement_x: i8, displacement_y: i8) {
     // ウィンドウのドラッグを行っているときは、
     // アクティブウィンドウの相対位置が動かないため送らない
     if MOUSE_DRAG_LAYER_ID.load(Ordering::Acquire) == 0 {
-        send_mouse_message(newpos, posdiff, buttons);
+        send_mouse_message(
+            newpos,
+            posdiff,
+            buttons,
+            PREVIOUS_BUTTONS.load(Ordering::Relaxed),
+        );
     }
 
     PREVIOUS_BUTTONS.store(buttons, Ordering::Release);
@@ -130,7 +135,12 @@ pub fn draw_mouse_cursor(writer: &mut dyn PixelWrite, pos: &Vector2D<i32>) {
     }
 }
 
-fn send_mouse_message(newpos: Vector2D<i32>, posdiff: Vector2D<i32>, buttons: u8) {
+fn send_mouse_message(
+    newpos: Vector2D<i32>,
+    posdiff: Vector2D<i32>,
+    buttons: u8,
+    previou_buttons: u8,
+) {
     let manager = match LAYER_MANAGER.lock() {
         Some(m) => m,
         None => return,
@@ -146,8 +156,8 @@ fn send_mouse_message(newpos: Vector2D<i32>, posdiff: Vector2D<i32>, buttons: u8
         return;
     };
 
+    let relpos = newpos - layer.pos();
     if posdiff != Vector2D::new(0, 0) {
-        let relpos = newpos - layer.pos();
         let msg = Message {
             src_task: 0,
             ty: MessageType::MouseMove {
@@ -159,5 +169,23 @@ fn send_mouse_message(newpos: Vector2D<i32>, posdiff: Vector2D<i32>, buttons: u8
             },
         };
         let _ = task::send_message(task_id, msg);
+    }
+
+    if previou_buttons != buttons {
+        let diff = previou_buttons ^ buttons;
+        for i in 0..u8::BITS {
+            if diff.get_bit(i) {
+                let msg = Message {
+                    src_task: 0,
+                    ty: MessageType::MouseButton {
+                        x: relpos.x(),
+                        y: relpos.y(),
+                        press: buttons.get_bit(i),
+                        button: i as _,
+                    },
+                };
+                let _ = task::send_message(task_id, msg);
+            }
+        }
     }
 }

@@ -357,6 +357,20 @@ extern "sysv64" fn read_event(events: u64, len: u64, _: u64, _: u64, _: u64, _: 
                 };
                 i += 1;
             }
+            MessageType::MouseButton {
+                x,
+                y,
+                press,
+                button,
+            } => {
+                app_events[i] = AppEvent::MouseButton {
+                    x,
+                    y,
+                    press,
+                    button,
+                };
+                i += 1;
+            }
             ty => log!(LogLevel::Info, "uncaught event type: {:?}", ty),
         }
     }
