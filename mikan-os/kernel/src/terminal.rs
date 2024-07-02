@@ -501,9 +501,9 @@ impl Terminal {
         load_elf(elf_header)?;
 
         let stack_frame_addr = LinearAddress4Level {
-            addr: 0xffff_ffff_ffff_e000,
+            addr: 0xffff_ffff_ffff_d000,
         };
-        setup_page_maps(stack_frame_addr, 1)?;
+        setup_page_maps(stack_frame_addr, 2)?;
 
         let args_frame_addr = LinearAddress4Level {
             addr: 0xffff_ffff_ffff_f000,
@@ -521,7 +521,7 @@ impl Terminal {
             args_frame_addr.addr as _,
             3 << 3 | 3,
             elf_header.entry as _,
-            stack_frame_addr.addr + BYTES_PER_FRAME as u64 - 8,
+            stack_frame_addr.addr + BYTES_PER_FRAME as u64 * 2 - 8,
             task.os_stack_ptr(),
         );
 
