@@ -75,6 +75,7 @@ fn main(_: Args) -> i32 {
                 draw_eye(layer_id, x, y, 0x000000);
             }
             AppEvent::Null => unreachable!(),
+            _ => {}
         }
     }
 
