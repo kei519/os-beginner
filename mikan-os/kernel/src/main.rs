@@ -325,7 +325,7 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
                 // 呼び出してきたタスクがあるはずだから、unwrap は失敗しない
                 task::send_message(msg.src_task, MessageType::LayerFinish.into()).unwrap();
             }
-            MessageType::LayerFinish => {}
+            MessageType::LayerFinish | MessageType::MouseMove { .. } => {}
         }
     }
 }

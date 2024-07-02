@@ -334,13 +334,28 @@ extern "sysv64" fn read_event(events: u64, len: u64, _: u64, _: u64, _: u64, _: 
             MessageType::KeyPush {
                 modifier, keycode, ..
             } => {
-                // 20 は Q
-                if keycode == 20
+                if keycode == 20 /* Q キー */
                     && (modifier.get_bit(LCONTROL_BIT) || modifier.get_bit(RCONTROL_BIT))
                 {
                     app_events[i] = AppEvent::Quit;
                     i += 1;
                 }
+            }
+            MessageType::MouseMove {
+                x,
+                y,
+                dx,
+                dy,
+                buttons,
+            } => {
+                app_events[i] = AppEvent::MouseMove {
+                    x,
+                    y,
+                    dx,
+                    dy,
+                    buttons,
+                };
+                i += 1;
             }
             ty => log!(LogLevel::Info, "uncaught event type: {:?}", ty),
         }

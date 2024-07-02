@@ -3,7 +3,9 @@ use core::sync::atomic::{AtomicU32, AtomicU8, Ordering};
 use crate::{
     bitfield::BitField as _,
     graphics::{PixelColor, PixelWrite, Vector2D},
-    layer::{LAYER_MANAGER, SCREEN},
+    layer::{LAYER_MANAGER, LAYER_TASK_MAP, SCREEN},
+    message::{Message, MessageType},
+    task,
     usb::HIDMouseDriver,
     window::Window,
 };
@@ -66,6 +68,13 @@ pub fn mouse_observer(buttons: u8, displacement_x: i8, displacement_y: i8) {
     } else if previous_left_pressed && !left_pressed {
         MOUSE_DRAG_LAYER_ID.store(0, Ordering::Release);
     }
+    drop(layer_manager);
+
+    // ウィンドウのドラッグを行っているときは、
+    // アクティブウィンドウの相対位置が動かないため送らない
+    if MOUSE_DRAG_LAYER_ID.load(Ordering::Acquire) == 0 {
+        send_mouse_message(newpos, posdiff, buttons);
+    }
 
     PREVIOUS_BUTTONS.store(buttons, Ordering::Release);
 }
@@ -114,5 +123,37 @@ pub fn draw_mouse_cursor(writer: &mut dyn PixelWrite, pos: &Vector2D<i32>) {
                 _ => writer.write(pos, &MOUSE_TRANSPARENT_COLOR),
             }
         }
+    }
+}
+
+fn send_mouse_message(newpos: Vector2D<i32>, posdiff: Vector2D<i32>, buttons: u8) {
+    let manager = match LAYER_MANAGER.lock() {
+        Some(m) => m,
+        None => return,
+    };
+    let act = manager.get_active();
+    if act == 0 {
+        return;
+    }
+    // アクティブウィンドウなので必ず見つかる
+    let layer = manager.find_layer(act).unwrap();
+
+    let Some(task_id) = LAYER_TASK_MAP.lock_wait().get(&act).copied() else {
+        return;
+    };
+
+    if posdiff != Vector2D::new(0, 0) {
+        let relpos = newpos - layer.pos();
+        let msg = Message {
+            src_task: 0,
+            ty: MessageType::MouseMove {
+                x: relpos.x(),
+                y: relpos.y(),
+                dx: posdiff.x(),
+                dy: posdiff.y(),
+                buttons,
+            },
+        };
+        let _ = task::send_message(task_id, msg);
     }
 }

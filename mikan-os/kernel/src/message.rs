@@ -86,6 +86,13 @@ pub enum MessageType {
         size: Vector2D<i32>,
     },
     LayerFinish,
+    MouseMove {
+        x: i32,
+        y: i32,
+        dx: i32,
+        dy: i32,
+        buttons: u8,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
