@@ -30,7 +30,6 @@ fn main(_: Args) -> i32 {
     }
 
     let mut events = [AppEvent::Null; 1];
-    let mut press = false;
     loop {
         let n = events::read_event(&mut events);
         if n == 0 {
@@ -42,7 +41,14 @@ fn main(_: Args) -> i32 {
         }
         match events[0] {
             AppEvent::Quit => break,
-            AppEvent::MouseMove { x, y, dx, dy, .. } => {
+            AppEvent::MouseMove {
+                x,
+                y,
+                dx,
+                dy,
+                buttons,
+            } => {
+                let press = buttons & 1 == 1;
                 let prev_x = x - dx;
                 let prev_y = y - dy;
                 if press && is_inside(prev_x, prev_y) {
@@ -52,11 +58,10 @@ fn main(_: Args) -> i32 {
             AppEvent::MouseButton {
                 x,
                 y,
-                press: prs,
+                press,
                 button,
             } => {
-                if button == 0 {
-                    press = prs;
+                if press && button == 0 {
                     win_fill_rectangle(layer_id, x, y, 1, 1, 0x000000);
                 }
             }
