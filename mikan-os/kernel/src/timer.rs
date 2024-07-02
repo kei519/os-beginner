@@ -117,14 +117,20 @@ impl TimerManager {
 
             if t.value() == TASK_TIMER_VALUE {
                 task_timer_timeout = true;
-                self.timers
-                    .push(Timer::new(self.tick + TASK_TIMER_PERIOD, TASK_TIMER_VALUE));
+                self.timers.push(Timer::new(
+                    self.tick + TASK_TIMER_PERIOD,
+                    TASK_TIMER_VALUE,
+                    0,
+                ));
                 continue;
             }
 
-            let m = MessageType::TimerTimeout(t).into();
-            // メインタスクが 1 で登録されるので必ず存在するはず
-            task::send_message(1, m).unwrap();
+            let m = MessageType::TimerTimeout {
+                timeout: t.timeout(),
+                value: t.value(),
+            }
+            .into();
+            task::send_message(t.task_id(), m).unwrap();
         }
         task_timer_timeout
     }
@@ -138,15 +144,20 @@ impl TimerManager {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Timer {
     timeout: u64,
     value: i32,
+    task_id: u64,
 }
 
 impl Timer {
-    pub fn new(timeout: u64, value: i32) -> Self {
-        Self { timeout, value }
+    pub fn new(timeout: u64, value: i32, task_id: u64) -> Self {
+        Self {
+            timeout,
+            value,
+            task_id,
+        }
     }
 
     pub fn timeout(&self) -> u64 {
@@ -156,15 +167,11 @@ impl Timer {
     pub fn value(&self) -> i32 {
         self.value
     }
-}
 
-impl PartialEq for Timer {
-    fn eq(&self, other: &Self) -> bool {
-        self.timeout == other.timeout
+    pub fn task_id(&self) -> u64 {
+        self.task_id
     }
 }
-
-impl Eq for Timer {}
 
 impl PartialOrd for Timer {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {

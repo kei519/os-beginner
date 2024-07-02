@@ -97,7 +97,7 @@ pub fn task_terminal(task_id: u64, _: i64, _: u32) {
         };
 
         match msg.ty {
-            MessageType::TimerTimeout(_) => {
+            MessageType::TimerTimeout { .. } => {
                 let mut area = terminal.blink_cursor();
                 area.pos += Window::TOP_LEFT_MARGIN;
 

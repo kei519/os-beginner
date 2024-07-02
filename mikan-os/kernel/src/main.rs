@@ -137,7 +137,7 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
     let timer_05sec = (timer::TIMER_FREQ as f64 * 0.5) as u64;
     TIMER_MANAGER
         .lock_wait()
-        .add_timer(Timer::new(timer_05sec, textbox_cursor_timer));
+        .add_timer(Timer::new(timer_05sec, textbox_cursor_timer, 1));
     let mut textbox_cursor_visible = false;
 
     syscall::init();
@@ -211,11 +211,12 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
                     }
                 }
             }
-            MessageType::TimerTimeout(timer) => {
-                if timer.value() == textbox_cursor_timer {
+            MessageType::TimerTimeout { timeout, value } => {
+                if value == textbox_cursor_timer {
                     TIMER_MANAGER.lock_wait().add_timer(Timer::new(
-                        timer.timeout() + timer_05sec,
+                        timeout + timer_05sec,
                         textbox_cursor_timer,
+                        1,
                     ));
                     textbox_cursor_visible = !textbox_cursor_visible;
                     let mut layer_manager = loop {
@@ -237,10 +238,7 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
                     asmfunc::cli();
                     task::send_message(
                         task_terminal_id,
-                        Message {
-                            ty: MessageType::TimerTimeout(timer),
-                            src_task: 1,
-                        },
+                        msg,
                     )
                     .unwrap();
                     asmfunc::sti();

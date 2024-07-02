@@ -48,7 +48,7 @@ pub fn init() {
 
     let mut timer_manager = TIMER_MANAGER.lock_wait();
     let timeout = timer_manager.current_tick() + TASK_TIMER_PERIOD;
-    timer_manager.add_timer(Timer::new(timeout, TASK_TIMER_VALUE));
+    timer_manager.add_timer(Timer::new(timeout, TASK_TIMER_VALUE, 1));
 }
 
 pub fn switch_task(current_ctx: &TaskContext) {

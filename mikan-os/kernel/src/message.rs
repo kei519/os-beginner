@@ -1,7 +1,4 @@
-use crate::{
-    graphics::{Rectangle, Vector2D},
-    timer::Timer,
-};
+use crate::graphics::{Rectangle, Vector2D};
 
 /// 発信元のタスクを知らせる必要がない場合は `src_task` を `0` にして使用する。
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -73,7 +70,10 @@ impl From<MessageType> for Message {
 #[repr(u32)]
 pub enum MessageType {
     InterruptXHCI,
-    TimerTimeout(Timer),
+    TimerTimeout {
+        timeout: u64,
+        value: i32,
+    },
     KeyPush {
         modifier: u8,
         keycode: u8,
