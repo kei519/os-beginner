@@ -84,26 +84,34 @@ impl RgbResv8BitPerColorPixelWriter {
         Self { config }
     }
 
-    fn pixel_at(&mut self, pos: Vector2D<i32>) -> &mut [u8; 3] {
+    fn pixel_at(&mut self, pos: Vector2D<i32>) -> Option<&mut [u8; 3]> {
+        if !(0..self.config.pixels_per_scan_line as i32).contains(&pos.x())
+            || !(0..self.config.vertical_resolution as i32).contains(&pos.y())
+        {
+            return None;
+        }
         unsafe {
-            slice::from_raw_parts_mut(
-                (self.frame_buffer()
-                    + 4 * (self.pixels_per_scan_line() * pos.y as usize + pos.x as usize))
-                    as *mut u8,
-                3,
+            Some(
+                slice::from_raw_parts_mut(
+                    (self.frame_buffer()
+                        + 4 * (self.pixels_per_scan_line() * pos.y as usize + pos.x as usize))
+                        as *mut u8,
+                    3,
+                )
+                .try_into()
+                .unwrap(),
             )
-            .try_into()
-            .unwrap()
         }
     }
 }
 
 impl PixelWrite for RgbResv8BitPerColorPixelWriter {
     fn write(&mut self, pos: Vector2D<i32>, color: &PixelColor) {
-        let pixel = self.pixel_at(pos);
-        pixel[0] = color.r;
-        pixel[1] = color.g;
-        pixel[2] = color.b;
+        if let Some(pixel) = self.pixel_at(pos) {
+            pixel[0] = color.r;
+            pixel[1] = color.g;
+            pixel[2] = color.b;
+        }
     }
 
     fn frame_buffer(&self) -> usize {
@@ -134,26 +142,34 @@ impl BgrResv8BitPerColorPixelWriter {
         Self { config }
     }
 
-    fn pixel_at(&mut self, pos: Vector2D<i32>) -> &mut [u8; 3] {
+    fn pixel_at(&mut self, pos: Vector2D<i32>) -> Option<&mut [u8; 3]> {
+        if !(0..self.config.pixels_per_scan_line as i32).contains(&pos.x())
+            || !(0..self.config.vertical_resolution as i32).contains(&pos.y())
+        {
+            return None;
+        }
         unsafe {
-            slice::from_raw_parts_mut(
-                (self.frame_buffer()
-                    + 4 * (self.pixels_per_scan_line() * pos.y as usize + pos.x as usize))
-                    as *mut u8,
-                3,
+            Some(
+                slice::from_raw_parts_mut(
+                    (self.frame_buffer()
+                        + 4 * (self.pixels_per_scan_line() * pos.y as usize + pos.x as usize))
+                        as *mut u8,
+                    3,
+                )
+                .try_into()
+                .unwrap(),
             )
         }
-        .try_into()
-        .unwrap()
     }
 }
 
 impl PixelWrite for BgrResv8BitPerColorPixelWriter {
     fn write(&mut self, pos: Vector2D<i32>, color: &PixelColor) {
-        let pixel = self.pixel_at(pos);
-        pixel[0] = color.b;
-        pixel[1] = color.g;
-        pixel[2] = color.r;
+        if let Some(pixel) = self.pixel_at(pos) {
+            pixel[0] = color.b;
+            pixel[1] = color.g;
+            pixel[2] = color.r;
+        }
     }
 
     fn frame_buffer(&self) -> usize {

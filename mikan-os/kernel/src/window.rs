@@ -299,7 +299,7 @@ impl Window {
     }
 
     /// 指定された位置のピクセルへの排他参照を返す。
-    pub fn at(&mut self, pos: Vector2D<i32>) -> &mut PixelColor {
+    pub fn at(&mut self, pos: Vector2D<i32>) -> Option<&mut PixelColor> {
         match self {
             Self::Base(base) => base.at_mut(pos),
             Self::Toplevel { base, .. } => base.at_mut(pos + Self::TOP_LEFT_MARGIN),
@@ -488,8 +488,9 @@ impl WindowBase {
     }
 
     /// 指定された位置のピクセルへの排他参照を返す。
-    pub fn at_mut(&mut self, pos: Vector2D<i32>) -> &mut PixelColor {
-        &mut self.data[(pos.y() * self.width as i32 + pos.x()) as usize]
+    pub fn at_mut(&mut self, pos: Vector2D<i32>) -> Option<&mut PixelColor> {
+        self.data
+            .get_mut((pos.y() * self.width as i32 + pos.x()) as usize)
     }
 
     pub fn size(&self) -> Vector2D<i32> {
@@ -507,8 +508,10 @@ impl PixelWrite for WindowBase {
     ///
     /// 描画が必要な場合は `Window::draw_to()` を呼ぶこと。
     fn write(&mut self, pos: Vector2D<i32>, color: &PixelColor) {
-        *self.at_mut(pos) = *color;
-        self.shadow_buffer.write(pos, color);
+        if let Some(pixel) = self.at_mut(pos) {
+            *pixel = *color;
+            self.shadow_buffer.write(pos, color);
+        }
     }
 
     fn frame_buffer(&self) -> usize {
