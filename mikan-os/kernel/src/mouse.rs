@@ -54,7 +54,11 @@ pub fn mouse_observer(buttons: u8, displacement_x: i8, displacement_y: i8) {
     if !previous_left_pressed && left_pressed {
         if let Some(id) = layer_manager.find_layer_by_position(&mouse_position, layer_id) {
             if layer_manager.layer(id).is_draggable() {
-                MOUSE_DRAG_LAYER_ID.store(id, Ordering::Release);
+                // y 座標がタイトルバーの中のときだけドラッグモードに入る
+                let y_layer = mouse_position.y() - layer_manager.layer(id).pos().y();
+                if y_layer < Window::TOP_LEFT_MARGIN.y() {
+                    MOUSE_DRAG_LAYER_ID.store(id, Ordering::Release);
+                }
                 layer_manager.activate(id);
             } else {
                 layer_manager.activate(0);
