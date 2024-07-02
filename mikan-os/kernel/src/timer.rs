@@ -36,7 +36,7 @@ pub const TIMER_FREQ: u64 = 100;
 pub const TASK_TIMER_PERIOD: u64 = (TIMER_FREQ as f64 * 0.02) as u64;
 
 /// コンテキストスイッチ用の [Timer] の [value]。
-pub const TASK_TIMER_VALUE: i32 = i32::MIN;
+pub const TASK_TIMER_VALUE: i32 = i32::MAX;
 
 pub fn init() {
     TIMER_MANAGER.init(TimerManager::new());

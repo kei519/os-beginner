@@ -17,14 +17,14 @@ use crate::{
     msr::{IA32_EFER, IA32_FMASK, IA32_LSTAR, IA32_STAR},
     sync::SharedLock,
     task, terminal,
-    timer::{TIMER_FREQ, TIMER_MANAGER},
+    timer::{Timer, TIMER_FREQ, TIMER_MANAGER},
     window::Window,
 };
 
 pub type SyscallFuncType = extern "sysv64" fn(u64, u64, u64, u64, u64, u64) -> Result;
 
 #[no_mangle]
-pub static SYSCALL_TABLE: [SyscallFuncType; 11] = [
+pub static SYSCALL_TABLE: [SyscallFuncType; 12] = [
     log_string,
     put_string,
     exit,
@@ -36,6 +36,7 @@ pub static SYSCALL_TABLE: [SyscallFuncType; 11] = [
     win_draw_line,
     close_window,
     read_event,
+    create_timer,
 ];
 
 pub fn init() {
@@ -371,9 +372,54 @@ extern "sysv64" fn read_event(events: u64, len: u64, _: u64, _: u64, _: u64, _: 
                 };
                 i += 1;
             }
+            MessageType::TimerTimeout { timeout, value } => {
+                // アプリ用タイマは負値
+                if value.is_negative() {
+                    app_events[i] = AppEvent::Timer {
+                        timeout,
+                        value: -value,
+                    };
+                    i += 1;
+                }
+            }
             ty => log!(LogLevel::Info, "uncaught event type: {:?}", ty),
         }
     }
 
     Result::value(i as _)
+}
+
+/// 設定されたタイマの値を OS の起動時からの絶対時間で返す。
+extern "sysv64" fn create_timer(
+    mode: u64,
+    timer_value: u64,
+    timeout: u64,
+    _: u64,
+    _: u64,
+    _: u64,
+) -> Result {
+    let mode = mode as u32;
+    let timer_value = timer_value as i32;
+    if timer_value.is_negative() {
+        return ErrNo::EINVAL.into();
+    }
+
+    asmfunc::cli();
+    let task_id = task::current_task().id();
+    asmfunc::sti();
+
+    let timeout = timeout * TIMER_FREQ / 1000;
+
+    let mut manager = TIMER_MANAGER.lock_wait();
+    let timeout = timeout
+        + if mode.get_bit(0) {
+            // relative
+            manager.current_tick()
+        } else {
+            0
+        };
+
+    // アプリが生成する Timer の value は負
+    manager.add_timer(Timer::new(timeout, -timer_value, task_id));
+    Result::value(timeout * 1000 / TIMER_FREQ)
 }
