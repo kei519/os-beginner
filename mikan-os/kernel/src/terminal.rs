@@ -498,7 +498,7 @@ impl Terminal {
             return Ok(f());
         }
 
-        load_elf(elf_header).unwrap();
+        load_elf(elf_header)?;
 
         let stack_frame_addr = LinearAddress4Level {
             addr: 0xffff_ffff_ffff_e000,
