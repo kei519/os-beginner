@@ -2,11 +2,24 @@ use core::sync::atomic::Ordering;
 
 use crate::{syscall, ERRNO};
 
-#[repr(C)]
+#[repr(C, i32)]
 #[derive(Debug, Clone, Copy)]
 pub enum AppEvent {
     Null = 0,
     Quit,
+    MouseMove {
+        x: i32,
+        y: i32,
+        dx: i32,
+        dy: i32,
+        buttons: u8,
+    },
+}
+
+impl AppEvent {
+    pub fn discripinant(&self) -> i32 {
+        unsafe { *(self as *const _ as *const i32) }
+    }
 }
 
 impl Default for AppEvent {

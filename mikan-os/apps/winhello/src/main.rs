@@ -37,7 +37,7 @@ fn main(_: Args) -> i32 {
         }
         match events[0] {
             AppEvent::Quit => break,
-            _ => println!("unknow event: type = {}", events[0] as i32),
+            event => println!("unknow event: type = {}", event.discripinant()),
         }
     }
     graphics::close_window(layer_id);
