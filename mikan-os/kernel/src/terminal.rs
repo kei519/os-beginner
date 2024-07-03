@@ -23,6 +23,7 @@ use crate::{
     pci,
     sync::{Mutex, SharedLock},
     task,
+    timer::{Timer, TIMER_FREQ, TIMER_MANAGER},
     window::Window,
 };
 
@@ -86,6 +87,18 @@ pub fn task_terminal(task_id: u64, _: i64, _: u32) {
     asmfunc::sti();
     TERMINALS.lock_wait().insert(task_id, (&terminal).into());
 
+    let add_blink_timer = |t| {
+        TIMER_MANAGER.lock_wait().add_timer(Timer::new(
+            t + (TIMER_FREQ as f64 * 0.5) as u64,
+            1,
+            task_id,
+        ));
+    };
+    let current_tick = TIMER_MANAGER.lock_wait().current_tick();
+    add_blink_timer(current_tick);
+
+    let mut window_isactive = true;
+
     loop {
         // task.msgs は Mutex のため、cli は必要ない
         let msg = match task.receive_message() {
@@ -97,14 +110,17 @@ pub fn task_terminal(task_id: u64, _: i64, _: u32) {
         };
 
         match msg.ty {
-            MessageType::TimerTimeout { .. } => {
-                let mut area = terminal.blink_cursor();
-                area.pos += Window::TOP_LEFT_MARGIN;
+            MessageType::TimerTimeout { timeout, .. } => {
+                add_blink_timer(timeout);
+                if window_isactive {
+                    let mut area = terminal.blink_cursor();
+                    area.pos += Window::TOP_LEFT_MARGIN;
 
-                let msg = Message::from_draw_area(task_id, terminal.layer_id, area);
-                asmfunc::cli();
-                task::send_message(1, msg).unwrap();
-                asmfunc::sti();
+                    let msg = Message::from_draw_area(task_id, terminal.layer_id, area);
+                    asmfunc::cli();
+                    task::send_message(1, msg).unwrap();
+                    asmfunc::sti();
+                }
             }
             MessageType::KeyPush {
                 modifier,
@@ -121,6 +137,7 @@ pub fn task_terminal(task_id: u64, _: i64, _: u32) {
                     asmfunc::sti();
                 }
             }
+            MessageType::WindowActive { activate } => window_isactive = activate,
             _ => {}
         }
     }

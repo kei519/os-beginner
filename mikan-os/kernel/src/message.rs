@@ -100,6 +100,9 @@ pub enum MessageType {
         press: bool,
         button: i32,
     },
+    WindowActive {
+        activate: bool,
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

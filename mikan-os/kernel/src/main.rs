@@ -144,10 +144,9 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
 
     task::init();
     let main_task = task::current_task();
-    let task_terminal_id = task::new_task()
+    task::new_task()
         .init_context(terminal::task_terminal, 0, 0)
-        .wake_up(-1)
-        .id();
+        .wake_up(-1);
 
     xhci::init();
     mouse::init();
@@ -234,10 +233,6 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
                         &mut layer_manager.layer(text_window_id).window().write(),
                     );
                     layer_manager.draw_id(text_window_id);
-
-                    asmfunc::cli();
-                    task::send_message(task_terminal_id, msg).unwrap();
-                    asmfunc::sti();
                 }
             }
             MessageType::KeyPush {

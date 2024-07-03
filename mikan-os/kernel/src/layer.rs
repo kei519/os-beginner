@@ -1,11 +1,15 @@
 use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 
 use crate::{
+    asmfunc,
+    error::{Code, Result},
     frame_buffer::FrameBuffer,
     frame_buffer_config::{FrameBufferConfig, PixelFormat},
     graphics::{self, PixelWrite as _, Rectangle, Vector2D, FB_CONFIG},
-    message::LayerOperation,
+    make_error,
+    message::{LayerOperation, MessageType},
     sync::{Mutex, OnceMutex, SharedLock},
+    task,
     window::Window,
 };
 
@@ -355,6 +359,7 @@ impl LayerManager {
         if self.active_layer > 0 {
             self.layer(self.active_layer).window().write().deactivate();
             self.draw_id(self.active_layer);
+            let _ = Self::send_window_active_message(self.active_layer, false);
         }
 
         self.active_layer = id;
@@ -366,12 +371,25 @@ impl LayerManager {
                 self.up_down(id, self.get_height(self.mouse_layer));
             }
             self.draw_id(id);
+            let _ = Self::send_window_active_message(id, true);
         }
     }
 
     pub fn remove_layer(&mut self, id: u32) {
         self.hide(id);
         self.layers.remove(&id);
+    }
+
+    fn send_window_active_message(layer_id: u32, activate: bool) -> Result<()> {
+        let Some(&task_id) = LAYER_TASK_MAP.lock_wait().get(&layer_id) else {
+            return Err(make_error!(Code::NoSuchTask));
+        };
+
+        let msg = MessageType::WindowActive { activate }.into();
+        asmfunc::cli();
+        let ret = task::send_message(task_id, msg);
+        asmfunc::sti();
+        ret
     }
 }
 
