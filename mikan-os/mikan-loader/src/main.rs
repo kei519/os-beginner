@@ -198,7 +198,7 @@ fn get_gop_info(
     Ok(GraphicsInfo {
         pixel_info,
         frame_buffer_base: gop.frame_buffer().as_mut_ptr() as usize,
-        frame_buffer_size: gop.frame_buffer().size(),
+        _frame_buffer_size: gop.frame_buffer().size(),
     })
 }
 
