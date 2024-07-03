@@ -1,4 +1,10 @@
-use alloc::{collections::VecDeque, format, string::String, sync::Arc, vec::Vec};
+use alloc::{
+    collections::VecDeque,
+    format,
+    string::{String, ToString as _},
+    sync::Arc,
+    vec::Vec,
+};
 use core::{
     cmp,
     ffi::c_char,
@@ -443,32 +449,40 @@ impl Terminal {
                 }
             }
             "ls" => {
-                let image = fat::BOOT_VOLUME_IMAGE.get();
-                let entries_per_cluster =
-                    BYTES_PER_CLUSTER.get() as usize / mem::size_of::<fat::DirectoryEntry>();
-                let root_dir_entries = fat::get_sector_by_cluster::<fat::DirectoryEntry>(
-                    image.root_clus() as u64,
-                    entries_per_cluster,
-                );
+                let Some(&first_arg) = args.get(1) else {
+                    self.list_all_entries(fat::BOOT_VOLUME_IMAGE.get().root_clus());
+                    return;
+                };
 
-                for entry in root_dir_entries {
-                    let (base, ext) = fat::read_name(entry);
-                    if base[0] == 0x00 {
-                        break;
-                    } else if base[0] == 0x5e || entry.attr == fat::Attribute::LongName as u8 {
-                        continue;
-                    }
-
-                    let s = if !ext.is_empty() {
-                        format!(
-                            "{}.{}\n",
-                            str::from_utf8(base).unwrap(),
-                            str::from_utf8(ext).unwrap()
-                        )
-                    } else {
-                        format!("{}\n", str::from_utf8(base).unwrap())
+                let (Some(dir), post_slash) = fat::find_file(first_arg, 0) else {
+                    self.print(b"No such file or directory: ");
+                    self.print(first_arg.as_bytes());
+                    self.print(b"\n");
+                    return;
+                };
+                if dir.attr == fat::Attribute::Directory as _ {
+                    self.list_all_entries(dir.first_cluster());
+                } else {
+                    let (base, ext) = fat::read_name(dir);
+                    // Safety: ASCII 文字列だけが格納されている
+                    let name = unsafe {
+                        if ext.is_empty() {
+                            str::from_utf8_unchecked(base).to_string()
+                        } else {
+                            format!(
+                                "{}.{}",
+                                str::from_utf8_unchecked(base),
+                                str::from_utf8_unchecked(ext)
+                            )
+                        }
                     };
-                    self.print(s.as_bytes());
+                    if post_slash {
+                        self.print(name.as_bytes());
+                        self.print(b" is not a directory\n");
+                    } else {
+                        self.print(name.as_bytes());
+                        self.print(b"\n");
+                    }
                 }
             }
             "cat" => {
@@ -628,6 +642,41 @@ impl Terminal {
         free_pml4(&task);
 
         Ok(ret)
+    }
+
+    fn list_all_entries(&mut self, mut dir_cluster: u32) {
+        let entries_per_cluster =
+            BYTES_PER_CLUSTER.get() as usize / mem::size_of::<fat::DirectoryEntry>();
+
+        while dir_cluster != fat::END_OF_CLUSTER_CHAIN as _ {
+            let dir = fat::get_sector_by_cluster::<fat::DirectoryEntry>(
+                dir_cluster as _,
+                entries_per_cluster,
+            );
+
+            for entry in dir {
+                let (base, ext) = fat::read_name(entry);
+                // ファイル終了
+                if base[0] == 0x00 {
+                    return;
+                } else if base[0] == 0x5e || entry.attr == fat::Attribute::LongName as u8 {
+                    continue;
+                }
+
+                let s = if !ext.is_empty() {
+                    format!(
+                        "{}.{}\n",
+                        str::from_utf8(base).unwrap(),
+                        str::from_utf8(ext).unwrap()
+                    )
+                } else {
+                    format!("{}\n", str::from_utf8(base).unwrap())
+                };
+                self.print(s.as_bytes());
+            }
+
+            dir_cluster = fat::next_cluster(dir_cluster as _) as _;
+        }
     }
 }
 
