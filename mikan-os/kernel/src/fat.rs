@@ -101,7 +101,7 @@ pub fn next_cluster(cluster: u64) -> u64 {
     };
 
     let next = fat[cluster as usize];
-    if next > 0x0fff_fff8 {
+    if next >= 0x0fff_fff8 {
         END_OF_CLUSTER_CHAIN
     } else {
         next as u64
