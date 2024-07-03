@@ -72,20 +72,35 @@ impl From<&Terminal> for TerminalRef {
     }
 }
 
-pub fn task_terminal(task_id: u64, _: i64, _: u32) {
-    let mut terminal = Terminal::new(task_id);
+/// 通常タスクに渡される `data`, `layer_id` だが、ターミナルは両者を必要としないので、
+/// `data` はターミナルを表示せずに実行するアプリのパス文字列の先頭へのポインタ、
+/// `layer_id` はそのパス文字列の長さとして使うことにする。
+/// `data` が `0` の場合は通常通りターミナルを表示する。
+pub fn task_terminal(task_id: u64, s_ptr: i64, s_len: u32) {
+    let show_window = s_ptr == 0;
+
+    let mut terminal = Terminal::new(task_id, show_window);
     asmfunc::cli();
     let task = task::current_task();
-    {
+    asmfunc::sti();
+    if show_window {
         let mut manager = LAYER_MANAGER.lock_wait();
         manager.r#move(terminal.layer_id, Vector2D::new(100, 200));
         manager.activate(terminal.layer_id);
+        LAYER_TASK_MAP
+            .lock_wait()
+            .insert(terminal.layer_id, task_id);
     }
-    LAYER_TASK_MAP
-        .lock_wait()
-        .insert(terminal.layer_id, task_id);
-    asmfunc::sti();
     TERMINALS.lock_wait().insert(task_id, (&terminal).into());
+
+    // ウィンドウを表示しないということは、外から実行パスが与えられているということ
+    if !show_window {
+        let command_line = unsafe { slice::from_raw_parts(s_ptr as *const u8, s_len as _) };
+        for &b in command_line {
+            terminal.input_key(0, 0, b);
+        }
+        terminal.input_key(0, 0, b'\n');
+    }
 
     let add_blink_timer = |t| {
         TIMER_MANAGER.lock_wait().add_timer(Timer::new(
@@ -95,7 +110,9 @@ pub fn task_terminal(task_id: u64, _: i64, _: u32) {
         ));
     };
     let current_tick = TIMER_MANAGER.lock_wait().current_tick();
-    add_blink_timer(current_tick);
+    if show_window {
+        add_blink_timer(current_tick);
+    }
 
     let mut window_isactive = true;
 
@@ -111,7 +128,7 @@ pub fn task_terminal(task_id: u64, _: i64, _: u32) {
 
         match msg.ty {
             MessageType::TimerTimeout { timeout, .. } => {
-                if window_isactive {
+                if show_window && window_isactive {
                     add_blink_timer(timeout);
                     let mut area = terminal.blink_cursor();
                     area.pos += Window::TOP_LEFT_MARGIN;
@@ -130,11 +147,13 @@ pub fn task_terminal(task_id: u64, _: i64, _: u32) {
             } => {
                 if press {
                     let mut area = terminal.input_key(modifier, keycode, ascii);
-                    area.pos += Window::TOP_LEFT_MARGIN;
-                    let msg = Message::from_draw_area(task_id, terminal.layer_id, area);
-                    asmfunc::cli();
-                    task::send_message(1, msg).unwrap();
-                    asmfunc::sti();
+                    if show_window {
+                        area.pos += Window::TOP_LEFT_MARGIN;
+                        let msg = Message::from_draw_area(task_id, terminal.layer_id, area);
+                        asmfunc::cli();
+                        task::send_message(1, msg).unwrap();
+                        asmfunc::sti();
+                    }
                 }
             }
             MessageType::WindowActive { activate } => {
@@ -154,7 +173,8 @@ const LINE_MAX: usize = 128;
 pub struct Terminal {
     layer_id: u32,
     task_id: u64,
-    window: Arc<SharedLock<Window>>,
+    /// `window` が `None` の場合は表ターミナルを表示しないことを表す。
+    window: Option<Arc<SharedLock<Window>>>,
     cursor: Vector2D<i32>,
     cursor_visible: bool,
     linebuf_index: usize,
@@ -164,23 +184,25 @@ pub struct Terminal {
 }
 
 impl Terminal {
-    pub fn new(task_id: u64) -> Self {
-        let mut window = Window::new_toplevel(
-            COLUMNS as u32 * 8 + 8 + Window::MARGIN_X,
-            ROWS as u32 * 16 + 8 + Window::MARGIN_Y,
-            FB_CONFIG.as_ref().pixel_format,
-            "MikanTerm",
-        );
-        let size = window.size();
-        window.draw_terminal(Vector2D::new(0, 0), size);
+    pub fn new(task_id: u64, show_window: bool) -> Self {
+        let (layer_id, window) = if show_window {
+            let mut window = Window::new_toplevel(
+                COLUMNS as u32 * 8 + 8 + Window::MARGIN_X,
+                ROWS as u32 * 16 + 8 + Window::MARGIN_Y,
+                FB_CONFIG.as_ref().pixel_format,
+                "MikanTerm",
+            );
+            let size = window.size();
+            window.draw_terminal(Vector2D::new(0, 0), size);
 
-        let (layer_id, window) = {
             let mut manager = LAYER_MANAGER.lock_wait();
             let id = manager.new_layer(window);
             manager.layer(id).set_draggable(true);
             let window = manager.layer(id).window();
 
-            (id, window)
+            (id, Some(window))
+        } else {
+            (0, None)
         };
 
         let mut cmd_history = VecDeque::new();
@@ -213,6 +235,10 @@ impl Terminal {
 
     /// `linebuf` や `linebuf_index` を変更せずに文字列を表示する。
     pub fn print(&mut self, s: &[u8]) {
+        let Some(window) = self.window.clone() else {
+            return;
+        };
+
         let cursor_before = self.calc_curosr_pos();
         self.draw_cursor(false);
 
@@ -230,7 +256,7 @@ impl Terminal {
                 newline(self);
             } else {
                 font::write_ascii(
-                    &mut *self.window.write(),
+                    &mut *window.write(),
                     self.calc_curosr_pos(),
                     c,
                     &PixelColor::new(255, 255, 255),
@@ -248,7 +274,7 @@ impl Terminal {
 
         let draw_pos = Window::TOP_LEFT_MARGIN + Vector2D::new(0, cursor_before.y());
         let draw_size = Vector2D::new(
-            self.window.read().width() as _,
+            window.read().width() as _,
             cursor_after.y() - cursor_before.y() + 16,
         );
         let draw_area = Rectangle {
@@ -262,7 +288,7 @@ impl Terminal {
         asmfunc::sti();
     }
 
-    fn input_key(&mut self, _modifier: u8, keycode: u8, ascii: u8) -> Rectangle<i32> {
+    pub fn input_key(&mut self, _modifier: u8, keycode: u8, ascii: u8) -> Rectangle<i32> {
         self.draw_cursor(false);
 
         let mut draw_area = Rectangle {
@@ -299,18 +325,22 @@ impl Terminal {
 
                 self.execute_line(command);
                 self.print(b">");
-                draw_area.pos = Vector2D::new(0, 0);
-                draw_area.size = self.window.read().size();
+                if let Some(ref window) = self.window {
+                    draw_area.pos = Vector2D::new(0, 0);
+                    draw_area.size = window.read().size();
+                }
             }
             0x08 => {
                 // backspace
                 if self.cursor.x() > 0 && self.linebuf_index > 0 {
                     self.cursor -= Vector2D::new(1, 0);
-                    self.window.write().draw_rectangle(
-                        self.calc_curosr_pos(),
-                        Vector2D::new(8, 16),
-                        &PixelColor::new(0, 0, 0),
-                    );
+                    if let Some(ref window) = self.window {
+                        window.write().draw_rectangle(
+                            self.calc_curosr_pos(),
+                            Vector2D::new(8, 16),
+                            &PixelColor::new(0, 0, 0),
+                        );
+                    }
                     self.linebuf_index -= 1;
                 }
             }
@@ -318,12 +348,14 @@ impl Terminal {
                 if self.cursor.x() < COLUMNS as i32 - 1 && self.linebuf_index < LINE_MAX - 1 {
                     self.linebuf[self.linebuf_index] = ascii;
                     self.linebuf_index += 1;
-                    font::write_ascii(
-                        &mut *self.window.write(),
-                        self.calc_curosr_pos(),
-                        ascii,
-                        &PixelColor::new(255, 255, 255),
-                    );
+                    if let Some(ref window) = self.window {
+                        font::write_ascii(
+                            &mut *window.write(),
+                            self.calc_curosr_pos(),
+                            ascii,
+                            &PixelColor::new(255, 255, 255),
+                        );
+                    }
                     self.cursor += Vector2D::new(1, 0);
                 }
             }
@@ -335,12 +367,16 @@ impl Terminal {
     }
 
     fn draw_cursor(&mut self, visible: bool) {
+        let Some(ref window) = self.window else {
+            return;
+        };
+
         self.cursor_visible = visible;
         let color = if self.cursor_visible { 0xffffff } else { 0 };
         let color = PixelColor::to_color(color);
         let pos = Vector2D::new(4 + 8 * self.cursor.x(), 5 + 16 * self.cursor.y());
 
-        self.window
+        window
             .write()
             .fill_rectangle(pos, Vector2D::new(7, 15), &color);
     }
@@ -350,11 +386,14 @@ impl Terminal {
     }
 
     fn scroll1(&mut self) {
+        let Some(ref window) = self.window else {
+            return;
+        };
         let move_src = Rectangle {
             pos: Vector2D::new(4, 4 + 16),
             size: Vector2D::new(8 * COLUMNS as i32, 16 * (ROWS as i32 - 1)),
         };
-        let mut window = self.window.write();
+        let mut window = window.write();
         window.r#move(Vector2D::new(4, 4), &move_src);
         window.fill_rectangle(
             Vector2D::new(4, 4 + 16 * self.cursor.y()),
@@ -377,12 +416,14 @@ impl Terminal {
                 self.print(b"\n");
             }
             "clear" => {
-                self.window.write().fill_rectangle(
-                    Vector2D::new(4, 4),
-                    Vector2D::new(8 * COLUMNS as i32, 16 * ROWS as i32),
-                    &PixelColor::new(0, 0, 0),
-                );
-                self.cursor = Vector2D::new(self.cursor.x(), 0);
+                if let Some(ref window) = self.window {
+                    window.write().fill_rectangle(
+                        Vector2D::new(4, 4),
+                        Vector2D::new(8 * COLUMNS as i32, 16 * ROWS as i32),
+                        &PixelColor::new(0, 0, 0),
+                    );
+                    self.cursor = Vector2D::new(self.cursor.x(), 0);
+                }
             }
             "lspci" => {
                 for dev in pci::DEVICES.read().iter() {
@@ -456,6 +497,15 @@ impl Terminal {
                     cluster = fat::next_cluster(cluster);
                 }
             }
+            "noterm" => {
+                if let Some(&command) = args.get(1) {
+                    asmfunc::cli();
+                    task::new_task()
+                        .init_context(task_terminal, command.as_ptr() as _, command.len() as _)
+                        .wake_up(-1);
+                    asmfunc::sti();
+                }
+            }
             command => match fat::find_file(command, 0) {
                 Some(file_entry) => match self.execute_file(file_entry, args) {
                     Err(e) => self.print(format!("failed to exec file: {}\n", e).as_bytes()),
@@ -473,6 +523,13 @@ impl Terminal {
     }
 
     fn history_up_down(&mut self, direction: i32) -> Rectangle<i32> {
+        let Some(ref window) = self.window else {
+            return Rectangle {
+                pos: Vector2D::default(),
+                size: Vector2D::default(),
+            };
+        };
+
         if direction == -1 && self.cmd_history_index >= 0 {
             self.cmd_history_index -= 1;
         } else if direction == 1 && self.cmd_history_index + 1 < self.cmd_history.len() as i32 {
@@ -487,11 +544,9 @@ impl Terminal {
             pos: first_pos,
             size: Vector2D::new(8 * (COLUMNS as i32 - 1), 16),
         };
-        self.window.write().fill_rectangle(
-            draw_area.pos,
-            draw_area.size,
-            &PixelColor::new(0, 0, 0),
-        );
+        window
+            .write()
+            .fill_rectangle(draw_area.pos, draw_area.size, &PixelColor::new(0, 0, 0));
 
         let history = if self.cmd_history_index >= 0 {
             self.cmd_history[self.cmd_history_index as usize].as_bytes()
@@ -503,7 +558,7 @@ impl Terminal {
         self.linebuf_index = history.len();
 
         font::write_string(
-            &mut *self.window.write(),
+            &mut *window.write(),
             first_pos,
             history,
             &PixelColor::new(255, 255, 255),
