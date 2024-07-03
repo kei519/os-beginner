@@ -111,8 +111,8 @@ pub fn task_terminal(task_id: u64, _: i64, _: u32) {
 
         match msg.ty {
             MessageType::TimerTimeout { timeout, .. } => {
-                add_blink_timer(timeout);
                 if window_isactive {
+                    add_blink_timer(timeout);
                     let mut area = terminal.blink_cursor();
                     area.pos += Window::TOP_LEFT_MARGIN;
 
@@ -137,7 +137,11 @@ pub fn task_terminal(task_id: u64, _: i64, _: u32) {
                     asmfunc::sti();
                 }
             }
-            MessageType::WindowActive { activate } => window_isactive = activate,
+            MessageType::WindowActive { activate } => {
+                window_isactive = activate;
+                let current_time = TIMER_MANAGER.lock_wait().current_tick();
+                add_blink_timer(current_time);
+            }
             _ => {}
         }
     }
