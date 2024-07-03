@@ -74,6 +74,10 @@ pub fn setup_indentity_page_table() {
     set_cr3(pml4_table.as_ptr() as u64);
 }
 
+pub fn reset_cr3() {
+    set_cr3(PML4_TABLE.lock_wait().as_ptr() as _);
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PageMapEntry {
     pub data: u64,

@@ -19,10 +19,10 @@ use crate::{
     make_error,
     memory_manager::{FrameId, BYTES_PER_FRAME, MEMORY_MANAGER},
     message::{Message, MessageType},
-    paging::{LinearAddress4Level, PageMapEntry},
+    paging::{self, LinearAddress4Level, PageMapEntry},
     pci,
     sync::{Mutex, SharedLock},
-    task,
+    task::{self, Task, TaskContext},
     timer::{Timer, TIMER_FREQ, TIMER_MANAGER},
     window::Window,
 };
@@ -522,6 +522,12 @@ impl Terminal {
             return Ok(f());
         }
 
+        asmfunc::cli();
+        let task = task::current_task();
+        asmfunc::sti();
+
+        setup_pml4(&task)?;
+
         load_elf(elf_header)?;
 
         let stack_frame_addr = LinearAddress4Level {
@@ -553,6 +559,8 @@ impl Terminal {
         clean_page_maps(LinearAddress4Level {
             addr: addr_first as _,
         });
+
+        free_pml4(&task);
 
         Ok(ret)
     }
@@ -750,4 +758,48 @@ fn make_arg_vector(args: Vec<&str>, buf: &mut [u8]) -> Result<usize> {
         buf[cur - 1] = 0;
     }
     Ok(len)
+}
+
+/// 新しい PML4 テーブルを作り、下位 256 ページ（OS 用）を元の PML4 テーブルからコピーする。
+/// そしてそれを CR3 に設定し、新しい PML4 への排他参照を返す。
+fn setup_pml4(current_task: &Arc<Task>) -> Result<&'static mut [PageMapEntry]> {
+    let pml4 = new_page_map()?;
+
+    let current_pml4_ptr = asmfunc::get_cr3();
+    // PML4 の下位半分（OS 領域）のみをコピーする
+    unsafe {
+        ptr::copy_nonoverlapping(
+            current_pml4_ptr as *const PageMapEntry,
+            pml4.as_mut_ptr(),
+            1 << 8,
+        )
+    };
+
+    let cr3 = pml4.as_ptr() as _;
+    asmfunc::set_cr3(cr3);
+
+    // Safety: 実質最後の命令だけが unsafe
+    //         だが、これはただの 64 bit のコピーで1命令にコンパイルされるはずなので、
+    //         シングルコアでは途中で他の命令と競合することはない
+    unsafe {
+        #[allow(clippy::transmute_ptr_to_ref)]
+        let ctx: &mut TaskContext = mem::transmute(current_task.context().as_ptr());
+        ctx.cr3 = cr3;
+    }
+    Ok(pml4)
+}
+
+/// 現在の PML4 テーブルを削除し、OS 用の元の PML4 テーブルを CR3 に設定する。
+fn free_pml4(current_task: &Arc<Task>) {
+    let cr3 = current_task.context().cr3;
+    // Safety: これも setup_pml4 と同じ
+    unsafe {
+        #[allow(clippy::transmute_ptr_to_ref)]
+        let ctx: &mut TaskContext = mem::transmute(current_task.context().as_ptr());
+        ctx.cr3 = 0;
+    }
+    paging::reset_cr3();
+
+    let frame = FrameId::from_addr(cr3 as _);
+    MEMORY_MANAGER.free(frame, 1);
 }
