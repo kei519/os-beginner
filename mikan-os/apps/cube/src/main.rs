@@ -32,7 +32,7 @@ const CUBE: [Vector3D<i32>; 8] = [
     Vector3D::new(-1, -1, -1),
 ];
 
-const SURFACE: [[i32; 4]; 6] = [
+const SURFACE: [[usize; 4]; 6] = [
     [0, 4, 6, 2],
     [1, 3, 7, 5],
     [0, 2, 3, 1],
@@ -70,7 +70,7 @@ impl<T> Vector2D<T> {
 
 #[main]
 fn main(_: Args) -> i32 {
-    let layer_id = graphics::open_window(CANVAS_SIZE + 8, CANVAS_SIZE + 28, 10, 10, "eye");
+    let layer_id = graphics::open_window(CANVAS_SIZE + 8, CANVAS_SIZE + 28, 10, 10, "cube");
     if layer_id == 0 {
         return ERRNO.load(Ordering::Relaxed);
     }
@@ -89,20 +89,20 @@ fn main(_: Args) -> i32 {
         let (xp, xa) = (cos(thx as f64 * to_rad), sin(thx as f64 * to_rad));
         let (yp, ya) = (cos(thy as f64 * to_rad), sin(thy as f64 * to_rad));
         let (zp, za) = (cos(thz as f64 * to_rad), sin(thz as f64 * to_rad));
-        for (i, cv) in CUBE.iter().copied().enumerate() {
+        for (i, cv) in CUBE.iter().enumerate() {
             let zt = (SCALE * cv.z) as f64 * xp + (SCALE * cv.y) as f64 * xa;
             let yt = (SCALE * cv.y) as f64 * xp - (SCALE * cv.z) as f64 * xa;
             let xt = (SCALE * cv.x) as f64 * yp + zt * ya;
             vert[i].z = (zt * yp - (SCALE * cv.x) as f64 * ya) as _;
             vert[i].x = (xt * zp - yt * za) as _;
-            vert[i].y = (yt * zp - xt + za) as _;
+            vert[i].y = (yt * zp + xt * za) as _;
         }
 
         // 面中心の Z 座標（を4倍した値）を6面について計算
         for sur in 0..SURFACE.len() {
             centerz4[sur] = 0.;
             for i in 0..SURFACE[sur].len() {
-                centerz4[sur] += vert[SURFACE[sur][i] as usize].z;
+                centerz4[sur] += vert[SURFACE[sur][i]].z;
             }
         }
 
@@ -118,12 +118,14 @@ fn main(_: Args) -> i32 {
             flags,
         );
         draw_obj(layer_id, &mut vert, &mut centerz4, &mut scr);
+        graphics::win_redraw(layer_id);
 
         if unsafe { sleep(50) } {
             break;
         }
     }
 
+    graphics::close_window(layer_id);
     0
 }
 
@@ -148,12 +150,15 @@ fn draw_obj(
             .max_by(|(_, a), (_, b)| a.total_cmp(b))
             .map(|(index, _)| index)
             .unwrap();
+        if centerz4[sur] == f64::MIN {
+            break;
+        }
         centerz4[sur] = f64::MIN;
 
         // 法線ベクトルがこっちを向いている面だけ描画
-        let v0 = vert[SURFACE[sur][0] as usize];
-        let v1 = vert[SURFACE[sur][1] as usize];
-        let v2 = vert[SURFACE[sur][2] as usize];
+        let v0 = vert[SURFACE[sur][0]];
+        let v1 = vert[SURFACE[sur][1]];
+        let v2 = vert[SURFACE[sur][2]];
 
         // v0 --> v1
         let e0x = v1.x - v0.x;
@@ -170,11 +175,13 @@ fn draw_obj(
 fn draw_surface(layer_id: u32, sur: usize, scr: &mut [Vector2D<i32>]) {
     let surface = SURFACE[sur]; // 描画する面
     let (mut ymin, mut ymax) = (CANVAS_SIZE, 0); // 画面の描画範囲 [ymin, ymax]
+
+    // Y, X 座標の組
     let mut y2x_up = [0; CANVAS_SIZE as _];
     let mut y2x_down = [0; CANVAS_SIZE as _];
-    for i in 0..SURFACE.len() {
-        let p0 = scr[surface[(i + 3) % 4] as usize];
-        let p1 = scr[surface[i] as usize];
+    for i in 0..surface.len() {
+        let p0 = scr[surface[(i + 3) % 4]];
+        let p1 = scr[surface[i]];
         ymin = ymin.min(p1.y);
         ymax = ymax.max(p1.y);
         if p0.y == p1.y {
@@ -185,6 +192,7 @@ fn draw_surface(layer_id: u32, sur: usize, scr: &mut [Vector2D<i32>]) {
             // p0 --> p1 は上る方向
             (&mut y2x_up, p0.x, p0.y, p1.y, p1.x - p0.x)
         } else {
+            // po --> p1 は下る方向
             (&mut y2x_down, p1.x, p1.y, p0.y, p0.x - p1.x)
         };
 
@@ -193,20 +201,22 @@ fn draw_surface(layer_id: u32, sur: usize, scr: &mut [Vector2D<i32>]) {
         for y in y0..=y1 {
             y2x[y as usize] = roundish(m * (y - y0) as f64 + x0 as f64) as _;
         }
+    }
 
-        for y in ymin..=ymax {
-            let y = y as usize;
-            let p0x = y2x_up[y].min(y2x_down[y]);
-            let p1x = y2x_up[y].max(y2x_down[y]);
-            graphics::win_fill_rectangle(
-                layer_id,
-                4 + p0x,
-                24 + y as i32,
-                p1x - p0x + 1,
-                1,
-                COLOR[sur],
-            );
-        }
+    for y in ymin..=ymax {
+        let y = y as usize;
+        let p0x = y2x_up[y].min(y2x_down[y]);
+        let p1x = y2x_up[y].max(y2x_down[y]);
+        let flags = LayerFlags::new().set_redraw(false);
+        graphics::win_fill_rectangle_with_flags(
+            layer_id,
+            4 + p0x,
+            24 + y as i32,
+            p1x - p0x + 1,
+            1,
+            COLOR[sur],
+            flags,
+        );
     }
 }
 
