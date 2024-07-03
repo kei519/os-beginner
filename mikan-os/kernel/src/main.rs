@@ -284,6 +284,13 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
                             manager.draw_id(text_window_id);
                         }
                     }
+                }
+                // F2
+                else if press && keycode == 59 {
+                    asmfunc::cli();
+                    task::new_task()
+                        .init_context(terminal::task_terminal, 0, 0)
+                        .wake_up(-1);
                 } else if let Some(task_id) = LAYER_TASK_MAP
                     .lock_wait()
                     .iter()
