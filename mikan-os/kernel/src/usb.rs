@@ -36,7 +36,7 @@ extern "C" {
     #[link_name = "_ZNK3usb4xhci9EventRing8HasFrontEv"]
     fn event_ring_has_front(this: *const EventRing) -> bool;
 
-    #[link_name = "_ZN3usb17HIDKeyboardDriver18SetDefaultObserverEPFvhhE"]
+    #[link_name = "_ZN3usb17HIDKeyboardDriver18SetDefaultObserverEPFvhhbE"]
     fn hid_keyboard_driver_set_default_observer(observer: *const c_void);
 }
 

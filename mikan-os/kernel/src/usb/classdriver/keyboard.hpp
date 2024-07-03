@@ -29,7 +29,7 @@ namespace usb {
     std::array<std::function<ObserverType>, 4> observers_;
     int num_observers_ = 0;
 
-    void NotifyKeyPush(uint8_t modifier, uint8_t keycode);
+    void NotifyKeyPush(uint8_t modifier, uint8_t keycode, bool press);
   };
   // #@@range_end(hid_keyboard)
 }

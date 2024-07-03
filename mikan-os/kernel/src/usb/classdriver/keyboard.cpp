@@ -1,6 +1,7 @@
 #include "usb/classdriver/keyboard.hpp"
 
 #include <algorithm>
+#include <bitset>
 #include "usb/memory.hpp"
 #include "usb/device.hpp"
 
@@ -20,7 +21,7 @@ namespace usb {
     const auto pressed = changed & current;
     for (int key = 1; key < 256; ++key) {
     if (changed.test(key)) {
-      NotifyKeyPush(Buffer[0], key, pressed.test(key));
+      NotifyKeyPush(Buffer()[0], key, pressed.test(key));
     }
     }
     return MAKE_ERROR(Error::kSuccess);
@@ -47,9 +48,9 @@ namespace usb {
   }
 
   // #@@range_begin(notify_keypush)
-  void HIDKeyboardDriver::NotifyKeyPush(uint8_t modifier, uint8_t keycode) {
+  void HIDKeyboardDriver::NotifyKeyPush(uint8_t modifier, uint8_t keycode, bool press) {
     for (int i = 0; i < num_observers_; ++i) {
-      observers_[i](modifier, keycode);
+      observers_[i](modifier, keycode, press);
     }
   }
   // #@@range_end(notify_keypush)
