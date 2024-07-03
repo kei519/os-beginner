@@ -137,6 +137,10 @@ pub fn write_msr(msr: u32, value: u64) {
     }
 }
 
+pub fn exit_app(rsp: u64, ret_val: i32) {
+    unsafe { exit_app_unsafe(rsp, ret_val) };
+}
+
 extern "C" {
     fn load_idt_unsafe(limit: u16, offset: u64);
     fn load_gdt_unsafe(limit: u16, offset: u64);
@@ -152,6 +156,7 @@ extern "C" {
         os_stack_ptr: u64,
     ) -> i32;
     pub fn syscall_entry();
+    fn exit_app_unsafe(rsp: u64, ret_val: i32);
 }
 
 global_asm! { r#"
@@ -365,6 +370,20 @@ syscall_entry:
 .exit:
     mov rsp, rax # RSP
     mov eax, edx # exit() の引数
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbp
+    pop rbx
+
+    ret # call_app の次の行に飛ぶ
+
+.global exit_app_unsafe     # exit_app_unsafe(rsp: u64, ret_val: i32)
+exit_app_unsafe:
+    mov rsp, rdi
+    mov eax, esi
 
     pop r15
     pop r14

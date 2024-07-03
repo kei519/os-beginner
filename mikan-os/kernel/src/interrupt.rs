@@ -52,6 +52,20 @@ pub fn init() {
     )
 }
 
+fn kill_app(frame: &InterruptFrame) {
+    // CPU 例外の原因がアプリの場合はアプリを落とすに留める
+    let cpl = frame.cs & 0x3;
+    if cpl != 3 {
+        return;
+    }
+
+    let task = task::current_task();
+    asmfunc::sti();
+
+    const SIGSEGV: i32 = 11;
+    asmfunc::exit_app(*task.os_stack_ptr(), 128 + SIGSEGV);
+}
+
 /// エラーコード付きのデフォルトの割り込みハンドラを定義する。
 /// 割り込みハンドラ名は `int_handler_$arg` になる。（ただし `$arg` は全て小文字にされる）
 macro_rules! fault_handler_with_error {
@@ -62,6 +76,7 @@ macro_rules! fault_handler_with_error {
                 frame: &$crate::interrupt::InterruptFrame,
                 error_code: u64
             ) {
+                kill_app(frame);
                 $crate::interrupt::print_frame(
                     frame,
                     concat!("#", ::core::stringify!([< $fault_name:upper >])),
@@ -92,6 +107,7 @@ macro_rules! fault_handler_no_error {
         ::paste::paste! {
             #[::custom_attribute::interrupt]
             fn [<int_handler_ $fault_name:lower>](frame: &$crate::interrupt::InterruptFrame) {
+                kill_app(frame);
                 $crate::interrupt::print_frame(
                     frame,
                     concat!("#", ::core::stringify!([< $fault_name:upper >])),
