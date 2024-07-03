@@ -1,0 +1,18 @@
+[package]
+name = "blocks"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "blocks"
+test = false
+bench = false
+
+[profile.release]
+panic = "abort"
+
+[dependencies.app-lib]
+path = "../app-lib/app-lib"
+
+[dependencies]
+libm = "0.2"
