@@ -20,7 +20,7 @@ namespace usb {
 
     Error OnDataReceived() override;
 
-    using ObserverType = void (uint8_t modifier, uint8_t keycode);
+    using ObserverType = void (uint8_t modifier, uint8_t keycode, bool press);
     void SubscribeKeyPush(std::function<ObserverType> observer);
     static std::function<ObserverType> default_observer;
     static void SetDefaultObserver(ObserverType *observer);
