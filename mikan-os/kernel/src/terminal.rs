@@ -110,6 +110,7 @@ pub fn task_terminal(task_id: u64, _: i64, _: u32) {
                 modifier,
                 keycode,
                 ascii,
+                ..
             } => {
                 let mut area = terminal.input_key(modifier, keycode, ascii);
                 area.pos += Window::TOP_LEFT_MARGIN;

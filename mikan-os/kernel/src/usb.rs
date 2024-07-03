@@ -146,7 +146,7 @@ impl HIDMouseDriver {
     }
 }
 
-type KeyboardObserverType = fn(c_uchar, c_uchar);
+type KeyboardObserverType = fn(c_uchar, c_uchar, bool);
 
 #[repr(C)]
 pub struct HIDKeyboardDriver {

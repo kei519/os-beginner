@@ -78,6 +78,7 @@ pub enum MessageType {
         modifier: u8,
         keycode: u8,
         ascii: u8,
+        press: bool,
     },
     Layer {
         op: LayerOperation,

@@ -236,11 +236,7 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
                     layer_manager.draw_id(text_window_id);
 
                     asmfunc::cli();
-                    task::send_message(
-                        task_terminal_id,
-                        msg,
-                    )
-                    .unwrap();
+                    task::send_message(task_terminal_id, msg).unwrap();
                     asmfunc::sti();
                 }
             }
@@ -248,6 +244,7 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
                 ascii,
                 keycode,
                 modifier,
+                press,
             } => {
                 if active == text_window_id {
                     // `input_text_window(ascii)` の代わり
@@ -298,6 +295,7 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
                                 modifier,
                                 keycode,
                                 ascii,
+                                press,
                             },
                             src_task: 1,
                         },

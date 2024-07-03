@@ -20,6 +20,12 @@ pub enum AppEvent {
         timeout: u64,
         value: i32,
     },
+    KeyPush {
+        modifier: u8,
+        keycode: u8,
+        ascii: u8,
+        press: bool,
+    },
 }
 
 impl Default for AppEvent {

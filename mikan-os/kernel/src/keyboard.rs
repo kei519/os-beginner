@@ -82,7 +82,7 @@ pub const RALT_BIT: u32 = 6;
 pub const RGUI_BIT: u32 = 7;
 
 pub fn init() {
-    HIDKeyboardDriver::set_default_observer(|modifier, keycode| {
+    HIDKeyboardDriver::set_default_observer(|modifier, keycode, press| {
         let shift = modifier.get_bit(LSHIFT_BIT) || modifier.get_bit(RSHIFT_BIT);
         let ascii = if shift {
             KEYCODE_MAP_SHIFTED
@@ -97,6 +97,7 @@ pub fn init() {
                 modifier,
                 keycode,
                 ascii,
+                press,
             }
             .into(),
         )
