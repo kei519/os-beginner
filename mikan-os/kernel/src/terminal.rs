@@ -12,7 +12,7 @@ use crate::{
     collections::HashMap,
     elf::{Elf64Ehdr, Elf64Phdr, ExecuteType, ProgramType},
     error::{Code, Result},
-    fat::{self, DirectoryEntry},
+    fat::{self, DirectoryEntry, BYTES_PER_CLUSTER},
     font,
     graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, FB_CONFIG},
     layer::{LAYER_MANAGER, LAYER_TASK_MAP},
@@ -445,7 +445,7 @@ impl Terminal {
             "ls" => {
                 let image = fat::BOOT_VOLUME_IMAGE.get();
                 let entries_per_cluster =
-                    image.byts_per_sec() as usize / mem::size_of::<fat::DirectoryEntry>();
+                    BYTES_PER_CLUSTER.get() as usize / mem::size_of::<fat::DirectoryEntry>();
                 let root_dir_entries = fat::get_sector_by_cluster::<fat::DirectoryEntry>(
                     image.root_clus() as u64,
                     entries_per_cluster,
