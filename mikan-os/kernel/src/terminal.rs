@@ -110,14 +110,16 @@ pub fn task_terminal(task_id: u64, _: i64, _: u32) {
                 modifier,
                 keycode,
                 ascii,
-                ..
+                press,
             } => {
-                let mut area = terminal.input_key(modifier, keycode, ascii);
-                area.pos += Window::TOP_LEFT_MARGIN;
-                let msg = Message::from_draw_area(task_id, terminal.layer_id, area);
-                asmfunc::cli();
-                task::send_message(1, msg).unwrap();
-                asmfunc::sti();
+                if press {
+                    let mut area = terminal.input_key(modifier, keycode, ascii);
+                    area.pos += Window::TOP_LEFT_MARGIN;
+                    let msg = Message::from_draw_area(task_id, terminal.layer_id, area);
+                    asmfunc::cli();
+                    task::send_message(1, msg).unwrap();
+                    asmfunc::sti();
+                }
             }
             _ => {}
         }

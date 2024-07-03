@@ -333,14 +333,24 @@ extern "sysv64" fn read_event(events: u64, len: u64, _: u64, _: u64, _: u64, _: 
 
         match msg.ty {
             MessageType::KeyPush {
-                modifier, keycode, ..
+                modifier,
+                keycode,
+                ascii,
+                press,
             } => {
                 if keycode == 20 /* Q キー */
                     && (modifier.get_bit(LCONTROL_BIT) || modifier.get_bit(RCONTROL_BIT))
                 {
                     app_events[i] = AppEvent::Quit;
-                    i += 1;
+                } else {
+                    app_events[i] = AppEvent::KeyPush {
+                        modifier,
+                        keycode,
+                        ascii,
+                        press,
+                    }
                 }
+                i += 1;
             }
             MessageType::MouseMove {
                 x,

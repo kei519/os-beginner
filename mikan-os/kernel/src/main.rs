@@ -247,40 +247,42 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
                 press,
             } => {
                 if active == text_window_id {
-                    // `input_text_window(ascii)` の代わり
-                    'input_text_window: {
-                        if ascii == 0 {
-                            break 'input_text_window;
+                    if press {
+                        // `input_text_window(ascii)` の代わり
+                        'input_text_window: {
+                            if ascii == 0 {
+                                break 'input_text_window;
+                            }
+
+                            let pos = |index| Vector2D::new(4 + 8 * index, 6);
+
+                            let mut manager = LAYER_MANAGER.lock_wait();
+                            let window = manager.layer(text_window_id).window();
+                            let mut window = window.write();
+
+                            let max_chars = (window.width() as i32 - 8) / 8 - 1;
+                            if ascii == 0x08 && text_window_index > 0 {
+                                draw_text_cursor(false, text_window_index, &mut window);
+                                text_window_index -= 1;
+                                window.fill_rectangle(
+                                    pos(text_window_index),
+                                    Vector2D::new(8, 16),
+                                    &PixelColor::to_color(0xffffff),
+                                );
+                                draw_text_cursor(true, text_window_index, &mut window);
+                            } else if ascii >= b' ' && text_window_index < max_chars {
+                                draw_text_cursor(false, text_window_index, &mut window);
+                                font::write_ascii(
+                                    &mut *window,
+                                    pos(text_window_index),
+                                    ascii,
+                                    &PixelColor::to_color(0),
+                                );
+                                text_window_index += 1;
+                                draw_text_cursor(true, text_window_index, &mut window);
+                            }
+                            manager.draw_id(text_window_id);
                         }
-
-                        let pos = |index| Vector2D::new(4 + 8 * index, 6);
-
-                        let mut manager = LAYER_MANAGER.lock_wait();
-                        let window = manager.layer(text_window_id).window();
-                        let mut window = window.write();
-
-                        let max_chars = (window.width() as i32 - 8) / 8 - 1;
-                        if ascii == 0x08 && text_window_index > 0 {
-                            draw_text_cursor(false, text_window_index, &mut window);
-                            text_window_index -= 1;
-                            window.fill_rectangle(
-                                pos(text_window_index),
-                                Vector2D::new(8, 16),
-                                &PixelColor::to_color(0xffffff),
-                            );
-                            draw_text_cursor(true, text_window_index, &mut window);
-                        } else if ascii >= b' ' && text_window_index < max_chars {
-                            draw_text_cursor(false, text_window_index, &mut window);
-                            font::write_ascii(
-                                &mut *window,
-                                pos(text_window_index),
-                                ascii,
-                                &PixelColor::to_color(0),
-                            );
-                            text_window_index += 1;
-                            draw_text_cursor(true, text_window_index, &mut window);
-                        }
-                        manager.draw_id(text_window_id);
                     }
                 } else if let Some(task_id) = LAYER_TASK_MAP
                     .lock_wait()
