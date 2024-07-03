@@ -472,14 +472,19 @@ impl Terminal {
                 }
             }
             "cat" => {
-                let Some(file_name) = args.get(1) else {
+                let Some(file_path) = args.get(1) else {
                     self.print(b"Usage: cat <file>\n");
                     return;
                 };
-                let Some(file_entry) = fat::find_file(file_name, 0) else {
-                    self.print(format!("no such file: {}\n", file_name).as_bytes());
+                let (Some(file_entry), post_slash) = fat::find_file(file_path, 0) else {
+                    self.print(format!("no such file: {}\n", file_path).as_bytes());
                     return;
                 };
+                if file_entry.attr != fat::Attribute::Directory as _ && post_slash {
+                    self.print(file_path.as_bytes());
+                    self.print(b" is not a directory\n");
+                    return;
+                }
 
                 let mut cluster = file_entry.first_cluster() as u64;
                 let mut remain_bytes = file_entry.file_size;
@@ -507,13 +512,20 @@ impl Terminal {
                 }
             }
             command => match fat::find_file(command, 0) {
-                Some(file_entry) => match self.execute_file(file_entry, args) {
-                    Err(e) => self.print(format!("failed to exec file: {}\n", e).as_bytes()),
-                    Ok(code) => {
-                        self.print(format!("app exited. ret = {}\n", code).as_bytes());
+                (Some(file_entry), post_slash) => {
+                    if file_entry.attr != fat::Attribute::Directory as _ && post_slash {
+                        self.print(command.as_bytes());
+                        self.print(b" is not a directory\n");
+                        return;
                     }
-                },
-                None => {
+                    match self.execute_file(file_entry, args) {
+                        Err(e) => self.print(format!("failed to exec file: {}\n", e).as_bytes()),
+                        Ok(code) => {
+                            self.print(format!("app exited. ret = {}\n", code).as_bytes());
+                        }
+                    }
+                }
+                (None, _) => {
                     self.print(b"no such command: ");
                     self.print(command.as_bytes());
                     self.print(b"\n");

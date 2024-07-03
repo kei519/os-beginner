@@ -1,4 +1,4 @@
-use core::{cmp, ffi::c_void, mem, ptr};
+use core::{cmp, ffi::c_void, mem, ptr, str};
 
 use alloc::vec::Vec;
 
@@ -39,30 +39,55 @@ pub fn read_name(entry: &DirectoryEntry) -> (&[u8], &[u8]) {
     (&entry.name[..base_len], &entry.name[8..8 + ext_len])
 }
 
-// `directory_cluster` が `0` のときはルートディレクトリで探索する。
-pub fn find_file(name: &str, mut directory_cluster: u64) -> Option<&'static DirectoryEntry> {
-    if directory_cluster == 0 {
-        directory_cluster = BOOT_VOLUME_IMAGE.get().root_clus() as u64
-    }
+/// `path` が絶対パスのときはルートディレクトリ、
+/// 相対パスの場合は `directory_cluster` を基準としてファイル、ディレクトリを検索する。
+/// `directory_entry` が `0` のときはルートディレクトリを基準として探索する。
+///
+/// ファイルもしくはディレクトリが見つかった場合、それらを [DirectoryEntry] への参照として返す。
+/// また `/` がそれらの直後にあるかどうかも返す。
+pub fn find_file(path: &str, directory_cluster: u64) -> (Option<&'static DirectoryEntry>, bool) {
+    let (rel_path, mut directory_cluster) = if path.starts_with('/') {
+        // Safety: 1バイト文字の '/' が先頭で、元々正当な文字列だから大丈夫
+        let path = unsafe { str::from_utf8_unchecked(&path.as_bytes()[1..]) };
+        (path, BOOT_VOLUME_IMAGE.get().root_clus() as _)
+    } else if directory_cluster == 0 {
+        (path, BOOT_VOLUME_IMAGE.get().root_clus() as _)
+    } else {
+        (path, directory_cluster)
+    };
 
-    while directory_cluster != END_OF_CLUSTER_CHAIN {
+    let (path_elem, next_path, post_slash) = rel_path
+        .split_once('/')
+        // Some になるのは `/` が含まれていた場合なので、`path_elem` のあとは `/`
+        .map(|x| (x.0, x.1, true))
+        // None になるのは `/` がない場合で、`path_elem` のあとはなにもない
+        .unwrap_or_else(|| (rel_path, "", false));
+    let path_last = next_path.is_empty();
+
+    'outer: while directory_cluster != END_OF_CLUSTER_CHAIN {
         let dir = get_sector_by_cluster::<DirectoryEntry>(
             directory_cluster,
             BYTES_PER_CLUSTER.get() as usize / mem::size_of::<DirectoryEntry>(),
         );
         for file in dir {
+            // ディレクトリ内の要素が終わったことを示す
             if file.name[0] == 0 {
-                return None;
+                break 'outer;
+            } else if !file.name_is_equal(path_elem) {
+                continue;
             }
-            if file.name_is_equal(name) {
-                return Some(file);
+
+            if file.attr == Attribute::Directory as _ && !path_last {
+                return find_file(next_path, file.first_cluster() as _);
+            } else {
+                return (Some(file), post_slash);
             }
         }
 
         directory_cluster = next_cluster(directory_cluster);
     }
 
-    None
+    (None, post_slash)
 }
 
 pub fn next_cluster(cluster: u64) -> u64 {
