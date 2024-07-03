@@ -572,9 +572,7 @@ impl Terminal {
 
         let elf_header: &Elf64Ehdr = unsafe { &*(file_buf.as_ptr() as *const _) };
         if &elf_header.ident[..4] != b"\x7fELF" {
-            type Func = fn() -> i32;
-            let f: Func = unsafe { mem::transmute(file_buf.as_ptr()) };
-            return Ok(f());
+            return Err(make_error!(Code::InvalidFile));
         }
 
         asmfunc::cli();
