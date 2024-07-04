@@ -1,4 +1,10 @@
-use core::{cmp, ffi::c_void, mem, ptr, str};
+use core::{
+    cmp,
+    ffi::c_void,
+    mem,
+    ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not},
+    ptr, str,
+};
 
 use alloc::vec::Vec;
 
@@ -353,5 +359,77 @@ impl FileDescriptor {
         }
 
         total
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileFlags(i32);
+
+impl FileFlags {
+    pub const fn new(value: i32) -> Self {
+        Self(value)
+    }
+
+    pub const ACCMODE: Self = Self(3);
+    pub const RDONLY: Self = Self(0);
+    pub const WRONLY: Self = Self(1);
+    pub const RDWR: Self = Self(2);
+}
+
+impl From<FileFlags> for i32 {
+    fn from(value: FileFlags) -> Self {
+        value.0
+    }
+}
+
+impl From<i32> for FileFlags {
+    fn from(value: i32) -> Self {
+        Self(value)
+    }
+}
+
+impl BitOr for FileFlags {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl BitOrAssign for FileFlags {
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0
+    }
+}
+
+impl BitAnd for FileFlags {
+    type Output = Self;
+    fn bitand(self, rhs: Self) -> Self::Output {
+        Self(self.0 & rhs.0)
+    }
+}
+
+impl BitAndAssign for FileFlags {
+    fn bitand_assign(&mut self, rhs: Self) {
+        self.0 &= rhs.0
+    }
+}
+
+impl BitXor for FileFlags {
+    type Output = Self;
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        Self(self.0 ^ rhs.0)
+    }
+}
+
+impl BitXorAssign for FileFlags {
+    fn bitxor_assign(&mut self, rhs: Self) {
+        self.0 ^= rhs.0
+    }
+}
+
+impl Not for FileFlags {
+    type Output = Self;
+    fn not(self) -> Self::Output {
+        Self(!self.0)
     }
 }
