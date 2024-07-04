@@ -25,6 +25,8 @@ fn main(args: app_lib::args::Args) -> i32 {
     };
 
     let mut buf = [0; 256];
+    let mut line_buf = [0; 256];
+    let mut cur = 0;
     let mut num_line = 0;
     'l: loop {
         let len = match file.read(&mut buf) {
@@ -45,11 +47,22 @@ fn main(args: app_lib::args::Args) -> i32 {
         };
         // 改行で終わっていない場合に続くように split_inclusive を使う
         for line in s.split_inclusive('\n') {
+            line_buf[cur..cur + line.len()].copy_from_slice(line.as_bytes());
+            cur += line.len();
+
+            if line.ends_with('\n') {
+                // Safety: 上で既に文字列化できたものの一部なので問題ない
+                let s = unsafe { core::str::from_utf8_unchecked(&line_buf[..cur]) };
+                print!("{}", s);
+                num_line += 1;
+                cur = 0;
+            }
+
+            // ループの最初に判定すると
+            // 標準入力から受けたときに次の1文字分の入力を許してしまうのでここで判定する
             if num_line >= 3 {
                 break 'l;
             }
-            print!("{}", line);
-            num_line += 1;
         }
     }
     println!("----");
