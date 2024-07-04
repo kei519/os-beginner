@@ -8,7 +8,9 @@ use alloc::{boxed::Box, collections::VecDeque, sync::Arc, vec, vec::Vec};
 
 use crate::{
     asmfunc,
+    collections::HashMap,
     error::{Code, Result},
+    fat::FileDescriptor,
     make_error,
     message::Message,
     segment::{KERNEL_CS, KERNEL_SS},
@@ -179,6 +181,7 @@ pub struct Task<const STACK_SIZE: usize = 4096> {
     level: AtomicI32,
     running: AtomicBool,
     os_stack_ptr: u64,
+    files: Mutex<HashMap<i32, FileDescriptor>>,
 }
 
 impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
@@ -204,6 +207,7 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
             level: Self::DEFAULT_LEVEL.into(),
             running: false.into(),
             os_stack_ptr: 0,
+            files: Mutex::new(HashMap::new()),
         }
     }
 
@@ -262,6 +266,10 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
 
     pub fn run_level(&self) -> i32 {
         self.level.load(Ordering::Relaxed)
+    }
+
+    pub fn files(&self) -> &Mutex<HashMap<i32, FileDescriptor>> {
+        &self.files
     }
 
     fn set_level(&self, level: i32) -> &Self {

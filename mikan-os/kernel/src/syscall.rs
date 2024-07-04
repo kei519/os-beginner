@@ -7,6 +7,7 @@ use crate::{
     asmfunc,
     bitfield::BitField,
     errno::ErrNo,
+    fat::{self, FileFlags},
     font,
     graphics::{PixelColor, PixelWrite as _, Rectangle, Vector2D, FB_CONFIG},
     keyboard::{LCONTROL_BIT, RCONTROL_BIT},
@@ -16,7 +17,8 @@ use crate::{
     message::MessageType,
     msr::{IA32_EFER, IA32_FMASK, IA32_LSTAR, IA32_STAR},
     sync::SharedLock,
-    task, terminal,
+    task::{self, Task},
+    terminal,
     timer::{Timer, TIMER_FREQ, TIMER_MANAGER},
     window::Window,
 };
@@ -24,7 +26,7 @@ use crate::{
 pub type SyscallFuncType = extern "sysv64" fn(u64, u64, u64, u64, u64, u64) -> Result;
 
 #[no_mangle]
-pub static SYSCALL_TABLE: [SyscallFuncType; 12] = [
+pub static SYSCALL_TABLE: [SyscallFuncType; 14] = [
     log_string,
     put_string,
     exit,
@@ -37,6 +39,8 @@ pub static SYSCALL_TABLE: [SyscallFuncType; 12] = [
     close_window,
     read_event,
     create_timer,
+    open_file,
+    read_file,
 ];
 
 pub fn init() {
@@ -432,4 +436,58 @@ extern "sysv64" fn create_timer(
     // アプリが生成する Timer の value は負
     manager.add_timer(Timer::new(timeout, -timer_value, task_id));
     Result::value(timeout * 1000 / TIMER_FREQ)
+}
+
+extern "sysv64" fn open_file(path: u64, flags: u64, _: u64, _: u64, _: u64, _: u64) -> Result {
+    let path = match unsafe { CStr::from_ptr(path as _) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ErrNo::EINVAL.into(),
+    };
+    let flags = FileFlags::new(flags as _);
+    asmfunc::cli();
+    let task = task::current_task();
+    asmfunc::sti();
+
+    if flags & FileFlags::ACCMODE == FileFlags::WRONLY {
+        return ErrNo::EINVAL.into();
+    }
+
+    let (Some(dir), post_slash) = fat::find_file(path, 0) else {
+        return ErrNo::ENOENT.into();
+    };
+    if dir.attr != fat::Attribute::Directory as _ && post_slash {
+        return ErrNo::ENOENT.into();
+    }
+
+    let fd = allocate_fd(&task);
+    task.files()
+        .lock_wait()
+        .insert(fd, fat::FileDescriptor::new(dir));
+    Result::value(fd as _)
+}
+
+extern "sysv64" fn read_file(fd: u64, buf: u64, count: u64, _: u64, _: u64, _: u64) -> Result {
+    let fd = fd as i32;
+    if fd < 0 {
+        return ErrNo::EBADF.into();
+    }
+
+    let buf = unsafe { slice::from_raw_parts_mut(buf as _, count as _) };
+    asmfunc::cli();
+    let task = task::current_task();
+    asmfunc::sti();
+
+    let mut files = task.files().lock_wait();
+    let Some(fd) = files.get_mut(&fd) else {
+        return ErrNo::EBADF.into();
+    };
+    Result::value(fd.read(buf) as _)
+}
+
+fn allocate_fd(task: &Task) -> i32 {
+    let files = task.files().lock_wait();
+    let num_files = files.cap() as _;
+    (0..num_files)
+        .find(|i| files.get(i as _).is_none())
+        .unwrap_or(num_files as _)
 }
