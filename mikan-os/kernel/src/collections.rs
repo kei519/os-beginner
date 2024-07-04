@@ -147,7 +147,7 @@ impl<K: Hash + Eq, V> HashMap<K, V> {
     }
 
     /// キーが `k` と一致するものがあれば、その値への共有参照を返す。
-    pub fn get<Q: Hash + Eq + ?Sized>(&mut self, k: &Q) -> Option<&V>
+    pub fn get<Q: Hash + Eq + ?Sized>(&self, k: &Q) -> Option<&V>
     where
         K: Borrow<Q>,
     {
