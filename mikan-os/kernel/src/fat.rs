@@ -311,3 +311,47 @@ fn get_cluster_addr(cluster: u64) -> *const u32 {
 
     unsafe { (image.as_ptr() as *const u32).byte_add(offset as usize) }
 }
+
+#[derive(Clone)]
+pub struct FileDescriptor {
+    /// ファイルディスクリプタが指すファイルへの参照。
+    fat_entry: &'static DirectoryEntry,
+    /// ファイル先頭からの読み込みオフセット。
+    rd_off: usize,
+    /// `rd_off` が指す位置に対応するクラスタの番号。
+    rd_cluster: u64,
+    /// クラスタ先頭からのオフセット。
+    rd_cluster_off: usize,
+}
+
+impl FileDescriptor {
+    pub fn new(fat_entry: &'static DirectoryEntry) -> Self {
+        Self {
+            fat_entry,
+            rd_off: 0,
+            rd_cluster: fat_entry.first_cluster() as _,
+            rd_cluster_off: 0,
+        }
+    }
+
+    pub fn read(&mut self, buf: &mut [u8]) -> usize {
+        let len = cmp::min(buf.len(), self.fat_entry.file_size as usize - self.rd_off);
+        let bytes_per_cluster = BYTES_PER_CLUSTER.get() as usize;
+
+        let mut total = 0;
+        while total < len {
+            let n = cmp::min(len - total, bytes_per_cluster);
+            let sec = get_sector_by_cluster::<u8>(self.rd_cluster, n);
+            buf[total..total + n].copy_from_slice(sec);
+            total += n;
+
+            self.rd_cluster_off += n;
+            if self.rd_cluster_off == bytes_per_cluster {
+                self.rd_cluster = next_cluster(self.rd_cluster);
+                self.rd_cluster_off = 0;
+            }
+        }
+
+        total
+    }
+}
