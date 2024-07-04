@@ -65,6 +65,13 @@ fn main(args: app_lib::args::Args) -> i32 {
             }
         }
     }
+
+    // 表示しきっていない文字列がある
+    if num_line < 3 && cur != 0 {
+        let s = unsafe { core::str::from_utf8_unchecked(&line_buf[..cur]) };
+        print!("{}", s);
+    }
+
     println!("----");
     0
 }
