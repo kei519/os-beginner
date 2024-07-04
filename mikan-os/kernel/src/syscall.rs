@@ -7,7 +7,8 @@ use crate::{
     asmfunc,
     bitfield::BitField,
     errno::ErrNo,
-    fat::{self, FileFlags},
+    fat,
+    file::{FileDescriptor, FileFlags},
     font,
     graphics::{PixelColor, PixelWrite as _, Rectangle, Vector2D, FB_CONFIG},
     keyboard::{LCONTROL_BIT, RCONTROL_BIT},
@@ -462,7 +463,7 @@ extern "sysv64" fn open_file(path: u64, flags: u64, _: u64, _: u64, _: u64, _: u
     let fd = allocate_fd(&task);
     task.files()
         .lock_wait()
-        .insert(fd, fat::FileDescriptor::new(dir));
+        .insert(fd, FileDescriptor::new_fat(dir));
     Result::value(fd as _)
 }
 

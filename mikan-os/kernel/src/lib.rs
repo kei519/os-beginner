@@ -12,6 +12,7 @@ pub mod elf;
 pub mod errno;
 pub mod error;
 pub mod fat;
+pub mod file;
 pub mod font;
 pub mod font_data;
 pub mod frame_buffer;

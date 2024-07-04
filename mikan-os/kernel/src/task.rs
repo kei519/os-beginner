@@ -10,7 +10,7 @@ use crate::{
     asmfunc,
     collections::HashMap,
     error::{Code, Result},
-    fat::FileDescriptor,
+    file::FileDescriptor,
     make_error,
     message::Message,
     segment::{KERNEL_CS, KERNEL_SS},
