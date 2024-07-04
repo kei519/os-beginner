@@ -3,7 +3,14 @@ use core::{
     ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not},
 };
 
-use crate::fat::{self, DirectoryEntry};
+use alloc::sync::Arc;
+
+use crate::{
+    fat::{self, DirectoryEntry},
+    message::MessageType,
+    task::Task,
+    terminal::TerminalRef,
+};
 
 #[derive(Clone)]
 pub struct FileDescriptor {
@@ -19,6 +26,12 @@ impl FileDescriptor {
                 rd_cluster: fat_entry.first_cluster() as _,
                 rd_cluster_off: 0,
             },
+        }
+    }
+
+    pub fn new_term(task: Arc<Task>, term: TerminalRef) -> Self {
+        Self {
+            inner: InnerFileDescriptor::Terminal { task, term },
         }
     }
 
@@ -49,6 +62,29 @@ impl FileDescriptor {
 
                 total
             }
+            InnerFileDescriptor::Terminal {
+                ref task,
+                ref mut term,
+            } => {
+                loop {
+                    // Task::recieve_message は Mutex でガードされているので、
+                    // 割り込みは禁止しなくて良い
+                    let msg = match task.receive_message() {
+                        Some(m) => m,
+                        None => {
+                            task.sleep();
+                            continue;
+                        }
+                    };
+                    if let MessageType::KeyPush { ascii, press, .. } = msg.ty {
+                        if press {
+                            buf[0] = ascii;
+                            term.print(&buf[..1]);
+                            return 1;
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -64,6 +100,10 @@ enum InnerFileDescriptor {
         rd_cluster: u64,
         /// クラスタ先頭からのオフセット。
         rd_cluster_off: usize,
+    },
+    Terminal {
+        task: Arc<Task>,
+        term: TerminalRef,
     },
 }
 
