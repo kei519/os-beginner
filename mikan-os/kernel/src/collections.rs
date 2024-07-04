@@ -236,6 +236,13 @@ impl<K: Hash + Eq, V> HashMap<K, V> {
         }
     }
 
+    pub fn clear(&mut self) {
+        for item in &mut self.buckets {
+            *item = HashEntry::None;
+        }
+        self.used = 0;
+    }
+
     /// 現在の容量。
     pub fn cap(&self) -> usize {
         self.buckets.len()
