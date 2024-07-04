@@ -72,6 +72,8 @@ syscall!(
 syscall!(close_window, 0x8000_0009, layer_id);
 syscall!(read_event, 0x8000_000a, events, len);
 syscall!(create_timer, 0x8000_000b, mode, timer_value, timeout_ms);
+syscall!(open_file, 0x8000_000c, path, flags);
+syscall!(read_file, 0x8000_000d, fd, buf, count);
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]

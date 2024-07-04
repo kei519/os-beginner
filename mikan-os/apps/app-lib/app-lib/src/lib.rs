@@ -7,6 +7,7 @@ pub mod args;
 pub mod buf;
 pub mod errno;
 pub mod events;
+pub mod fs;
 pub mod graphics;
 pub mod logger;
 pub mod stdio;
