@@ -6,7 +6,9 @@ use core::{
 use alloc::sync::Arc;
 
 use crate::{
+    bitfield::BitField,
     fat::{self, DirectoryEntry},
+    keyboard::{LCONTROL_BIT, RCONTROL_BIT},
     message::MessageType,
     task::Task,
     terminal::TerminalRef,
@@ -76,12 +78,31 @@ impl FileDescriptor {
                             continue;
                         }
                     };
-                    if let MessageType::KeyPush { ascii, press, .. } = msg.ty {
-                        if press {
-                            buf[0] = ascii;
-                            term.print(&buf[..1]);
-                            return 1;
+                    if let MessageType::KeyPush {
+                        ascii,
+                        press,
+                        modifier,
+                        keycode,
+                    } = msg.ty
+                    {
+                        if !press {
+                            continue;
                         }
+                        if modifier.get_bit(LCONTROL_BIT) | modifier.get_bit(RCONTROL_BIT) {
+                            let mut s = [b'^', 0];
+                            s[1] = ascii.to_ascii_uppercase();
+                            term.print(&s);
+                            // D
+                            if keycode == 7 {
+                                // EOT
+                                return 0;
+                            }
+                            continue;
+                        }
+
+                        buf[0] = ascii;
+                        term.print(&buf[..1]);
+                        return 1;
                     }
                 }
             }
