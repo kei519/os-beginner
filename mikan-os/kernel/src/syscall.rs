@@ -449,6 +449,11 @@ extern "sysv64" fn open_file(path: u64, flags: u64, _: u64, _: u64, _: u64, _: u
     let task = task::current_task();
     asmfunc::sti();
 
+    // @stdin の場合は標準入力で特別扱い
+    if path == "@stdin" {
+        return Result::value(0);
+    }
+
     if flags & FileFlags::ACCMODE == FileFlags::WRONLY {
         return ErrNo::EINVAL.into();
     }

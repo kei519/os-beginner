@@ -19,6 +19,7 @@ use crate::{
     elf::{Elf64Ehdr, Elf64Phdr, ExecuteType, ProgramType},
     error::{Code, Result},
     fat::{self, DirectoryEntry, BYTES_PER_CLUSTER},
+    file::FileDescriptor,
     font,
     graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, FB_CONFIG},
     layer::{LAYER_MANAGER, LAYER_TASK_MAP},
@@ -75,6 +76,12 @@ impl DerefMut for TerminalRef {
 impl From<&Terminal> for TerminalRef {
     fn from(value: &Terminal) -> Self {
         Self(value as *const _ as _)
+    }
+}
+
+impl From<&mut Terminal> for TerminalRef {
+    fn from(value: &mut Terminal) -> Self {
+        (&*value).into()
     }
 }
 
@@ -625,6 +632,16 @@ impl Terminal {
         asmfunc::cli();
         let task = task::current_task();
         asmfunc::sti();
+
+        // 標準入出力（現在は標準入力のみ）の設定
+        {
+            let mut files = task.files().lock_wait();
+            // Safety: TerminalRef が持たれるのは、
+            //         ターミナルの制御がアプリに移っている間だけであり、
+            //         その間そのターミナルではアプリ以外のことができないので問題ない
+            files.insert(0, FileDescriptor::new_term(task.clone(), self.into()));
+        }
+
         let ret = asmfunc::call_app(
             argc as _,
             args_frame_addr.addr as _,
@@ -633,6 +650,12 @@ impl Terminal {
             stack_frame_addr.addr + BYTES_PER_FRAME as u64 * 2 - 8,
             task.os_stack_ptr(),
         );
+
+        // アプリの実行が終了したら、現在のファイルディスクリプタを全削除
+        {
+            let mut files = task.files().lock_wait();
+            files.clear();
+        }
 
         let addr_first = get_first_load_address(elf_header);
         clean_page_maps(LinearAddress4Level {
