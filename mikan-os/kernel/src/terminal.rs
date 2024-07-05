@@ -15,7 +15,6 @@ use core::{
 
 use crate::{
     asmfunc,
-    collections::HashMap,
     elf::{Elf64Ehdr, Elf64Phdr, ExecuteType, ProgramType},
     error::{Code, Result},
     fat::{self, DirectoryEntry, BYTES_PER_CLUSTER},
@@ -28,32 +27,11 @@ use crate::{
     message::{Message, MessageType},
     paging::{self, LinearAddress4Level, PageMapEntry},
     pci,
-    sync::{Mutex, SharedLock},
+    sync::SharedLock,
     task::{self, Task, TaskContext},
     timer::{Timer, TIMER_FREQ, TIMER_MANAGER},
     window::Window,
 };
-
-// WARNING: 1つのターミナルから複数のタスクを呼べるようになると危険！
-/// `task_id` をキー、[TerminalRef] を値とした辞書。
-///
-/// [TerminalRef] は生きている [Terminal] のアドレスを持っていないといけないので、
-/// 危険な値を外から追加されないように、プライベートにしておく。
-///
-/// # Safety
-///
-/// 取得した値を保持され続けると UB が起こる。
-/// Terminal が `drop()` されたときには必ずここから削除すること。
-static TERMINALS: Mutex<HashMap<u64, TerminalRef>> = Mutex::new(HashMap::new());
-
-/// `task_id` に紐づいた [Terminal] への [TerminalRef] を返す。
-///
-/// # Safety
-///
-/// [Terminal] の外部からは取得しないこと。
-pub fn get_term(task_id: u64) -> Option<TerminalRef> {
-    TERMINALS.lock_wait().get(&task_id).copied()
-}
 
 /// [Terminal] のアドレスを保持し、参照を得るための構造体。
 #[derive(Debug, Clone, Copy)]
@@ -104,7 +82,6 @@ pub fn task_terminal(task_id: u64, s_ptr: i64, s_len: u32) {
             .lock_wait()
             .insert(terminal.layer_id, task_id);
     }
-    TERMINALS.lock_wait().insert(task_id, (&terminal).into());
 
     // ウィンドウを表示しないということは、外から実行パスが与えられているということ
     if !show_window {
@@ -639,7 +616,9 @@ impl Terminal {
             // Safety: TerminalRef が持たれるのは、
             //         ターミナルの制御がアプリに移っている間だけであり、
             //         その間そのターミナルではアプリ以外のことができないので問題ない
-            files.insert(0, FileDescriptor::new_term(task.clone(), self.into()));
+            for i in 0..3 {
+                files.insert(i, FileDescriptor::new_term(task.clone(), self.into()));
+            }
         }
 
         let ret = asmfunc::call_app(
@@ -700,13 +679,6 @@ impl Terminal {
 
             dir_cluster = fat::next_cluster(dir_cluster as _) as _;
         }
-    }
-}
-
-impl Drop for Terminal {
-    fn drop(&mut self) {
-        // 既にない `Terminal` への参照を今後取得されないように確実に削除する
-        TERMINALS.lock_wait().remove(&self.task_id);
     }
 }
 

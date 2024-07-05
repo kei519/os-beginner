@@ -20,7 +20,6 @@ use crate::{
     msr::{IA32_EFER, IA32_FMASK, IA32_LSTAR, IA32_STAR},
     sync::SharedLock,
     task::{self, Task},
-    terminal,
     timer::{Timer, TIMER_FREQ, TIMER_MANAGER},
     window::Window,
 };
@@ -99,18 +98,27 @@ extern "sysv64" fn log_string(arg1: u64, arg2: u64, _: u64, _: u64, _: u64, _: u
 }
 
 extern "sysv64" fn put_string(arg1: u64, arg2: u64, arg3: u64, _: u64, _: u64, _: u64) -> Result {
-    let fd = arg1;
+    let fd = arg1 as i32;
     let s: &[u8] = unsafe { slice::from_raw_parts(arg2 as _, arg3 as _) };
 
-    if fd == 1 {
-        let task_id = task::current_task().id();
-        // システムコールを呼び出す可能性があるのは、ターミナル上で起動したアプリだけなので、
-        // そのターミナルは必ず存在するため、unwrap は必ず成功する
-        let mut terminal = terminal::get_term(task_id).unwrap();
-        terminal.print(s);
-        Result::value(s.len() as _)
-    } else {
-        ErrNo::EBADF.into()
+    asmfunc::cli();
+    let task = task::current_task();
+    asmfunc::sti();
+
+    let mut files = task.files().lock_wait();
+    if fd < 0 || files.cap() <= fd as _ {
+        return ErrNo::EBADF.into();
+    }
+    let Some(file) = files.get_mut(&fd) else {
+        return ErrNo::EBADF.into();
+    };
+    match file.write(s) {
+        Ok(len) => Result::value(len as _),
+        Err(e) => match e.cause() {
+            // 実際はデバイスでなくメモリだが、まあ一旦こうしておく
+            Code::NoEnoughMemory => ErrNo::ENOSPC.into(),
+            e => unreachable!("{}", e),
+        },
     }
 }
 

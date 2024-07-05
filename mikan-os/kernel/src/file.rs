@@ -7,6 +7,7 @@ use alloc::sync::Arc;
 
 use crate::{
     bitfield::BitField,
+    error::Result,
     fat::{self, DirectoryEntry},
     keyboard::{LCONTROL_BIT, RCONTROL_BIT},
     message::MessageType,
@@ -106,6 +107,18 @@ impl FileDescriptor {
                         return 1;
                     }
                 }
+            }
+        }
+    }
+
+    pub fn write(&mut self, buf: &[u8]) -> Result<usize> {
+        match self.inner {
+            InnerFileDescriptor::Fat { .. } => {
+                todo!();
+            }
+            InnerFileDescriptor::Terminal { ref mut term, .. } => {
+                term.print(buf);
+                Ok(buf.len())
             }
         }
     }
