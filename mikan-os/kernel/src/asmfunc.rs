@@ -141,6 +141,17 @@ pub fn exit_app(rsp: u64, ret_val: i32) {
     unsafe { exit_app_unsafe(rsp, ret_val) };
 }
 
+pub fn get_cr2() -> u64 {
+    let cr2;
+    unsafe {
+        asm!(
+            "mov {}, cr2",
+            out(reg) cr2,
+        )
+    };
+    cr2
+}
+
 extern "C" {
     fn load_idt_unsafe(limit: u16, offset: u64);
     fn load_gdt_unsafe(limit: u16, offset: u64);

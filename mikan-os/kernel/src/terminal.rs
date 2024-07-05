@@ -591,7 +591,12 @@ impl Terminal {
 
         paging::setup_pml4(&task)?;
 
-        load_elf(elf_header)?;
+        let elf_last_addr = load_elf(elf_header)?;
+
+        // デマンドページを ELF バイナリの最後から割り当てる
+        let elf_next_page = (elf_last_addr + 4095) & !0xfff;
+        task.set_dpaging_begin(elf_next_page);
+        task.set_dpaging_end(elf_next_page);
 
         let stack_frame_addr = LinearAddress4Level {
             addr: 0xffff_ffff_ffff_d000,
@@ -682,7 +687,8 @@ impl Terminal {
     }
 }
 
-fn load_elf(ehdr: &Elf64Ehdr) -> Result<()> {
+/// ロードした ELF バイナリの最終アドレスを返す。
+fn load_elf(ehdr: &Elf64Ehdr) -> Result<u64> {
     if ehdr.r#type != ExecuteType::Exec {
         return Err(make_error!(Code::InvalidFormat));
     }
@@ -692,8 +698,7 @@ fn load_elf(ehdr: &Elf64Ehdr) -> Result<()> {
         return Err(make_error!(Code::InvalidFormat));
     }
 
-    copy_load_segments(ehdr)?;
-    Ok(())
+    copy_load_segments(ehdr)
 }
 
 fn get_first_load_address(ehdr: &Elf64Ehdr) -> usize {
@@ -715,7 +720,10 @@ fn get_program_headers(ehdr: &Elf64Ehdr) -> &[Elf64Phdr] {
     }
 }
 
-fn copy_load_segments(ehdr: &Elf64Ehdr) -> Result<()> {
+/// ロードした ELF バイナリの最終アドレスを返す。
+fn copy_load_segments(ehdr: &Elf64Ehdr) -> Result<u64> {
+    let mut elf_last_addr = 0;
+
     for phdr in get_program_headers(ehdr) {
         if phdr.r#type != ProgramType::Load as _ {
             continue;
@@ -725,6 +733,8 @@ fn copy_load_segments(ehdr: &Elf64Ehdr) -> Result<()> {
             addr: phdr.vaddr as _,
         };
 
+        let seg_last_addr = phdr.vaddr + phdr.memsz as usize;
+        elf_last_addr = elf_last_addr.max(seg_last_addr as _);
         // `phdr.vaddr` が 4 KB アラインされているわけではないので、
         // 4 KB アラインの先頭から数える必要がある
         let num_4kpages = ((phdr.vaddr & 0xfff) + phdr.memsz as usize + 4095) / 4096;
@@ -743,7 +753,7 @@ fn copy_load_segments(ehdr: &Elf64Ehdr) -> Result<()> {
         }
     }
 
-    Ok(())
+    Ok(elf_last_addr)
 }
 
 /// 引数を配置し、引数の数を返す。

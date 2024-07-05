@@ -9,10 +9,11 @@ use alloc::sync::Arc;
 use crate::{
     asmfunc::{self, set_cr3},
     bitfield::BitField as _,
-    error::Result,
+    error::{Code, Result},
+    make_error,
     memory_manager::{FrameId, BYTES_PER_FRAME, MEMORY_MANAGER},
     sync::Mutex,
-    task::{Task, TaskContext},
+    task::{self, Task, TaskContext},
 };
 
 pub const PAGE_DIRECTORY_COUNT: usize = 64;
@@ -28,6 +29,23 @@ static PAGE_DIRECTORY: Mutex<PageTable<[u64; 512], PAGE_DIRECTORY_COUNT>> =
 
 pub fn init() {
     setup_indentity_page_table();
+}
+
+/// # Safety
+///
+/// 割り込みを禁止した状態で呼び出すこと
+pub fn handle_page_fault(error_code: u64, causal_addr: u64) -> Result<()> {
+    // 割り込み禁止状態で呼び出させるため、ここでは割り込みを禁止、許可しない
+    let task = task::current_task();
+
+    // P=1 なのでページレベルの権限違反でエラーが起きた
+    if error_code.get_bit(0) {
+        return Err(make_error!(Code::AlreadyAllocated));
+    }
+    if !(task.dpaging_begin()..task.dpaging_end()).contains(&causal_addr) {
+        return Err(make_error!(Code::IndexOutOfRange));
+    }
+    setup_page_maps(LinearAddress4Level { addr: causal_addr }, 1)
 }
 
 pub fn new_page_map() -> Result<&'static mut [PageMapEntry]> {

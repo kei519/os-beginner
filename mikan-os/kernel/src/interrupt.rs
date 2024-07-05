@@ -3,11 +3,12 @@ use core::{arch::global_asm, mem};
 use crate::{
     asmfunc,
     bitfield::BitField as _,
-    font,
+    font::{self, write_string},
     frame_buffer::FrameBuffer,
     graphics::{PixelColor, Vector2D},
     layer::SCREEN,
     message::MessageType,
+    paging::handle_page_fault,
     segment::KERNEL_CS,
     sync::Mutex,
     task,
@@ -130,7 +131,6 @@ fault_handler_with_error!(TS);
 fault_handler_with_error!(NP);
 fault_handler_with_error!(SS);
 fault_handler_with_error!(GP);
-fault_handler_with_error!(PF);
 fault_handler_no_error!(MF);
 fault_handler_with_error!(AC);
 fault_handler_no_error!(MC);
@@ -142,6 +142,26 @@ fn int_handler_xhci(_frame: &InterruptFrame) {
     // メインタスクが 1 で登録されるので必ず存在するはず
     task::send_message(1, MessageType::InterruptXHCI.into()).unwrap();
     notify_end_of_interrupt();
+}
+
+#[custom_attribute::interrupt]
+fn int_handler_pf(frame: &InterruptFrame, error_code: u64) {
+    let cr2 = asmfunc::get_cr2();
+    if handle_page_fault(error_code, cr2).is_ok() {
+        return;
+    }
+    kill_app(frame);
+    print_frame(frame, "#PF");
+    let mut screen = SCREEN.lock_wait();
+    let writer = &mut *screen;
+    write_string(
+        writer,
+        Vector2D::new(500, 16 * 4),
+        b"ERR",
+        &PixelColor::new(0, 0, 0),
+    );
+    print_hex(error_code, 16, Vector2D::new(500, 16 * 4), writer);
+    asmfunc::halt();
 }
 
 extern "C" {

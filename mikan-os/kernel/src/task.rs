@@ -1,7 +1,7 @@
 use core::{
     arch::asm,
     mem, ptr,
-    sync::atomic::{AtomicBool, AtomicI32, Ordering},
+    sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering},
 };
 
 use alloc::{boxed::Box, collections::VecDeque, sync::Arc, vec, vec::Vec};
@@ -182,6 +182,10 @@ pub struct Task<const STACK_SIZE: usize = 4096> {
     running: AtomicBool,
     os_stack_ptr: u64,
     files: Mutex<HashMap<i32, FileDescriptor>>,
+    /// デマンドページングのアドレス範囲の起点。
+    dpaging_begin: AtomicU64,
+    /// デマンドページングのアドレス範囲の終点。
+    dpaging_end: AtomicU64,
 }
 
 impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
@@ -208,6 +212,8 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
             running: false.into(),
             os_stack_ptr: 0,
             files: Mutex::new(HashMap::new()),
+            dpaging_begin: AtomicU64::new(0),
+            dpaging_end: AtomicU64::new(0),
         }
     }
 
@@ -270,6 +276,22 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
 
     pub fn files(&self) -> &Mutex<HashMap<i32, FileDescriptor>> {
         &self.files
+    }
+
+    pub fn dpaging_begin(&self) -> u64 {
+        self.dpaging_begin.load(Ordering::Relaxed)
+    }
+
+    pub fn set_dpaging_begin(&self, value: u64) {
+        self.dpaging_begin.store(value, Ordering::Relaxed);
+    }
+
+    pub fn dpaging_end(&self) -> u64 {
+        self.dpaging_end.load(Ordering::Relaxed)
+    }
+
+    pub fn set_dpaging_end(&self, value: u64) {
+        self.dpaging_end.store(value, Ordering::Relaxed);
     }
 
     fn set_level(&self, level: i32) -> &Self {

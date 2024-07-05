@@ -16,6 +16,7 @@ use crate::{
     layer::{LAYER_MANAGER, LAYER_TASK_MAP},
     log,
     logger::LogLevel,
+    memory_manager::BYTES_PER_FRAME,
     message::MessageType,
     msr::{IA32_EFER, IA32_FMASK, IA32_LSTAR, IA32_STAR},
     sync::SharedLock,
@@ -27,7 +28,7 @@ use crate::{
 pub type SyscallFuncType = extern "sysv64" fn(u64, u64, u64, u64, u64, u64) -> Result;
 
 #[no_mangle]
-pub static SYSCALL_TABLE: [SyscallFuncType; 14] = [
+pub static SYSCALL_TABLE: [SyscallFuncType; 15] = [
     log_string,
     put_string,
     exit,
@@ -42,6 +43,7 @@ pub static SYSCALL_TABLE: [SyscallFuncType; 14] = [
     create_timer,
     open_file,
     read_file,
+    demand_pages,
 ];
 
 pub fn init() {
@@ -504,6 +506,16 @@ extern "sysv64" fn read_file(fd: u64, buf: u64, count: u64, _: u64, _: u64, _: u
         return ErrNo::EBADF.into();
     };
     Result::value(fd.read(buf) as _)
+}
+
+extern "sysv64" fn demand_pages(num_pages: u64, _: u64, _: u64, _: u64, _: u64, _: u64) -> Result {
+    asmfunc::cli();
+    let task = task::current_task();
+    asmfunc::sti();
+
+    let dp_end = task.dpaging_end();
+    task.set_dpaging_end(dp_end + num_pages * BYTES_PER_FRAME as u64);
+    Result::value(dp_end)
 }
 
 fn allocate_fd(task: &Task) -> i32 {
