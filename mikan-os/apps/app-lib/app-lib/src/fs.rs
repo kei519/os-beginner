@@ -23,6 +23,11 @@ pub trait Read {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize>;
 }
 
+pub trait Write {
+    fn write(&mut self, buf: &[u8]) -> Result<usize>;
+    fn flush(&mut self) -> Result<()>;
+}
+
 pub struct File(i32);
 
 impl Read for File {
@@ -33,6 +38,21 @@ impl Read for File {
         } else {
             Ok(res.value as _)
         }
+    }
+}
+
+impl Write for File {
+    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+        let res = unsafe { syscall::__put_string(self.0 as _, buf.as_ptr() as _, buf.len() as _) };
+        if res.error != 0 {
+            Err(res.error.into())
+        } else {
+            Ok(buf.len())
+        }
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        Ok(())
     }
 }
 
@@ -48,6 +68,7 @@ impl FileFlags {
     pub const RDONLY: Self = Self(0);
     pub const WRONLY: Self = Self(1);
     pub const RDWR: Self = Self(2);
+    pub const CREAT: Self = Self(0o100);
 }
 
 impl From<FileFlags> for i32 {
