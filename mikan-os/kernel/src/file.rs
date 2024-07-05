@@ -62,6 +62,7 @@ impl FileDescriptor {
                     }
                 }
 
+                *rd_off += total;
                 total
             }
             InnerFileDescriptor::Terminal {
