@@ -252,6 +252,8 @@ pub fn interrupt(_attr: TokenStream, item: TokenStream) -> TokenStream {
 {0}:
     push rbp
     mov rbp, rsp
+    # RSP の調整
+    and rsp, 0xfffffffffffffff0
     push rax
     push r11
     push r10
@@ -278,6 +280,7 @@ pub fn interrupt(_attr: TokenStream, item: TokenStream) -> TokenStream {
     pop rax
     mov rsp, rbp
     pop rbp
+    {4}
     iretq
 "###,
         old_ident,
@@ -289,6 +292,11 @@ pub fn interrupt(_attr: TokenStream, item: TokenStream) -> TokenStream {
         },
         if error_code_is_required {
             "mov rsi, [rbp + 0x08]"
+        } else {
+            ""
+        },
+        if error_code_is_required {
+            "add rsp, 0x08"
         } else {
             ""
         },
