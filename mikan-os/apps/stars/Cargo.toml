@@ -13,6 +13,7 @@ panic = "abort"
 
 [dependencies.app-lib]
 path = "../app-lib/app-lib"
+default-features = false
 
 [dependencies]
 rand = { version = "0.8", default_features = false, features = ["small_rng"] }

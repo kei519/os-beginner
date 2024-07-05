@@ -13,6 +13,7 @@ panic = "abort"
 
 [dependencies.app-lib]
 path = "../app-lib/app-lib"
+default-features = false
 
 [dependencies]
 libm = "0.2"
