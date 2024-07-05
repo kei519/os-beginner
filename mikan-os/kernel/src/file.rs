@@ -140,6 +140,7 @@ impl FileFlags {
     pub const RDONLY: Self = Self(0);
     pub const WRONLY: Self = Self(1);
     pub const RDWR: Self = Self(2);
+    pub const CREAT: Self = Self(0o100);
 }
 
 impl From<FileFlags> for i32 {

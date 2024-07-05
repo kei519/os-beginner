@@ -2,7 +2,11 @@ use core::{cmp, ffi::c_void, mem, ptr, slice, str};
 
 use alloc::vec::Vec;
 
-use crate::util::OnceStatic;
+use crate::{
+    error::{Code, Result},
+    make_error,
+    util::OnceStatic,
+};
 
 pub const END_OF_CLUSTER_CHAIN: u64 = 0x0fff_ffff;
 
@@ -93,6 +97,114 @@ pub fn find_file(
     (None, post_slash)
 }
 
+pub fn create_file(path: &str) -> Result<&'static mut DirectoryEntry> {
+    let mut parent_dir_cluster = BOOT_VOLUME_IMAGE.get().root_clus() as u64;
+
+    let filename = if let Some((parent_dir_name, filename)) = path.rsplit_once('/') {
+        if filename.is_empty() {
+            return Err(make_error!(Code::IsDirectory));
+        }
+
+        if !parent_dir_name.is_empty() {
+            let (Some(parent_dir), _) = find_file(parent_dir_name, 0) else {
+                return Err(make_error!(Code::NoSuchEntry));
+            };
+            parent_dir_cluster = parent_dir.first_cluster() as _;
+        }
+        filename
+    } else {
+        path
+    };
+
+    let dir = allocate_entry(parent_dir_cluster);
+    set_file_name(dir, filename);
+
+    Ok(dir)
+}
+
+fn allocate_entry(mut dir_cluster: u64) -> &'static mut DirectoryEntry {
+    loop {
+        let dir = get_sector_by_cluster::<DirectoryEntry>(
+            dir_cluster,
+            BYTES_PER_CLUSTER.get() as usize / mem::size_of::<DirectoryEntry>(),
+        );
+        for entry in dir {
+            if entry.name[0] == 0 || entry.name[0] == 0xe5 {
+                #[allow(clippy::missing_transmute_annotations)]
+                return unsafe { mem::transmute(entry as *const _ as usize) };
+            }
+        }
+        dir_cluster = match next_cluster(dir_cluster) {
+            END_OF_CLUSTER_CHAIN => break,
+            clus => clus,
+        };
+    }
+
+    dir_cluster = extend_cluster(dir_cluster, 1);
+    let dir = get_sector_by_cluster::<DirectoryEntry>(dir_cluster, 1)
+        .first()
+        .unwrap();
+
+    unsafe {
+        #[allow(clippy::useless_transmute)]
+        let ptr: *mut u64 = mem::transmute(dir);
+        ptr::write_bytes(ptr, 0, BYTES_PER_CLUSTER.get() as usize / 8);
+    }
+    unsafe { mem::transmute(dir as *const _ as usize) }
+}
+
+fn extend_cluster(eoc_cluster: u64, n: usize) -> u64 {
+    let mut eoc_cluster = eoc_cluster as usize;
+    let fat = get_fat();
+    while !is_end_of_cluster_chain(fat[eoc_cluster]) {
+        eoc_cluster = fat[eoc_cluster] as _;
+    }
+
+    let mut num_allocated = 0;
+    let mut current = eoc_cluster;
+
+    for candidate in 2..fat.len() {
+        // candidate クラスタは既に使われている
+        if fat[candidate] != 0 {
+            continue;
+        }
+
+        fat[current] = candidate as _;
+        current = candidate;
+        num_allocated += 1;
+
+        if num_allocated == n {
+            break;
+        }
+    }
+    fat[current] = END_OF_CLUSTER_CHAIN as _;
+    current as _
+}
+
+pub fn set_file_name(entry: &mut DirectoryEntry, name: &str) {
+    let (base, ext) = match name.rsplit_once('.') {
+        Some(pair) => pair,
+        None => (name, ""),
+    };
+
+    for (i, c) in entry.name[..8].iter_mut().enumerate() {
+        *c = base
+            .as_bytes()
+            .get(i)
+            .copied()
+            .unwrap_or(b' ')
+            .to_ascii_uppercase();
+    }
+    for (i, c) in entry.name[8..].iter_mut().enumerate() {
+        *c = ext
+            .as_bytes()
+            .get(i)
+            .copied()
+            .unwrap_or(b' ')
+            .to_ascii_uppercase();
+    }
+}
+
 pub fn next_cluster(cluster: u64) -> u64 {
     let image = BOOT_VOLUME_IMAGE.get();
     let fat_offset = image.rsvd_sec_cnt() * image.byts_per_sec();
@@ -126,6 +238,19 @@ pub fn load_file(entry: &DirectoryEntry) -> Vec<u8> {
     }
 
     buf
+}
+
+/// FAT の全体を返す。
+fn get_fat() -> &'static mut [u32] {
+    let image = BOOT_VOLUME_IMAGE.get();
+    let head = image.as_ptr() as usize + (image.rsvd_sec_cnt * image.byts_per_sec) as usize;
+    let len = (image.fat_sz32 * image.byts_per_sec as u32) / 4;
+
+    unsafe { slice::from_raw_parts_mut(head as _, len as _) }
+}
+
+fn is_end_of_cluster_chain(clus: u32) -> bool {
+    clus >= 0x00FF_FFF8
 }
 
 #[repr(packed)]

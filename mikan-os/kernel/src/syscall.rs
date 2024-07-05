@@ -7,7 +7,8 @@ use crate::{
     asmfunc,
     bitfield::BitField,
     errno::ErrNo,
-    fat,
+    error::Code,
+    fat::{self, DirectoryEntry},
     file::{FileDescriptor, FileFlags},
     font,
     graphics::{PixelColor, PixelWrite as _, Rectangle, Vector2D, FB_CONFIG},
@@ -454,21 +455,28 @@ extern "sysv64" fn open_file(path: u64, flags: u64, _: u64, _: u64, _: u64, _: u
         return Result::value(0);
     }
 
-    if flags & FileFlags::ACCMODE == FileFlags::WRONLY {
-        return ErrNo::EINVAL.into();
-    }
-
-    let (Some(dir), post_slash) = fat::find_file(path, 0) else {
-        return ErrNo::ENOENT.into();
+    let file = match fat::find_file(path, 0) {
+        (Some(dir), post_slash) => {
+            if dir.attr != fat::Attribute::Directory as _ && post_slash {
+                return ErrNo::ENOENT.into();
+            }
+            dir
+        }
+        (None, _) => {
+            if flags & FileFlags::CREAT == FileFlags::new(0) {
+                return ErrNo::ENOENT.into();
+            }
+            match create_file(path) {
+                Ok(f) => f,
+                Err(e) => return e.into(),
+            }
+        }
     };
-    if dir.attr != fat::Attribute::Directory as _ && post_slash {
-        return ErrNo::ENOENT.into();
-    }
 
     let fd = allocate_fd(&task);
     task.files()
         .lock_wait()
-        .insert(fd, FileDescriptor::new_fat(dir));
+        .insert(fd, FileDescriptor::new_fat(file));
     Result::value(fd as _)
 }
 
@@ -496,4 +504,13 @@ fn allocate_fd(task: &Task) -> i32 {
     (0..num_files)
         .find(|i| files.get(i as _).is_none())
         .unwrap_or(num_files as _)
+}
+
+fn create_file(path: &str) -> core::result::Result<&'static mut DirectoryEntry, ErrNo> {
+    fat::create_file(path).map_err(|e| match e.cause() {
+        Code::IsDirectory => ErrNo::EISDIR,
+        Code::NoSuchEntry => ErrNo::ENOENT,
+        Code::NoEnoughMemory => ErrNo::ENOSPC,
+        _ => unreachable!(),
+    })
 }
