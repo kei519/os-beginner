@@ -23,12 +23,12 @@ use crate::{
     graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, FB_CONFIG},
     layer::{LAYER_MANAGER, LAYER_TASK_MAP},
     make_error,
-    memory_manager::{FrameId, BYTES_PER_FRAME, MEMORY_MANAGER},
+    memory_manager::BYTES_PER_FRAME,
     message::{Message, MessageType},
-    paging::{self, LinearAddress4Level, PageMapEntry},
+    paging::{self, LinearAddress4Level},
     pci,
     sync::SharedLock,
-    task::{self, Task, TaskContext},
+    task,
     timer::{Timer, TIMER_FREQ, TIMER_MANAGER},
     window::Window,
 };
@@ -589,19 +589,19 @@ impl Terminal {
         let task = task::current_task();
         asmfunc::sti();
 
-        setup_pml4(&task)?;
+        paging::setup_pml4(&task)?;
 
         load_elf(elf_header)?;
 
         let stack_frame_addr = LinearAddress4Level {
             addr: 0xffff_ffff_ffff_d000,
         };
-        setup_page_maps(stack_frame_addr, 2)?;
+        paging::setup_page_maps(stack_frame_addr, 2)?;
 
         let args_frame_addr = LinearAddress4Level {
             addr: 0xffff_ffff_ffff_f000,
         };
-        setup_page_maps(args_frame_addr, 1)?;
+        paging::setup_page_maps(args_frame_addr, 1)?;
         let arg_buf =
             unsafe { slice::from_raw_parts_mut(args_frame_addr.addr as *mut u8, BYTES_PER_FRAME) };
         let argc = make_arg_vector(args, arg_buf)?;
@@ -637,11 +637,11 @@ impl Terminal {
         }
 
         let addr_first = get_first_load_address(elf_header);
-        clean_page_maps(LinearAddress4Level {
+        paging::clean_page_maps(LinearAddress4Level {
             addr: addr_first as _,
         });
 
-        free_pml4(&task);
+        paging::free_pml4(&task);
 
         Ok(ret)
     }
@@ -706,72 +706,6 @@ fn get_first_load_address(ehdr: &Elf64Ehdr) -> usize {
     0
 }
 
-fn new_page_map() -> Result<&'static mut [PageMapEntry]> {
-    let frame = MEMORY_MANAGER.allocate(1)?;
-    unsafe { ptr::write_bytes(frame.frame(), 0, BYTES_PER_FRAME) };
-
-    let e = unsafe {
-        &mut *slice::from_raw_parts_mut(
-            frame.frame() as _,
-            BYTES_PER_FRAME / mem::size_of::<PageMapEntry>(),
-        )
-    };
-    Ok(e)
-}
-
-fn set_new_page_map_if_not_present(
-    entry: &mut PageMapEntry,
-) -> Result<&'static mut [PageMapEntry]> {
-    if entry.persent() {
-        return Ok(entry.mut_pointer());
-    }
-
-    let child_map = new_page_map()?;
-    entry.set_pointer(&child_map[0]);
-    entry.set_present(true);
-
-    Ok(child_map)
-}
-
-fn setup_page_map(
-    page_map: &mut [PageMapEntry],
-    page_map_level: i32,
-    mut addr: LinearAddress4Level,
-    mut num_4kpages: usize,
-) -> Result<usize> {
-    while num_4kpages > 0 {
-        let entry_index = addr.part(page_map_level) as usize;
-
-        let child_map = set_new_page_map_if_not_present(&mut page_map[entry_index])?;
-        page_map[entry_index].set_writable(true);
-        page_map[entry_index].set_user(true);
-
-        if page_map_level == 1 {
-            num_4kpages -= 1;
-        } else {
-            num_4kpages = setup_page_map(child_map, page_map_level - 1, addr, num_4kpages)?;
-        }
-
-        if entry_index == 511 {
-            break;
-        }
-
-        addr.set_part(page_map_level, entry_index as u64 + 1);
-        for level in 1..=page_map_level - 1 {
-            addr.set_part(level, 0)
-        }
-    }
-
-    Ok(num_4kpages)
-}
-
-fn setup_page_maps(addr: LinearAddress4Level, num_4kpages: usize) -> Result<()> {
-    let pml4_table =
-        unsafe { &mut *slice::from_raw_parts_mut(asmfunc::get_cr3() as *mut PageMapEntry, 512) };
-    setup_page_map(pml4_table, 4, addr, num_4kpages)?;
-    Ok(())
-}
-
 fn get_program_headers(ehdr: &Elf64Ehdr) -> &[Elf64Phdr] {
     unsafe {
         slice::from_raw_parts(
@@ -795,7 +729,7 @@ fn copy_load_segments(ehdr: &Elf64Ehdr) -> Result<()> {
         // 4 KB アラインの先頭から数える必要がある
         let num_4kpages = ((phdr.vaddr & 0xfff) + phdr.memsz as usize + 4095) / 4096;
 
-        setup_page_maps(dest_addr, num_4kpages)?;
+        paging::setup_page_maps(dest_addr, num_4kpages)?;
 
         unsafe {
             let src = (ehdr as *const _ as *const u8).add(phdr.offset as usize);
@@ -810,33 +744,6 @@ fn copy_load_segments(ehdr: &Elf64Ehdr) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn clean_page_maps(addr: LinearAddress4Level) {
-    let pml4_table =
-        unsafe { &mut *slice::from_raw_parts_mut(asmfunc::get_cr3() as *mut PageMapEntry, 512) };
-    // PML4 テーブルの1つしかエントリがないことを仮定している
-    let pdp_table = pml4_table[addr.pml4() as usize].mut_pointer();
-    pml4_table[addr.pml4() as usize].data = 0;
-    clean_page_map(pdp_table, 3);
-
-    MEMORY_MANAGER.free(FrameId::from_addr(pdp_table.as_mut_ptr() as _), 1);
-}
-
-fn clean_page_map(page_maps: &mut [PageMapEntry], page_map_level: i32) {
-    for entry in page_maps {
-        if !entry.persent() {
-            continue;
-        }
-
-        if page_map_level > 1 {
-            clean_page_map(entry.mut_pointer(), page_map_level - 1);
-        }
-
-        let entry_ptr = entry.pointer().as_ptr();
-        MEMORY_MANAGER.free(FrameId::from_addr(entry_ptr as _), 1);
-        entry.data = 0;
-    }
 }
 
 /// 引数を配置し、引数の数を返す。
@@ -867,48 +774,4 @@ fn make_arg_vector(args: Vec<&str>, buf: &mut [u8]) -> Result<usize> {
         buf[cur - 1] = 0;
     }
     Ok(len)
-}
-
-/// 新しい PML4 テーブルを作り、下位 256 ページ（OS 用）を元の PML4 テーブルからコピーする。
-/// そしてそれを CR3 に設定し、新しい PML4 への排他参照を返す。
-fn setup_pml4(current_task: &Arc<Task>) -> Result<&'static mut [PageMapEntry]> {
-    let pml4 = new_page_map()?;
-
-    let current_pml4_ptr = asmfunc::get_cr3();
-    // PML4 の下位半分（OS 領域）のみをコピーする
-    unsafe {
-        ptr::copy_nonoverlapping(
-            current_pml4_ptr as *const PageMapEntry,
-            pml4.as_mut_ptr(),
-            1 << 8,
-        )
-    };
-
-    let cr3 = pml4.as_ptr() as _;
-    asmfunc::set_cr3(cr3);
-
-    // Safety: 実質最後の命令だけが unsafe
-    //         だが、これはただの 64 bit のコピーで1命令にコンパイルされるはずなので、
-    //         シングルコアでは途中で他の命令と競合することはない
-    unsafe {
-        #[allow(clippy::transmute_ptr_to_ref)]
-        let ctx: &mut TaskContext = mem::transmute(current_task.context().as_ptr());
-        ctx.cr3 = cr3;
-    }
-    Ok(pml4)
-}
-
-/// 現在の PML4 テーブルを削除し、OS 用の元の PML4 テーブルを CR3 に設定する。
-fn free_pml4(current_task: &Arc<Task>) {
-    let cr3 = current_task.context().cr3;
-    // Safety: これも setup_pml4 と同じ
-    unsafe {
-        #[allow(clippy::transmute_ptr_to_ref)]
-        let ctx: &mut TaskContext = mem::transmute(current_task.context().as_ptr());
-        ctx.cr3 = 0;
-    }
-    paging::reset_cr3();
-
-    let frame = FrameId::from_addr(cr3 as _);
-    MEMORY_MANAGER.free(frame, 1);
 }

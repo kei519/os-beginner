@@ -1,9 +1,19 @@
 use core::{
+    mem,
     ops::{Index, IndexMut},
-    slice,
+    ptr, slice,
 };
 
-use crate::{asmfunc::set_cr3, bitfield::BitField as _, sync::Mutex};
+use alloc::sync::Arc;
+
+use crate::{
+    asmfunc::{self, set_cr3},
+    bitfield::BitField as _,
+    error::Result,
+    memory_manager::{FrameId, BYTES_PER_FRAME, MEMORY_MANAGER},
+    sync::Mutex,
+    task::{Task, TaskContext},
+};
 
 pub const PAGE_DIRECTORY_COUNT: usize = 64;
 
@@ -18,6 +28,143 @@ static PAGE_DIRECTORY: Mutex<PageTable<[u64; 512], PAGE_DIRECTORY_COUNT>> =
 
 pub fn init() {
     setup_indentity_page_table();
+}
+
+pub fn new_page_map() -> Result<&'static mut [PageMapEntry]> {
+    let frame = MEMORY_MANAGER.allocate(1)?;
+    unsafe { ptr::write_bytes(frame.frame(), 0, BYTES_PER_FRAME) };
+
+    let e = unsafe {
+        &mut *slice::from_raw_parts_mut(
+            frame.frame() as _,
+            BYTES_PER_FRAME / mem::size_of::<PageMapEntry>(),
+        )
+    };
+    Ok(e)
+}
+
+pub fn set_new_page_map_if_not_present(
+    entry: &mut PageMapEntry,
+) -> Result<&'static mut [PageMapEntry]> {
+    if entry.persent() {
+        return Ok(entry.mut_pointer());
+    }
+
+    let child_map = new_page_map()?;
+    entry.set_pointer(&child_map[0]);
+    entry.set_present(true);
+
+    Ok(child_map)
+}
+
+pub fn setup_page_map(
+    page_map: &mut [PageMapEntry],
+    page_map_level: i32,
+    mut addr: LinearAddress4Level,
+    mut num_4kpages: usize,
+) -> Result<usize> {
+    while num_4kpages > 0 {
+        let entry_index = addr.part(page_map_level) as usize;
+
+        let child_map = set_new_page_map_if_not_present(&mut page_map[entry_index])?;
+        page_map[entry_index].set_writable(true);
+        page_map[entry_index].set_user(true);
+
+        if page_map_level == 1 {
+            num_4kpages -= 1;
+        } else {
+            num_4kpages = setup_page_map(child_map, page_map_level - 1, addr, num_4kpages)?;
+        }
+
+        if entry_index == 511 {
+            break;
+        }
+
+        addr.set_part(page_map_level, entry_index as u64 + 1);
+        for level in 1..=page_map_level - 1 {
+            addr.set_part(level, 0)
+        }
+    }
+
+    Ok(num_4kpages)
+}
+
+pub fn setup_page_maps(addr: LinearAddress4Level, num_4kpages: usize) -> Result<()> {
+    let pml4_table =
+        unsafe { &mut *slice::from_raw_parts_mut(asmfunc::get_cr3() as *mut PageMapEntry, 512) };
+    setup_page_map(pml4_table, 4, addr, num_4kpages)?;
+    Ok(())
+}
+
+pub fn clean_page_maps(addr: LinearAddress4Level) {
+    let pml4_table =
+        unsafe { &mut *slice::from_raw_parts_mut(asmfunc::get_cr3() as *mut PageMapEntry, 512) };
+    // PML4 テーブルの1つしかエントリがないことを仮定している
+    let pdp_table = pml4_table[addr.pml4() as usize].mut_pointer();
+    pml4_table[addr.pml4() as usize].data = 0;
+    clean_page_map(pdp_table, 3);
+
+    MEMORY_MANAGER.free(FrameId::from_addr(pdp_table.as_mut_ptr() as _), 1);
+}
+
+pub fn clean_page_map(page_maps: &mut [PageMapEntry], page_map_level: i32) {
+    for entry in page_maps {
+        if !entry.persent() {
+            continue;
+        }
+
+        if page_map_level > 1 {
+            clean_page_map(entry.mut_pointer(), page_map_level - 1);
+        }
+
+        let entry_ptr = entry.pointer().as_ptr();
+        MEMORY_MANAGER.free(FrameId::from_addr(entry_ptr as _), 1);
+        entry.data = 0;
+    }
+}
+
+/// 新しい PML4 テーブルを作り、下位 256 ページ（OS 用）を元の PML4 テーブルからコピーする。
+/// そしてそれを CR3 に設定し、新しい PML4 への排他参照を返す。
+pub fn setup_pml4(current_task: &Arc<Task>) -> Result<&'static mut [PageMapEntry]> {
+    let pml4 = new_page_map()?;
+
+    let current_pml4_ptr = asmfunc::get_cr3();
+    // PML4 の下位半分（OS 領域）のみをコピーする
+    unsafe {
+        ptr::copy_nonoverlapping(
+            current_pml4_ptr as *const PageMapEntry,
+            pml4.as_mut_ptr(),
+            1 << 8,
+        )
+    };
+
+    let cr3 = pml4.as_ptr() as _;
+    asmfunc::set_cr3(cr3);
+
+    // Safety: 実質最後の命令だけが unsafe
+    //         だが、これはただの 64 bit のコピーで1命令にコンパイルされるはずなので、
+    //         シングルコアでは途中で他の命令と競合することはない
+    unsafe {
+        #[allow(clippy::transmute_ptr_to_ref)]
+        let ctx: &mut TaskContext = mem::transmute(current_task.context().as_ptr());
+        ctx.cr3 = cr3;
+    }
+    Ok(pml4)
+}
+
+/// 現在の PML4 テーブルを削除し、OS 用の元の PML4 テーブルを CR3 に設定する。
+pub fn free_pml4(current_task: &Arc<Task>) {
+    let cr3 = current_task.context().cr3;
+    // Safety: これも setup_pml4 と同じ
+    unsafe {
+        #[allow(clippy::transmute_ptr_to_ref)]
+        let ctx: &mut TaskContext = mem::transmute(current_task.context().as_ptr());
+        ctx.cr3 = 0;
+    }
+    reset_cr3();
+
+    let frame = FrameId::from_addr(cr3 as _);
+    MEMORY_MANAGER.free(frame, 1);
 }
 
 #[repr(align(4096))]
