@@ -3,6 +3,11 @@ name = "app-lib"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+alloc = []
+global_alloc = ["alloc"]
+default = ["alloc", "global_alloc"]
+
 [dependencies.app-lib-macros]
 path = "../app-lib-macros"
 
