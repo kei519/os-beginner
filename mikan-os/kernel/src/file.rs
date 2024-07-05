@@ -8,26 +8,29 @@ use alloc::sync::Arc;
 use crate::{
     bitfield::BitField,
     error::Result,
-    fat::{self, DirectoryEntry},
+    fat::{self, DirectoryEntry, BYTES_PER_CLUSTER, END_OF_CLUSTER_CHAIN},
     keyboard::{LCONTROL_BIT, RCONTROL_BIT},
     message::MessageType,
     task::Task,
     terminal::TerminalRef,
 };
 
-#[derive(Clone)]
 pub struct FileDescriptor {
     inner: InnerFileDescriptor,
 }
 
 impl FileDescriptor {
-    pub fn new_fat(fat_entry: &'static DirectoryEntry) -> Self {
+    pub fn new_fat(fat_entry: &'static mut DirectoryEntry) -> Self {
+        let cluster = fat_entry.first_cluster() as _;
         Self {
             inner: InnerFileDescriptor::Fat {
                 fat_entry,
                 rd_off: 0,
-                rd_cluster: fat_entry.first_cluster() as _,
+                rd_cluster: cluster,
                 rd_cluster_off: 0,
+                wr_off: 0,
+                wr_cluster: cluster,
+                wr_cluster_off: 0,
             },
         }
     }
@@ -41,10 +44,11 @@ impl FileDescriptor {
     pub fn read(&mut self, buf: &mut [u8]) -> usize {
         match self.inner {
             InnerFileDescriptor::Fat {
-                fat_entry,
+                ref fat_entry,
                 ref mut rd_off,
                 ref mut rd_cluster,
                 ref mut rd_cluster_off,
+                ..
             } => {
                 let len = cmp::min(buf.len(), fat_entry.file_size as usize - *rd_off);
                 let bytes_per_cluster = fat::BYTES_PER_CLUSTER.get() as usize;
@@ -113,8 +117,48 @@ impl FileDescriptor {
 
     pub fn write(&mut self, buf: &[u8]) -> Result<usize> {
         match self.inner {
-            InnerFileDescriptor::Fat { .. } => {
-                todo!();
+            InnerFileDescriptor::Fat {
+                ref mut fat_entry,
+                ref mut wr_off,
+                ref mut wr_cluster,
+                ref mut wr_cluster_off,
+                ref mut rd_cluster,
+                ..
+            } => {
+                let bytes_per_cluster = BYTES_PER_CLUSTER.get() as _;
+                let num_cluster = |bytes| (bytes + bytes_per_cluster - 1) / bytes_per_cluster;
+
+                // コンストラクタで初期化しているので、ここが 0 なのは新規ファイルのみ
+                if *wr_cluster == 0 {
+                    *wr_cluster = fat::allocate_cluster_chain(num_cluster(buf.len()))?;
+                    *rd_cluster = *wr_cluster;
+                    fat_entry.set_first_cluster(*wr_cluster as _);
+                }
+
+                let mut total = 0;
+                while total < buf.len() {
+                    if *wr_cluster_off == bytes_per_cluster as _ {
+                        let next_cluster = fat::next_cluster(*wr_cluster);
+                        *wr_cluster = if next_cluster == END_OF_CLUSTER_CHAIN {
+                            fat::extend_cluster(*wr_cluster, num_cluster(buf.len() - total))
+                        } else {
+                            next_cluster
+                        };
+                        *wr_cluster_off = 0;
+                    }
+
+                    let sec = fat::get_sector_by_cluster(*wr_cluster, bytes_per_cluster);
+                    let n = cmp::min(buf.len() - total, bytes_per_cluster - *wr_cluster_off);
+                    sec[*wr_cluster_off..*wr_cluster_off + n]
+                        .copy_from_slice(&buf[total..total + n]);
+
+                    total += n;
+                    *wr_cluster_off += n;
+                }
+
+                *wr_off += buf.len();
+                fat_entry.file_size = *wr_off as _;
+                Ok(total)
             }
             InnerFileDescriptor::Terminal { ref mut term, .. } => {
                 term.print(buf);
@@ -124,17 +168,22 @@ impl FileDescriptor {
     }
 }
 
-#[derive(Clone)]
 enum InnerFileDescriptor {
     Fat {
         /// ファイルディスクリプタが指すファイルへの参照。
-        fat_entry: &'static DirectoryEntry,
-        /// ファイル先頭からの読み込みオフセット。
+        fat_entry: &'static mut DirectoryEntry,
+        /// 読み込みのファイル先頭からの読み込みオフセット。
         rd_off: usize,
-        /// `rd_off` が指す位置に対応するクラスタの番号。
+        /// 読み込みの`rd_off` が指す位置に対応するクラスタの番号。
         rd_cluster: u64,
-        /// クラスタ先頭からのオフセット。
+        /// 読み込みのクラスタ先頭からのオフセット。
         rd_cluster_off: usize,
+        /// 書き込みのファイル先頭からのオフセット
+        wr_off: usize,
+        /// 書き込みのクラスタ番号
+        wr_cluster: u64,
+        /// 書き込みのクラスタ先頭からのオフセット
+        wr_cluster_off: usize,
     },
     Terminal {
         task: Arc<Task>,

@@ -3,6 +3,7 @@ use core::{cmp, ffi::c_void, mem, ptr, slice, str};
 use alloc::vec::Vec;
 
 use crate::{
+    bitfield::BitField as _,
     error::{Code, Result},
     make_error,
     util::OnceStatic,
@@ -122,6 +123,24 @@ pub fn create_file(path: &str) -> Result<&'static mut DirectoryEntry> {
     Ok(dir)
 }
 
+pub fn allocate_cluster_chain(n: usize) -> Result<u64> {
+    let fat = get_fat();
+    let first_cluster = 'l: {
+        for (clus, clus_fat) in fat.iter_mut().skip(2).enumerate() {
+            if *clus_fat == 0 {
+                *clus_fat = END_OF_CLUSTER_CHAIN as _;
+                break 'l clus as u64;
+            }
+        }
+        return Err(make_error!(Code::NoEnoughMemory));
+    };
+
+    if n > 1 {
+        extend_cluster(first_cluster, n - 1);
+    }
+    Ok(first_cluster)
+}
+
 fn allocate_entry(mut dir_cluster: u64) -> &'static mut DirectoryEntry {
     loop {
         let dir = get_sector_by_cluster::<DirectoryEntry>(
@@ -153,7 +172,7 @@ fn allocate_entry(mut dir_cluster: u64) -> &'static mut DirectoryEntry {
     unsafe { mem::transmute(dir as *const _ as usize) }
 }
 
-fn extend_cluster(eoc_cluster: u64, n: usize) -> u64 {
+pub fn extend_cluster(eoc_cluster: u64, n: usize) -> u64 {
     let mut eoc_cluster = eoc_cluster as usize;
     let fat = get_fat();
     while !is_end_of_cluster_chain(fat[eoc_cluster]) {
@@ -391,6 +410,11 @@ pub struct DirectoryEntry {
 impl DirectoryEntry {
     pub fn first_cluster(&self) -> u32 {
         (self.fst_clus_hl as u32) << 16 | self.fst_clus_lo as u32
+    }
+
+    pub fn set_first_cluster(&mut self, clus: u32) {
+        self.fst_clus_lo = clus as _;
+        self.fst_clus_hl = clus.get_bits(16..) as _;
     }
 
     fn name_is_equal(&self, name: &str) -> bool {
