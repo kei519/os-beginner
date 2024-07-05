@@ -1,4 +1,4 @@
-use core::{cmp, ffi::c_void, mem, ptr, str};
+use core::{cmp, ffi::c_void, mem, ptr, slice, str};
 
 use alloc::vec::Vec;
 
@@ -16,8 +16,8 @@ pub fn init(volume_image: *mut c_void) {
     BYTES_PER_CLUSTER.init(image.byts_per_sec() as u64 * image.sec_per_clus() as u64);
 }
 
-pub fn get_sector_by_cluster<T>(cluster: u64, len: usize) -> &'static [T] {
-    unsafe { &*ptr::slice_from_raw_parts(get_cluster_addr(cluster) as *const T, len) }
+pub fn get_sector_by_cluster<T>(cluster: u64, len: usize) -> &'static mut [T] {
+    unsafe { slice::from_raw_parts_mut(get_cluster_addr(cluster) as *mut T, len) }
 }
 
 pub fn read_name(entry: &DirectoryEntry) -> (&[u8], &[u8]) {
@@ -45,7 +45,10 @@ pub fn read_name(entry: &DirectoryEntry) -> (&[u8], &[u8]) {
 ///
 /// ファイルもしくはディレクトリが見つかった場合、それらを [DirectoryEntry] への参照として返す。
 /// また `/` がそれらの直後にあるかどうかも返す。
-pub fn find_file(path: &str, directory_cluster: u64) -> (Option<&'static DirectoryEntry>, bool) {
+pub fn find_file(
+    path: &str,
+    directory_cluster: u64,
+) -> (Option<&'static mut DirectoryEntry>, bool) {
     let (rel_path, mut directory_cluster) = if path.starts_with('/') {
         // Safety: 1バイト文字の '/' が先頭で、元々正当な文字列だから大丈夫
         let path = unsafe { str::from_utf8_unchecked(&path.as_bytes()[1..]) };
