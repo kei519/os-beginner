@@ -31,8 +31,7 @@ pub fn get_sector_by_cluster<T>(cluster: u64, len: usize) -> &'static mut [T] {
 }
 
 pub fn read_name(entry: &DirectoryEntry) -> (&[u8], &[u8]) {
-    let base_len = entry
-        .name
+    let base_len = entry.name[..8]
         .iter()
         .enumerate()
         .rev()
