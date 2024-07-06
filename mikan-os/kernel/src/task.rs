@@ -15,6 +15,7 @@ use crate::{
     message::Message,
     segment::{KERNEL_CS, KERNEL_SS},
     sync::Mutex,
+    terminal::DEFAULT_APP_STACK_SIZE,
     timer::{Timer, TASK_TIMER_PERIOD, TASK_TIMER_VALUE, TIMER_MANAGER},
 };
 
@@ -186,6 +187,7 @@ pub struct Task<const STACK_SIZE: usize = 4096> {
     dpaging_begin: AtomicU64,
     /// デマンドページングのアドレス範囲の終点。
     dpaging_end: AtomicU64,
+    app_stack_size: AtomicU64,
 }
 
 impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
@@ -214,6 +216,7 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
             files: Mutex::new(HashMap::new()),
             dpaging_begin: AtomicU64::new(0),
             dpaging_end: AtomicU64::new(0),
+            app_stack_size: AtomicU64::new(DEFAULT_APP_STACK_SIZE),
         }
     }
 
@@ -292,6 +295,14 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
 
     pub fn set_dpaging_end(&self, value: u64) {
         self.dpaging_end.store(value, Ordering::Relaxed);
+    }
+
+    pub fn app_stack_size(&self) -> u64 {
+        self.app_stack_size.load(Ordering::Relaxed)
+    }
+
+    pub fn set_app_stack_size(&self, value: u64) {
+        self.app_stack_size.store(value, Ordering::Relaxed);
     }
 
     fn set_level(&self, level: i32) -> &Self {

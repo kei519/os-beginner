@@ -33,6 +33,9 @@ use crate::{
     window::Window,
 };
 
+pub const APP_STACK_ADDR: u64 = 0xffff_ffff_ffff_e000;
+pub const DEFAULT_APP_STACK_SIZE: u64 = 8 << 20;
+
 /// [Terminal] のアドレスを保持し、参照を得るための構造体。
 #[derive(Debug, Clone, Copy)]
 pub struct TerminalRef(usize);
@@ -509,6 +512,26 @@ impl Terminal {
                     asmfunc::sti();
                 }
             }
+            "ulimit" => {
+                if args.len() >= 3 {
+                    if "-s" == args[1] {
+                        if let Ok(size) = args[2].parse::<u64>() {
+                            asmfunc::cli();
+                            let task = task::current_task();
+                            asmfunc::sti();
+                            task.set_app_stack_size(size << 10);
+                        } else {
+                            self.print(b"Usage: ulimit -s <size (KiB)>\n");
+                        }
+                    }
+                } else {
+                    asmfunc::cli();
+                    let task = task::current_task();
+                    asmfunc::sti();
+                    let s = format!("stack_size: {} KiB\n", task.app_stack_size() >> 10);
+                    self.print(s.as_bytes());
+                }
+            }
             command => match fat::find_file(command, 0) {
                 (Some(file_entry), post_slash) => {
                     if file_entry.attr != fat::Attribute::Directory as _ && post_slash {
@@ -599,9 +622,9 @@ impl Terminal {
         task.set_dpaging_end(elf_next_page);
 
         let stack_frame_addr = LinearAddress4Level {
-            addr: 0xffff_ffff_ffff_d000,
+            addr: APP_STACK_ADDR,
         };
-        paging::setup_page_maps(stack_frame_addr, 2)?;
+        paging::setup_page_maps(stack_frame_addr, 1)?;
 
         let args_frame_addr = LinearAddress4Level {
             addr: 0xffff_ffff_ffff_f000,

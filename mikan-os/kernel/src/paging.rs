@@ -14,6 +14,7 @@ use crate::{
     memory_manager::{FrameId, BYTES_PER_FRAME, MEMORY_MANAGER},
     sync::Mutex,
     task::{self, Task, TaskContext},
+    terminal::APP_STACK_ADDR,
 };
 
 pub const PAGE_DIRECTORY_COUNT: usize = 64;
@@ -42,10 +43,13 @@ pub fn handle_page_fault(error_code: u64, causal_addr: u64) -> Result<()> {
     if error_code.get_bit(0) {
         return Err(make_error!(Code::AlreadyAllocated));
     }
-    if !(task.dpaging_begin()..task.dpaging_end()).contains(&causal_addr) {
-        return Err(make_error!(Code::IndexOutOfRange));
+    if (task.dpaging_begin()..task.dpaging_end()).contains(&causal_addr)
+        || (APP_STACK_ADDR - task.app_stack_size()..APP_STACK_ADDR).contains(&causal_addr)
+    {
+        setup_page_maps(LinearAddress4Level { addr: causal_addr }, 1)
+    } else {
+        Err(make_error!(Code::IndexOutOfRange))
     }
-    setup_page_maps(LinearAddress4Level { addr: causal_addr }, 1)
 }
 
 pub fn new_page_map() -> Result<&'static mut [PageMapEntry]> {
