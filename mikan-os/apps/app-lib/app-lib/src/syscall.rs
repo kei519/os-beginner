@@ -75,6 +75,7 @@ syscall!(create_timer, 0x8000_000b, mode, timer_value, timeout_ms);
 syscall!(open_file, 0x8000_000c, path, flags);
 syscall!(read_file, 0x8000_000d, fd, buf, count);
 syscall!(demand_pages, 0x8000_000e, nam_pages);
+syscall!(map_file, 0x8000_000f, fd, pfile_size);
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]

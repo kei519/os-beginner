@@ -1,12 +1,16 @@
 use core::{
     fmt::Display,
     ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not},
+    slice,
 };
 
 #[cfg(feature = "alloc")]
 use alloc::{string::String, vec::Vec};
 
-use crate::{errno::ErrNo, syscall};
+use crate::{
+    errno::ErrNo,
+    syscall::{self, SysResult},
+};
 
 type Result<T> = core::result::Result<T, ErrNo>;
 
@@ -78,6 +82,21 @@ pub trait Write {
 }
 
 pub struct File(i32);
+
+impl File {
+    /// 現在開いているファイルをメモリにマップし、そのメモリスライスへの参照を返す。
+    pub fn memmap(&mut self) -> Result<&mut [u8]> {
+        let mut file_size = 0;
+        unsafe {
+            let res = syscall::__map_file(self.0 as _, (&mut file_size) as *mut _ as _);
+            let ptr = match res {
+                SysResult { value, error: 0 } => value as *mut u8,
+                SysResult { error, .. } => return Err(error.into()),
+            };
+            Ok(slice::from_raw_parts_mut(ptr, file_size))
+        }
+    }
+}
 
 impl Read for File {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
