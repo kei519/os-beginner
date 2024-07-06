@@ -1,5 +1,5 @@
 use core::{
-    cmp,
+    cmp, mem,
     ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not},
 };
 
@@ -163,6 +163,46 @@ impl FileDescriptor {
             InnerFileDescriptor::Terminal { ref mut term, .. } => {
                 term.print(buf);
                 Ok(buf.len())
+            }
+        }
+    }
+
+    pub fn size(&self) -> usize {
+        match self.inner {
+            InnerFileDescriptor::Fat { ref fat_entry, .. } => fat_entry.file_size as _,
+            InnerFileDescriptor::Terminal { .. } => 0,
+        }
+    }
+
+    pub fn load(&self, buf: &mut [u8], mut offset: usize) -> usize {
+        match self.inner {
+            InnerFileDescriptor::Terminal { .. } => 0,
+            InnerFileDescriptor::Fat { ref fat_entry, .. } => {
+                // ここで作った fat_entry は 'static ライフタイムを要求されるが、
+                // 実際はこのスコープ内で落ちる変数に渡すだけなので問題ない
+                // ただ排他参照にするのが大丈夫かは怪しい。
+                // ただ他の方法が思いつかないので一旦これで
+                let fat_entry: &mut DirectoryEntry = unsafe { mem::transmute_copy(fat_entry) };
+                let rd_off = offset;
+
+                let mut rd_cluster = fat_entry.first_cluster() as _;
+                let bytes_per_cluster = BYTES_PER_CLUSTER.get() as _;
+                while offset >= bytes_per_cluster {
+                    offset -= bytes_per_cluster;
+                    rd_cluster = fat::next_cluster(rd_cluster);
+                }
+
+                let inner = InnerFileDescriptor::Fat {
+                    fat_entry,
+                    rd_off,
+                    rd_cluster,
+                    rd_cluster_off: offset,
+                    wr_off: 0,
+                    wr_cluster: 0,
+                    wr_cluster_off: 0,
+                };
+                let mut fd = Self { inner };
+                fd.read(buf)
             }
         }
     }

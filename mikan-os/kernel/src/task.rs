@@ -15,7 +15,7 @@ use crate::{
     message::Message,
     segment::{KERNEL_CS, KERNEL_SS},
     sync::Mutex,
-    terminal::DEFAULT_APP_STACK_SIZE,
+    terminal::{DEFAULT_APP_STACK_SIZE, FILE_MAP_END},
     timer::{Timer, TASK_TIMER_PERIOD, TASK_TIMER_VALUE, TIMER_MANAGER},
 };
 
@@ -188,6 +188,8 @@ pub struct Task<const STACK_SIZE: usize = 4096> {
     /// デマンドページングのアドレス範囲の終点。
     dpaging_end: AtomicU64,
     app_stack_size: AtomicU64,
+    file_map_end: AtomicU64,
+    file_maps: Mutex<Vec<FileMapping>>,
 }
 
 impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
@@ -217,6 +219,8 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
             dpaging_begin: AtomicU64::new(0),
             dpaging_end: AtomicU64::new(0),
             app_stack_size: AtomicU64::new(DEFAULT_APP_STACK_SIZE),
+            file_map_end: AtomicU64::new(FILE_MAP_END),
+            file_maps: Mutex::new(vec![]),
         }
     }
 
@@ -303,6 +307,18 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
 
     pub fn set_app_stack_size(&self, value: u64) {
         self.app_stack_size.store(value, Ordering::Relaxed);
+    }
+
+    pub fn file_map_end(&self) -> u64 {
+        self.file_map_end.load(Ordering::Relaxed)
+    }
+
+    pub fn set_file_map_end(&self, value: u64) {
+        self.file_map_end.store(value, Ordering::Relaxed);
+    }
+
+    pub fn file_maps(&self) -> &Mutex<Vec<FileMapping>> {
+        &self.file_maps
     }
 
     fn set_level(&self, level: i32) -> &Self {
@@ -549,4 +565,11 @@ fn task_idle(_: u64, _: i64, _: u32) {
     loop {
         unsafe { asm!("hlt") };
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct FileMapping {
+    pub fd: i32,
+    pub vaddr_begin: u64,
+    pub vaddr_end: u64,
 }

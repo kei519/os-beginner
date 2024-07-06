@@ -36,6 +36,8 @@ use crate::{
 pub const APP_STACK_ADDR: u64 = 0xffff_ffff_ffff_e000;
 pub const DEFAULT_APP_STACK_SIZE: u64 = 8 << 20;
 
+pub const FILE_MAP_END: u64 = 0xffff_c000_0000_0000;
+
 /// [Terminal] のアドレスを保持し、参照を得るための構造体。
 #[derive(Debug, Clone, Copy)]
 pub struct TerminalRef(usize);
@@ -662,6 +664,8 @@ impl Terminal {
         {
             let mut files = task.files().lock_wait();
             files.clear();
+            let mut file_maps = task.file_maps().lock_wait();
+            file_maps.clear();
         }
 
         let addr_first = get_first_load_address(elf_header);

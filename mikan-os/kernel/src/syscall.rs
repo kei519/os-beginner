@@ -20,7 +20,7 @@ use crate::{
     message::MessageType,
     msr::{IA32_EFER, IA32_FMASK, IA32_LSTAR, IA32_STAR},
     sync::SharedLock,
-    task::{self, Task},
+    task::{self, FileMapping, Task},
     timer::{Timer, TIMER_FREQ, TIMER_MANAGER},
     window::Window,
 };
@@ -28,7 +28,7 @@ use crate::{
 pub type SyscallFuncType = extern "sysv64" fn(u64, u64, u64, u64, u64, u64) -> Result;
 
 #[no_mangle]
-pub static SYSCALL_TABLE: [SyscallFuncType; 15] = [
+pub static SYSCALL_TABLE: [SyscallFuncType; 16] = [
     log_string,
     put_string,
     exit,
@@ -44,6 +44,7 @@ pub static SYSCALL_TABLE: [SyscallFuncType; 15] = [
     open_file,
     read_file,
     demand_pages,
+    map_file,
 ];
 
 pub fn init() {
@@ -516,6 +517,37 @@ extern "sysv64" fn demand_pages(num_pages: u64, _: u64, _: u64, _: u64, _: u64, 
     let dp_end = task.dpaging_end();
     task.set_dpaging_end(dp_end + num_pages * BYTES_PER_FRAME as u64);
     Result::value(dp_end)
+}
+
+extern "sysv64" fn map_file(fd: u64, pfile_size: u64, _: u64, _: u64, _: u64, _: u64) -> Result {
+    let fd = fd as i32;
+    if fd < 0 {
+        return ErrNo::EBADF.into();
+    }
+
+    let file_size: &mut usize = unsafe { &mut *(pfile_size as *mut usize) };
+
+    asmfunc::cli();
+    let task = task::current_task();
+    asmfunc::sti();
+
+    let mut files = task.files().lock_wait();
+    let Some(fild) = files.get_mut(&fd) else {
+        return ErrNo::EBADF.into();
+    };
+
+    *file_size = fild.size();
+
+    let vaddr_end = task.file_map_end();
+    let vaddr_begin = (vaddr_end - *file_size as u64) & !0xfff;
+    task.set_file_map_end(vaddr_begin);
+    let mut file_maps = task.file_maps().lock_wait();
+    file_maps.push(FileMapping {
+        fd,
+        vaddr_begin,
+        vaddr_end,
+    });
+    Result::value(vaddr_begin)
 }
 
 fn allocate_fd(task: &Task) -> i32 {

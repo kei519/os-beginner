@@ -10,10 +10,11 @@ use crate::{
     asmfunc::{self, set_cr3},
     bitfield::BitField as _,
     error::{Code, Result},
+    file::FileDescriptor,
     make_error,
     memory_manager::{FrameId, BYTES_PER_FRAME, MEMORY_MANAGER},
     sync::Mutex,
-    task::{self, Task, TaskContext},
+    task::{self, FileMapping, Task, TaskContext},
     terminal::APP_STACK_ADDR,
 };
 
@@ -46,7 +47,15 @@ pub fn handle_page_fault(error_code: u64, causal_addr: u64) -> Result<()> {
     if (task.dpaging_begin()..task.dpaging_end()).contains(&causal_addr)
         || (APP_STACK_ADDR - task.app_stack_size()..APP_STACK_ADDR).contains(&causal_addr)
     {
-        setup_page_maps(LinearAddress4Level { addr: causal_addr }, 1)
+        return setup_page_maps(LinearAddress4Level { addr: causal_addr }, 1);
+    }
+    let file_maps = task.file_maps().lock_wait();
+    if let Some(map) = find_file_mapping(&file_maps, causal_addr) {
+        prepare_page_cache(
+            task.files().lock_wait().get(&map.fd).unwrap(),
+            map,
+            causal_addr,
+        )
     } else {
         Err(make_error!(Code::IndexOutOfRange))
     }
@@ -427,4 +436,24 @@ impl LinearAddress4Level {
             _ => {}
         }
     }
+}
+
+/// `fmaps` の中から `causal_addr` に対応している [FileMapping] を探す。
+fn find_file_mapping(fmaps: &[FileMapping], causal_addr: u64) -> Option<&FileMapping> {
+    fmaps
+        .iter()
+        .find(|m| (m.vaddr_begin..m.vaddr_end).contains(&causal_addr))
+}
+
+/// `map` と `causal_addr` に従って1ページ分のファイルの内容を `fd` からメモリにキャッシュする。
+fn prepare_page_cache(fd: &FileDescriptor, map: &FileMapping, causal_addr: u64) -> Result<()> {
+    let mut page_vaddr = LinearAddress4Level { addr: causal_addr };
+    page_vaddr.set_offset(0);
+    setup_page_maps(page_vaddr, 1)?;
+
+    let file_offset = page_vaddr.addr - map.vaddr_begin;
+    let page_cache =
+        unsafe { slice::from_raw_parts_mut(page_vaddr.addr as *mut u8, BYTES_PER_FRAME) };
+    fd.load(page_cache, file_offset as _);
+    Ok(())
 }
