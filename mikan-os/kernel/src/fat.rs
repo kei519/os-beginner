@@ -1,4 +1,9 @@
-use core::{cmp, ffi::c_void, mem, ptr, slice, str};
+use core::{
+    cmp,
+    ffi::c_void,
+    hash::{Hash, Hasher},
+    mem, ptr, slice, str,
+};
 
 use alloc::vec::Vec;
 
@@ -440,6 +445,21 @@ impl DirectoryEntry {
         let name = base.chain(ext);
 
         self.name.into_iter().eq(name)
+    }
+}
+
+impl PartialEq<&DirectoryEntry> for &DirectoryEntry {
+    fn eq(&self, other: &&DirectoryEntry) -> bool {
+        ptr::eq(*self, *other)
+    }
+}
+
+impl Eq for &DirectoryEntry {}
+
+impl Hash for &DirectoryEntry {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let ptr = *self as *const DirectoryEntry;
+        ptr.hash(state);
     }
 }
 

@@ -15,6 +15,7 @@ use core::{
 
 use crate::{
     asmfunc,
+    collections::HashMap,
     elf::{Elf64Ehdr, Elf64Phdr, ExecuteType, ProgramType},
     error::{Code, Result},
     fat::{self, DirectoryEntry, BYTES_PER_CLUSTER},
@@ -25,18 +26,20 @@ use crate::{
     make_error,
     memory_manager::{BYTES_PER_FRAME, MEMORY_MANAGER},
     message::{Message, MessageType},
-    paging::{self, LinearAddress4Level},
+    paging::{self, LinearAddress4Level, PageMapEntry},
     pci,
-    sync::SharedLock,
-    task,
+    sync::{Mutex, SharedLock},
+    task::{self, Task},
     timer::{Timer, TIMER_FREQ, TIMER_MANAGER},
     window::Window,
 };
-
 pub const APP_STACK_ADDR: u64 = 0xffff_ffff_ffff_e000;
 pub const DEFAULT_APP_STACK_SIZE: u64 = 8 << 20;
 
 pub const FILE_MAP_END: u64 = 0xffff_c000_0000_0000;
+
+static APP_LOADS: Mutex<HashMap<&'static DirectoryEntry, AppLoadInfoTemplate>> =
+    Mutex::new(HashMap::new());
 
 /// [Terminal] のアドレスを保持し、参照を得るための構造体。
 #[derive(Debug, Clone, Copy)]
@@ -614,36 +617,33 @@ impl Terminal {
         draw_area
     }
 
-    fn execute_file(&mut self, file_entry: &DirectoryEntry, args: Vec<&str>) -> Result<i32> {
-        let file_buf = fat::load_file(file_entry);
-
-        let elf_header: &Elf64Ehdr = unsafe { &*(file_buf.as_ptr() as *const _) };
-        if &elf_header.ident[..4] != b"\x7fELF" {
-            return Err(make_error!(Code::InvalidFile));
-        }
-
+    fn execute_file(
+        &mut self,
+        file_entry: &'static DirectoryEntry,
+        args: Vec<&str>,
+    ) -> Result<i32> {
         asmfunc::cli();
         let task = task::current_task();
         asmfunc::sti();
 
         paging::setup_pml4(&task)?;
 
-        let elf_last_addr = load_elf(elf_header)?;
+        let app_load = load_app(file_entry, &task)?;
 
         // デマンドページを ELF バイナリの最後から割り当てる
-        let elf_next_page = (elf_last_addr + 4095) & !0xfff;
+        let elf_next_page = (app_load.vaddr_end + 4095) & !0xfff;
         task.set_dpaging_begin(elf_next_page);
         task.set_dpaging_end(elf_next_page);
 
         let stack_frame_addr = LinearAddress4Level {
             addr: APP_STACK_ADDR,
         };
-        paging::setup_page_maps(stack_frame_addr, 1)?;
+        paging::setup_page_maps(stack_frame_addr, 1, true)?;
 
         let args_frame_addr = LinearAddress4Level {
             addr: 0xffff_ffff_ffff_f000,
         };
-        paging::setup_page_maps(args_frame_addr, 1)?;
+        paging::setup_page_maps(args_frame_addr, 1, true)?;
         let arg_buf =
             unsafe { slice::from_raw_parts_mut(args_frame_addr.addr as *mut u8, BYTES_PER_FRAME) };
         let argc = make_arg_vector(args, arg_buf)?;
@@ -667,7 +667,7 @@ impl Terminal {
             argc as _,
             args_frame_addr.addr as _,
             3 << 3 | 3,
-            elf_header.entry as _,
+            app_load.entry as _,
             stack_frame_addr.addr + BYTES_PER_FRAME as u64 * 2 - 8,
             task.os_stack_ptr(),
         );
@@ -680,9 +680,8 @@ impl Terminal {
             file_maps.clear();
         }
 
-        let addr_first = get_first_load_address(elf_header);
         paging::clean_page_maps(LinearAddress4Level {
-            addr: addr_first as _,
+            addr: 0xffff_8000_0000_0000,
         });
 
         paging::free_pml4(&task);
@@ -726,6 +725,32 @@ impl Terminal {
     }
 }
 
+/// アプリの情報と、コピーオンライトの雛形になっているページディレクトリの情報を保持する。
+#[derive(Debug, Clone)]
+struct AppLoadInfoTemplate {
+    entry: u64,
+    vaddr_end: u64,
+    pml4: &'static [PageMapEntry],
+}
+
+/// アプリの情報（ページディレクトリを含む）を保持する。
+#[derive(Debug)]
+struct AppLoadInfo {
+    entry: u64,
+    vaddr_end: u64,
+    pml4: &'static mut [PageMapEntry],
+}
+
+impl AppLoadInfo {
+    fn new(template: &AppLoadInfoTemplate, pml4: &'static mut [PageMapEntry]) -> Self {
+        Self {
+            entry: template.entry,
+            vaddr_end: template.vaddr_end,
+            pml4,
+        }
+    }
+}
+
 /// ロードした ELF バイナリの最終アドレスを返す。
 fn load_elf(ehdr: &Elf64Ehdr) -> Result<u64> {
     if ehdr.r#type != ExecuteType::Exec {
@@ -738,6 +763,39 @@ fn load_elf(ehdr: &Elf64Ehdr) -> Result<u64> {
     }
 
     copy_load_segments(ehdr)
+}
+
+/// アプリがロードされていなければ読み取り専用でロードし、
+/// 既にどこかにロードされている場合は PT（ページテーブル）ごとその浅いコピーを返す。
+fn load_app(file_entry: &'static DirectoryEntry, task: &Arc<Task>) -> Result<AppLoadInfo> {
+    let temp_pml4 = paging::setup_pml4(task)?;
+
+    let mut app_loads = APP_LOADS.lock_wait();
+    if let Some(app_load) = app_loads.get(&file_entry).cloned() {
+        paging::copy_page_maps(temp_pml4, app_load.pml4, 4, 256)?;
+        return Ok(AppLoadInfo::new(&app_load, temp_pml4));
+    }
+
+    let file_buf = fat::load_file(file_entry);
+
+    let elf_header: &Elf64Ehdr = unsafe { &*(file_buf.as_ptr() as *const _) };
+    if &elf_header.ident[..4] != b"\x7fELF" {
+        return Err(make_error!(Code::InvalidFile));
+    }
+
+    let last_addr = load_elf(elf_header)?;
+
+    let app_load_temp = AppLoadInfoTemplate {
+        entry: elf_header.entry as _,
+        vaddr_end: last_addr,
+        pml4: &*temp_pml4,
+    };
+
+    app_loads.insert(file_entry, app_load_temp.clone());
+
+    let app_load = AppLoadInfo::new(&app_load_temp, paging::setup_pml4(task)?);
+    paging::copy_page_maps(app_load.pml4, app_load_temp.pml4, 4, 256)?;
+    Ok(app_load)
 }
 
 fn get_first_load_address(ehdr: &Elf64Ehdr) -> usize {
@@ -778,7 +836,7 @@ fn copy_load_segments(ehdr: &Elf64Ehdr) -> Result<u64> {
         // 4 KB アラインの先頭から数える必要がある
         let num_4kpages = ((phdr.vaddr & 0xfff) + phdr.memsz as usize + 4095) / 4096;
 
-        paging::setup_page_maps(dest_addr, num_4kpages)?;
+        paging::setup_page_maps(dest_addr, num_4kpages, false)?;
 
         unsafe {
             let src = (ehdr as *const _ as *const u8).add(phdr.offset as usize);

@@ -40,14 +40,23 @@ pub fn handle_page_fault(error_code: u64, causal_addr: u64) -> Result<()> {
     // 割り込み禁止状態で呼び出させるため、ここでは割り込みを禁止、許可しない
     let task = task::current_task();
 
-    // P=1 なのでページレベルの権限違反でエラーが起きた
-    if error_code.get_bit(0) {
+    let present = error_code.get_bit(0);
+    let rw = error_code.get_bit(1);
+    let user = error_code.get_bit(2);
+
+    // ユーザー用ページに対する書き込みなら、該当ページを書き込み可能でコピーする
+    if present && rw && user {
+        return copy_one_page(causal_addr);
+    }
+    // それ以外で既に存在している場合は権限違反なので強制終了
+    else if present {
         return Err(make_error!(Code::AlreadyAllocated));
     }
+
     if (task.dpaging_begin()..task.dpaging_end()).contains(&causal_addr)
         || (APP_STACK_ADDR - task.app_stack_size()..APP_STACK_ADDR).contains(&causal_addr)
     {
-        return setup_page_maps(LinearAddress4Level { addr: causal_addr }, 1);
+        return setup_page_maps(LinearAddress4Level { addr: causal_addr }, 1, true);
     }
     let file_maps = task.file_maps().lock_wait();
     if let Some(map) = find_file_mapping(&file_maps, causal_addr) {
@@ -93,18 +102,21 @@ pub fn setup_page_map(
     page_map_level: i32,
     mut addr: LinearAddress4Level,
     mut num_4kpages: usize,
+    writable: bool,
 ) -> Result<usize> {
     while num_4kpages > 0 {
         let entry_index = addr.part(page_map_level) as usize;
 
         let child_map = set_new_page_map_if_not_present(&mut page_map[entry_index])?;
-        page_map[entry_index].set_writable(true);
         page_map[entry_index].set_user(true);
 
         if page_map_level == 1 {
+            page_map[entry_index].set_writable(writable);
             num_4kpages -= 1;
         } else {
-            num_4kpages = setup_page_map(child_map, page_map_level - 1, addr, num_4kpages)?;
+            page_map[entry_index].set_writable(true);
+            num_4kpages =
+                setup_page_map(child_map, page_map_level - 1, addr, num_4kpages, writable)?;
         }
 
         if entry_index == 511 {
@@ -120,10 +132,45 @@ pub fn setup_page_map(
     Ok(num_4kpages)
 }
 
-pub fn setup_page_maps(addr: LinearAddress4Level, num_4kpages: usize) -> Result<()> {
+pub fn setup_page_maps(
+    addr: LinearAddress4Level,
+    num_4kpages: usize,
+    writable: bool,
+) -> Result<()> {
     let pml4_table =
         unsafe { &mut *slice::from_raw_parts_mut(asmfunc::get_cr3() as *mut PageMapEntry, 512) };
-    setup_page_map(pml4_table, 4, addr, num_4kpages)?;
+    setup_page_map(pml4_table, 4, addr, num_4kpages, writable)?;
+    Ok(())
+}
+
+/// PT を `part` 階層ページマップの `src` の `start` 番目から、同じ階層の `dest` にコピーする。
+pub fn copy_page_maps(
+    dest: &mut [PageMapEntry],
+    src: &[PageMapEntry],
+    part: i32,
+    start: usize,
+) -> Result<()> {
+    if part == 1 {
+        for (src, dest) in src[start..].iter().zip(dest[start..].iter_mut()) {
+            if !src.persent() {
+                continue;
+            }
+            dest.data = src.data;
+            // コピーオンライトのためにフラグを下ろしておく
+            dest.set_writable(false);
+        }
+        return Ok(());
+    }
+
+    for (src, dest) in src[start..].iter().zip(dest[start..].iter_mut()) {
+        if !src.persent() {
+            continue;
+        }
+        let table = new_page_map()?;
+        dest.data = src.data;
+        dest.set_pointer(&table[0]);
+        copy_page_maps(table, src.pointer(), part - 1, 0)?;
+    }
     Ok(())
 }
 
@@ -148,8 +195,11 @@ pub fn clean_page_map(page_maps: &mut [PageMapEntry], page_map_level: i32) {
             clean_page_map(entry.mut_pointer(), page_map_level - 1);
         }
 
-        let entry_ptr = entry.pointer().as_ptr();
-        MEMORY_MANAGER.free(FrameId::from_addr(entry_ptr as _), 1);
+        // 読み込みのみの場合はコピーオンライトの雛形なのでメモリ割り当ては解除しない
+        if entry.writable() {
+            let entry_ptr = entry.pointer().as_ptr();
+            MEMORY_MANAGER.free(FrameId::from_addr(entry_ptr as _), 1);
+        }
         entry.data = 0;
     }
 }
@@ -250,6 +300,11 @@ pub fn setup_identity_page_table() {
     }
 
     set_cr3(pml4_table.as_ptr() as u64);
+
+    // WP（Write Protect）ビットをオフにする
+    let mut cr0 = asmfunc::get_cr0();
+    cr0.set_bit(16, false);
+    asmfunc::set_cr0(cr0);
 }
 
 pub fn reset_cr3() {
@@ -449,11 +504,48 @@ fn find_file_mapping(fmaps: &[FileMapping], causal_addr: u64) -> Option<&FileMap
 fn prepare_page_cache(fd: &FileDescriptor, map: &FileMapping, causal_addr: u64) -> Result<()> {
     let mut page_vaddr = LinearAddress4Level { addr: causal_addr };
     page_vaddr.set_offset(0);
-    setup_page_maps(page_vaddr, 1)?;
+    setup_page_maps(page_vaddr, 1, true)?;
 
     let file_offset = page_vaddr.addr - map.vaddr_begin;
     let page_cache =
         unsafe { slice::from_raw_parts_mut(page_vaddr.addr as *mut u8, BYTES_PER_FRAME) };
     fd.load(page_cache, file_offset as _);
     Ok(())
+}
+
+/// `causal_addr` が含まれるページを新たなページに書き込み可能でコピーする。
+fn copy_one_page(causal_addr: u64) -> Result<()> {
+    // ここに `causal_addr` が含まれるページを全部コピーする
+    let p = new_page_map()?;
+    let aligned_addr = causal_addr & !0xfff;
+    unsafe {
+        ptr::copy_nonoverlapping(
+            aligned_addr as *const u8,
+            p.as_mut_ptr() as *mut _,
+            BYTES_PER_FRAME,
+        )
+    };
+    // 現在のページディレクトリに `p` を登録する
+    let table = unsafe { slice::from_raw_parts_mut(asmfunc::get_cr3() as *mut _, BYTES_PER_FRAME) };
+    set_page_content(table, 4, LinearAddress4Level { addr: causal_addr }, &p[0])
+}
+
+/// `part` 番目のページディレクトリ `table` に対して、
+/// `addr.page` が `content` が先頭のページを指すようにする。
+fn set_page_content(
+    table: &mut [PageMapEntry],
+    part: i32,
+    addr: LinearAddress4Level,
+    content: &PageMapEntry,
+) -> Result<()> {
+    if part == 1 {
+        let i = addr.part(part) as usize;
+        table[i].set_pointer(content);
+        table[i].set_writable(true);
+        asmfunc::invalidate_tlb(addr.addr);
+        return Ok(());
+    }
+
+    let i = addr.part(part) as usize;
+    set_page_content(table[i].mut_pointer(), part - 1, addr, content)
 }

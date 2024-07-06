@@ -152,6 +152,35 @@ pub fn get_cr2() -> u64 {
     cr2
 }
 
+pub fn get_cr0() -> u64 {
+    let cr0;
+    unsafe {
+        asm!(
+            "mov {}, cr0",
+            out(reg) cr0,
+        )
+    }
+    cr0
+}
+
+pub fn set_cr0(value: u64) {
+    unsafe {
+        asm!(
+            "mov cr0, {}",
+            in(reg) value
+        )
+    };
+}
+
+pub fn invalidate_tlb(addr: u64) {
+    unsafe {
+        asm!(
+            "invlpg [{}]",
+            in(reg) addr,
+        )
+    };
+}
+
 extern "C" {
     fn load_idt_unsafe(limit: u16, offset: u64);
     fn load_gdt_unsafe(limit: u16, offset: u64);
