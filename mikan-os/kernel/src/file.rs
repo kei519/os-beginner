@@ -3,7 +3,7 @@ use core::{
     ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not},
 };
 
-use alloc::sync::Arc;
+use alloc::{string::String, sync::Arc};
 
 use crate::{
     bitfield::BitField,
@@ -97,7 +97,9 @@ impl FileDescriptor {
                         if modifier.get_bit(LCONTROL_BIT) | modifier.get_bit(RCONTROL_BIT) {
                             let mut s = [b'^', 0];
                             s[1] = ascii.to_ascii_uppercase();
-                            term.print(&s);
+                            // Safety: キーボードから入力できる文字と ^ から構成されている
+                            let s = unsafe { core::str::from_utf8_unchecked(&s) };
+                            term.print(s);
                             // D
                             if keycode == 7 {
                                 // EOT
@@ -107,7 +109,9 @@ impl FileDescriptor {
                         }
 
                         buf[0] = ascii;
-                        term.print(&buf[..1]);
+                        // Safety: キーボードから入力できる文字から構成されている
+                        let buf = unsafe { core::str::from_utf8_unchecked(buf) };
+                        term.print(buf);
                         return 1;
                     }
                 }
@@ -161,7 +165,8 @@ impl FileDescriptor {
                 Ok(total)
             }
             InnerFileDescriptor::Terminal { ref mut term, .. } => {
-                term.print(buf);
+                let buf = String::from_utf8_lossy(buf);
+                term.print(&buf);
                 Ok(buf.len())
             }
         }

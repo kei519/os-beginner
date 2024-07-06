@@ -218,7 +218,7 @@ impl Terminal {
             cmd_history_index: -1,
         };
 
-        ret.print(b">");
+        ret.print(">");
         ret
     }
 
@@ -232,7 +232,7 @@ impl Terminal {
     }
 
     /// `linebuf` や `linebuf_index` を変更せずに文字列を表示する。
-    pub fn print(&mut self, s: &[u8]) {
+    pub fn print(&mut self, s: &str) {
         let Some(window) = self.window.clone() else {
             return;
         };
@@ -249,21 +249,31 @@ impl Terminal {
             };
         };
 
-        for &c in s {
-            if c == b'\n' {
+        for c in s.chars() {
+            if c == '\n' {
                 newline(self);
-            } else {
-                font::write_ascii(
+            } else if c.is_ascii() {
+                if self.cursor.x() == COLUMNS as i32 {
+                    newline(self)
+                }
+                font::write_unicode(
                     &mut *window.write(),
                     self.calc_curosr_pos(),
                     c,
                     &PixelColor::new(255, 255, 255),
                 );
-                if self.cursor.x() == COLUMNS as i32 - 1 {
-                    newline(self)
-                } else {
-                    self.cursor += Vector2D::new(1, 0);
+                self.cursor += Vector2D::new(1, 0);
+            } else {
+                if self.cursor.x() >= COLUMNS as i32 - 1 {
+                    newline(self);
                 }
+                font::write_unicode(
+                    &mut *window.write(),
+                    self.calc_curosr_pos(),
+                    c,
+                    &PixelColor::new(255, 255, 255),
+                );
+                self.cursor += Vector2D::new(2, 0);
             }
         }
 
@@ -322,7 +332,7 @@ impl Terminal {
                 };
 
                 self.execute_line(command);
-                self.print(b">");
+                self.print(">");
                 if let Some(ref window) = self.window {
                     draw_area.pos = Vector2D::new(0, 0);
                     draw_area.size = window.read().size();
@@ -409,9 +419,9 @@ impl Terminal {
         match command {
             "echo" => {
                 if let Some(first_arg) = args.get(1) {
-                    self.print(first_arg.as_bytes());
+                    self.print(first_arg);
                 }
-                self.print(b"\n");
+                self.print("\n");
             }
             "clear" => {
                 if let Some(ref window) = self.window {
@@ -437,7 +447,7 @@ impl Terminal {
                         dev.class_code().sub(),
                         dev.class_code().interface(),
                     );
-                    self.print(s.as_bytes());
+                    self.print(&s);
                 }
             }
             "ls" => {
@@ -447,9 +457,9 @@ impl Terminal {
                 };
 
                 let (Some(dir), post_slash) = fat::find_file(first_arg, 0) else {
-                    self.print(b"No such file or directory: ");
-                    self.print(first_arg.as_bytes());
-                    self.print(b"\n");
+                    self.print("No such file or directory: ");
+                    self.print(first_arg);
+                    self.print("\n");
                     return;
                 };
                 if dir.attr == fat::Attribute::Directory as _ {
@@ -469,26 +479,26 @@ impl Terminal {
                         }
                     };
                     if post_slash {
-                        self.print(name.as_bytes());
-                        self.print(b" is not a directory\n");
+                        self.print(&name);
+                        self.print(" is not a directory\n");
                     } else {
-                        self.print(name.as_bytes());
-                        self.print(b"\n");
+                        self.print(&name);
+                        self.print("\n");
                     }
                 }
             }
             "cat" => {
                 let Some(file_path) = args.get(1) else {
-                    self.print(b"Usage: cat <file>\n");
+                    self.print("Usage: cat <file>\n");
                     return;
                 };
                 let (Some(file_entry), post_slash) = fat::find_file(file_path, 0) else {
-                    self.print(format!("no such file: {}\n", file_path).as_bytes());
+                    self.print(&format!("no such file: {}\n", file_path));
                     return;
                 };
                 if file_entry.attr != fat::Attribute::Directory as _ && post_slash {
-                    self.print(file_path.as_bytes());
-                    self.print(b" is not a directory\n");
+                    self.print(file_path);
+                    self.print(" is not a directory\n");
                     return;
                 }
 
@@ -502,8 +512,9 @@ impl Terminal {
                         cluster,
                         cmp::min(bytes_per_cluster as _, remain_bytes as _),
                     );
+                    let s = String::from_utf8_lossy(s);
 
-                    self.print(s);
+                    self.print(&s);
                     remain_bytes -= s.len() as u32;
                     cluster = fat::next_cluster(cluster);
                 }
@@ -526,7 +537,7 @@ impl Terminal {
                             asmfunc::sti();
                             task.set_app_stack_size(size << 10);
                         } else {
-                            self.print(b"Usage: ulimit -s <size (KiB)>\n");
+                            self.print("Usage: ulimit -s <size (KiB)>\n");
                         }
                     }
                 } else {
@@ -534,7 +545,7 @@ impl Terminal {
                     let task = task::current_task();
                     asmfunc::sti();
                     let s = format!("stack_size: {} KiB\n", task.app_stack_size() >> 10);
-                    self.print(s.as_bytes());
+                    self.print(&s);
                 }
             }
             "memstat" => {
@@ -547,26 +558,26 @@ impl Terminal {
                     stat.total_frames,
                     (stat.total_frames * BYTES_PER_FRAME) >> 20,
                 );
-                self.print(s.as_bytes());
+                self.print(&s);
             }
             command => match fat::find_file(command, 0) {
                 (Some(file_entry), post_slash) => {
                     if file_entry.attr != fat::Attribute::Directory as _ && post_slash {
-                        self.print(command.as_bytes());
-                        self.print(b" is not a directory\n");
+                        self.print(command);
+                        self.print(" is not a directory\n");
                         return;
                     }
                     match self.execute_file(file_entry, args) {
-                        Err(e) => self.print(format!("failed to exec file: {}\n", e).as_bytes()),
+                        Err(e) => self.print(&format!("failed to exec file: {}\n", e)),
                         Ok(code) => {
-                            self.print(format!("app exited. ret = {}\n", code).as_bytes());
+                            self.print(&format!("app exited. ret = {}\n", code));
                         }
                     }
                 }
                 (None, _) => {
-                    self.print(b"no such command: ");
-                    self.print(command.as_bytes());
-                    self.print(b"\n");
+                    self.print("no such command: ");
+                    self.print(command);
+                    self.print("\n");
                 }
             },
         }
@@ -719,7 +730,7 @@ impl Terminal {
                 } else {
                     format!("{}\n", str::from_utf8(base).unwrap())
                 };
-                self.print(s.as_bytes());
+                self.print(&s);
             }
 
             dir_cluster = fat::next_cluster(dir_cluster as _) as _;
