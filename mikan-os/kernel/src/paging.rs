@@ -30,7 +30,7 @@ static PAGE_DIRECTORY: Mutex<PageTable<[u64; 512], PAGE_DIRECTORY_COUNT>> =
     Mutex::new(PageTable::<_, PAGE_DIRECTORY_COUNT>::new([0; 512]));
 
 pub fn init() {
-    setup_indentity_page_table();
+    setup_identity_page_table();
 }
 
 /// # Safety
@@ -233,7 +233,7 @@ impl<T, const N: usize> IndexMut<usize> for PageTable<T, N> {
     }
 }
 
-pub fn setup_indentity_page_table() {
+pub fn setup_identity_page_table() {
     let mut pml4_table = PML4_TABLE.lock_wait();
     let mut pdp_table = PDP_TABLE.lock_wait();
     let mut page_directory = PAGE_DIRECTORY.lock_wait();
