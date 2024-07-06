@@ -38,7 +38,7 @@ for APP in $(ls "${MIKANOS_DIR}/apps"); do
 done
 
 if [ "${RESOURCE_DIR}" != "" ]; then
-	cp "${MIKANOS_DIR}/${RESOURCE_DIR}/*" "${MOUNT_POINT}"
+	cp ${MIKANOS_DIR}/${RESOURCE_DIR}/* "${MOUNT_POINT}"
 fi
 
 sleep 0.5
