@@ -30,6 +30,7 @@ const GIB: usize = 1024 * MIB;
 pub const BYTES_PER_FRAME: usize = 4 * KIB;
 
 /// フレームを表す構造体。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FrameId {
     id: usize,
 }
@@ -165,6 +166,20 @@ impl BitmapMemoryManager {
         }
     }
 
+    pub fn stat(&self) -> MemoryStat {
+        let mut sum = 0;
+        let map = self.alloc_map.lock_wait();
+        let range_begin = *self.range_begin.read();
+        let range_end = *self.range_end.read();
+        for i in range_begin.id / BITS_PER_MAP_LINE..range_end.id / BITS_PER_MAP_LINE {
+            sum += map[i].count_ones() as usize;
+        }
+        MemoryStat {
+            allocated_frames: sum,
+            total_frames: range_end.id - range_begin.id,
+        }
+    }
+
     /// あるフレームから数フレームを割り当て済みにする。
     ///
     /// * `start_frame` - 割り当て済みにする最初のフレーム。
@@ -288,6 +303,11 @@ impl Default for Global {
     fn default() -> Self {
         Self::new()
     }
+}
+
+pub struct MemoryStat {
+    pub allocated_frames: usize,
+    pub total_frames: usize,
 }
 
 fn get_num_frames(size: usize) -> usize {

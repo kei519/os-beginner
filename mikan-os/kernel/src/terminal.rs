@@ -23,7 +23,7 @@ use crate::{
     graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, FB_CONFIG},
     layer::{LAYER_MANAGER, LAYER_TASK_MAP},
     make_error,
-    memory_manager::BYTES_PER_FRAME,
+    memory_manager::{BYTES_PER_FRAME, MEMORY_MANAGER},
     message::{Message, MessageType},
     paging::{self, LinearAddress4Level},
     pci,
@@ -533,6 +533,18 @@ impl Terminal {
                     let s = format!("stack_size: {} KiB\n", task.app_stack_size() >> 10);
                     self.print(s.as_bytes());
                 }
+            }
+            "memstat" => {
+                let stat = MEMORY_MANAGER.stat();
+                let s = format!(
+                    "Phys used : {} frames ({} MiB)\n\
+                    Phys total: {} frames ({} MiB)\n",
+                    stat.allocated_frames,
+                    (stat.allocated_frames * BYTES_PER_FRAME) >> 20,
+                    stat.total_frames,
+                    (stat.total_frames * BYTES_PER_FRAME) >> 20,
+                );
+                self.print(s.as_bytes());
             }
             command => match fat::find_file(command, 0) {
                 (Some(file_entry), post_slash) => {
