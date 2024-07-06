@@ -30,7 +30,7 @@ pub fn get_sector_by_cluster<T>(cluster: u64, len: usize) -> &'static mut [T] {
     unsafe { slice::from_raw_parts_mut(get_cluster_addr(cluster) as *mut T, len) }
 }
 
-pub fn read_name(entry: &DirectoryEntry) -> (&[u8], &[u8]) {
+pub fn read_name(entry: &DirectoryEntry) -> (&str, &str) {
     let base_len = entry.name[..8]
         .iter()
         .enumerate()
@@ -45,7 +45,13 @@ pub fn read_name(entry: &DirectoryEntry) -> (&[u8], &[u8]) {
         .find_map(|(i, &b)| if b != 0x20 { Some(i + 1) } else { None })
         .unwrap_or(0);
 
-    (&entry.name[..base_len], &entry.name[8..8 + ext_len])
+    // Safety: ASCII 文字列しか入っていない
+    unsafe {
+        (
+            core::str::from_utf8_unchecked(&entry.name[..base_len]),
+            core::str::from_utf8_unchecked(&entry.name[8..8 + ext_len]),
+        )
+    }
 }
 
 /// `path` が絶対パスのときはルートディレクトリ、

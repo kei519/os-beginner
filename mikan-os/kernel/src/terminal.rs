@@ -467,16 +467,10 @@ impl Terminal {
                 } else {
                     let (base, ext) = fat::read_name(dir);
                     // Safety: ASCII 文字列だけが格納されている
-                    let name = unsafe {
-                        if ext.is_empty() {
-                            str::from_utf8_unchecked(base).to_string()
-                        } else {
-                            format!(
-                                "{}.{}",
-                                str::from_utf8_unchecked(base),
-                                str::from_utf8_unchecked(ext)
-                            )
-                        }
+                    let name = if ext.is_empty() {
+                        base.to_string()
+                    } else {
+                        format!("{}.{}", base, ext)
                     };
                     if post_slash {
                         self.print(&name);
@@ -715,20 +709,17 @@ impl Terminal {
             for entry in dir {
                 let (base, ext) = fat::read_name(entry);
                 // ファイル終了
-                if base[0] == 0x00 {
+                if base.as_bytes()[0] == 0x00 {
                     return;
-                } else if base[0] == 0x5e || entry.attr == fat::Attribute::LongName as u8 {
+                } else if base.as_bytes()[0] == 0x5e || entry.attr == fat::Attribute::LongName as u8
+                {
                     continue;
                 }
 
                 let s = if !ext.is_empty() {
-                    format!(
-                        "{}.{}\n",
-                        str::from_utf8(base).unwrap(),
-                        str::from_utf8(ext).unwrap()
-                    )
+                    format!("{}.{}\n", base, ext)
                 } else {
-                    format!("{}\n", str::from_utf8(base).unwrap())
+                    format!("{}\n", base)
                 };
                 self.print(&s);
             }
