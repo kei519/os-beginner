@@ -607,6 +607,8 @@ impl Terminal {
         self.linebuf[..history.len()].copy_from_slice(history);
         self.linebuf_index = history.len();
 
+        // Safety: 入力できる文字は ASCII に限られている
+        let history = unsafe { core::str::from_utf8_unchecked(history) };
         font::write_string(
             &mut *window.write(),
             first_pos,

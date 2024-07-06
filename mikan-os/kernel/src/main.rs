@@ -182,7 +182,7 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
             font::write_string(
                 &mut *window.write(),
                 Vector2D::new(20, 4),
-                format!("{:010}", tick).as_bytes(),
+                format!("{:010}", tick).as_str(),
                 &PixelColor::new(0, 0, 0),
             );
 

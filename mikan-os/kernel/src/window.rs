@@ -196,7 +196,7 @@ impl Window {
         font::write_string(
             base,
             Vector2D::new(24, 4),
-            title.as_bytes(),
+            title,
             &PixelColor::to_color(0xffffff),
         );
 

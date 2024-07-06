@@ -177,7 +177,7 @@ extern "sysv64" fn win_write_string(
             font::write_string(
                 win.write().base_mut(),
                 Vector2D::new(x as _, y as _),
-                s.as_bytes(),
+                s,
                 &PixelColor::to_color(color as _),
             );
             Result::value(0)

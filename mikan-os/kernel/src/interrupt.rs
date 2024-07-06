@@ -87,7 +87,7 @@ macro_rules! fault_handler_with_error {
                 $crate::font::write_string(
                     writer,
                     Vector2D::new(500, 16 * 4),
-                    b"ERR",
+                    "ERR",
                     &$crate::graphics::PixelColor::new(0, 0, 0),
                 );
                 $crate::interrupt::print_hex(
@@ -157,7 +157,7 @@ fn int_handler_pf(frame: &InterruptFrame, error_code: u64) {
     write_string(
         writer,
         Vector2D::new(500, 16 * 4),
-        b"ERR",
+        "ERR",
         &PixelColor::new(0, 0, 0),
     );
     print_hex(error_code, 16, Vector2D::new(500, 16 * 4), writer);
@@ -381,14 +381,14 @@ pub fn print_frame(frame: &InterruptFrame, exp_name: &str) {
     font::write_string(
         writer,
         Vector2D::new(500, 16 * 0),
-        exp_name.as_bytes(),
+        exp_name,
         &PixelColor::new(0, 0, 0),
     );
 
     font::write_string(
         writer,
         Vector2D::new(500, 16 * 1),
-        b"CS:RIP",
+        "CS:RIP",
         &PixelColor::new(0, 0, 0),
     );
     print_hex(frame.cs(), 4, Vector2D::new(500 + 8 * 7, 16 * 1), writer);
@@ -397,7 +397,7 @@ pub fn print_frame(frame: &InterruptFrame, exp_name: &str) {
     font::write_string(
         writer,
         Vector2D::new(500, 16 * 2),
-        b"RFLAGS",
+        "RFLAGS",
         &PixelColor::new(0, 0, 0),
     );
     print_hex(
@@ -410,7 +410,7 @@ pub fn print_frame(frame: &InterruptFrame, exp_name: &str) {
     font::write_string(
         writer,
         Vector2D::new(500, 16 * 3),
-        b"SS:RSP",
+        "SS:RSP",
         &PixelColor::new(0, 0, 0),
     );
     print_hex(frame.ss(), 4, Vector2D::new(500 + 8 * 7, 16 * 3), writer);
