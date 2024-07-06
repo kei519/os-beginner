@@ -1,3 +1,5 @@
+#![cfg(not(feature = "alloc"))]
+
 use app_lib::buf::*;
 use core::fmt::Write as _;
 

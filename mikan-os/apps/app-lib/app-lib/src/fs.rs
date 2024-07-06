@@ -1,17 +1,40 @@
 use core::{
-    fmt::{Display, Write as _},
+    fmt::Display,
     ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not},
 };
 
-use crate::{buf::CStrBuf, errno::ErrNo, syscall};
+#[cfg(feature = "alloc")]
+use alloc::{string::String, vec::Vec};
+
+use crate::{errno::ErrNo, syscall};
 
 type Result<T> = core::result::Result<T, ErrNo>;
 
 pub fn open(path: impl Display, flags: FileFlags) -> Result<File> {
-    let mut buf = [0; 1024];
-    let mut buf = CStrBuf::new_unchecked(&mut buf);
-    write!(buf, "{}", path).unwrap();
-    let res = unsafe { syscall::__open_file(buf.to_cstr().as_ptr() as _, flags.0 as _) };
+    #[cfg(not(feature = "alloc"))]
+    let res = {
+        use crate::buf::CStrBuf;
+        use core::fmt::Write as _;
+
+        let mut buf = [0; 1024];
+        let mut buf = CStrBuf::new_unchecked(&mut buf);
+        write!(buf, "{}", path).unwrap();
+        unsafe { syscall::__open_file(buf.to_cstr().as_ptr() as _, flags.0 as _) }
+    };
+
+    #[cfg(feature = "alloc")]
+    let res = {
+        use alloc::ffi::CString;
+        use alloc::format;
+
+        let path = format!("{}", path);
+        let path = match CString::new(path) {
+            Ok(s) => s,
+            Err(_) => return Err(ErrNo::EINVAL),
+        };
+        unsafe { syscall::__open_file(path.as_ptr() as _, flags.0 as _) }
+    };
+
     if res.error != 0 {
         Err(res.error.into())
     } else {
@@ -19,8 +42,34 @@ pub fn open(path: impl Display, flags: FileFlags) -> Result<File> {
     }
 }
 
+#[cfg(feature = "alloc")]
+const BUF_SIZE: usize = 4096;
+
 pub trait Read {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize>;
+
+    #[cfg(feature = "alloc")]
+    fn read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
+        let mut total = 0;
+        let mut in_buf = alloc::vec![0; BUF_SIZE];
+        loop {
+            let n = match self.read(&mut in_buf)? {
+                // EOF
+                0 => return Ok(total),
+                n => n,
+            };
+            buf.extend(&in_buf[..n]);
+            total += n;
+        }
+    }
+
+    #[cfg(feature = "alloc")]
+    fn read_to_string(&mut self, buf: &mut String) -> Result<usize> {
+        let mut in_buf = alloc::vec![];
+        self.read_to_end(&mut in_buf)?;
+        buf.push_str(core::str::from_utf8(&in_buf).map_err(|_| ErrNo::EILSEQ)?);
+        Ok(in_buf.len())
+    }
 }
 
 pub trait Write {

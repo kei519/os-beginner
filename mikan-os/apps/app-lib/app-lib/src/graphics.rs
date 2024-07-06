@@ -1,15 +1,25 @@
-use core::{
-    fmt::{Display, Write as _},
-    sync::atomic::Ordering::Relaxed,
-};
+use core::{fmt::Display, sync::atomic::Ordering::Relaxed};
 
-use crate::{buf::CStrBuf, *};
+#[cfg(not(feature = "alloc"))]
+use core::fmt::Write as _;
+
+#[cfg(feature = "alloc")]
+use alloc::{ffi::CString, format};
+
+use crate::*;
+
+#[cfg(not(feature = "alloc"))]
+use crate::buf::CStrBuf;
+
+#[cfg(feature = "alloc")]
+use crate::errno::ErrNo;
 
 /// ウィンドウ描画時のフラグを表す。
 //  0 bit: 再描画を行わない。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LayerFlags(u32);
 
+#[allow(clippy::new_without_default)]
 impl LayerFlags {
     pub const fn new() -> Self {
         Self(0)
@@ -31,13 +41,37 @@ impl LayerFlags {
 
 /// 作成したウィンドウのレイヤー ID を返す。
 /// ただし作成に失敗した場合は `0` を返す。
+///
+#[cfg_attr(
+    feature = "alloc",
+    doc = "`title` がヌル文字を含んでいた場合必ず失敗する。"
+)]
+#[cfg_attr(
+    not(feature = "alloc"),
+    doc = "`title` が終端のヌル文字を含めて 1024 バイトを超えた場合は `panic` を起こす。"
+)]
 pub fn open_window(w: i32, h: i32, x: i32, y: i32, title: impl Display) -> u32 {
-    let mut buf = [0; 1024];
-    let mut s = CStrBuf::new_unchecked(&mut buf);
-    write!(s, "{}", title).unwrap();
-    let res = unsafe {
-        syscall::__open_window(w as _, h as _, x as _, y as _, s.to_cstr().as_ptr() as _)
+    #[cfg(not(feature = "alloc"))]
+    let res = {
+        let mut buf = [0; 1024];
+        let mut s = CStrBuf::new_unchecked(&mut buf);
+        write!(s, "{}", title).unwrap();
+        unsafe { syscall::__open_window(w as _, h as _, x as _, y as _, s.to_cstr().as_ptr() as _) }
     };
+
+    #[cfg(feature = "alloc")]
+    let res = {
+        let s = format!("{}", title);
+        let s = match CString::new(s) {
+            Ok(s) => s,
+            Err(_) => {
+                ERRNO.store(ErrNo::EINVAL.into(), Relaxed);
+                return 0;
+            }
+        };
+        unsafe { syscall::__open_window(w as _, h as _, x as _, y as _, s.as_ptr() as _) }
+    };
+
     if res.error != 0 {
         ERRNO.store(res.error, Relaxed);
         0
@@ -46,24 +80,59 @@ pub fn open_window(w: i32, h: i32, x: i32, y: i32, title: impl Display) -> u32 {
     }
 }
 
+#[cfg_attr(
+    feature = "alloc",
+    doc = "`title` がヌル文字を含んでいた場合なにもせずに終了する。"
+)]
+#[cfg_attr(
+    not(feature = "alloc"),
+    doc = "`title` が終端のヌル文字を含めて 1024 バイトを超えた場合は `panic` を起こす。"
+)]
 pub fn win_write_string(layer_id: u32, x: i32, y: i32, color: u32, s: impl Display) {
-    let mut buf = [0; 1024];
-    let mut buf = CStrBuf::new_unchecked(&mut buf);
-    write!(buf, "{}", s).unwrap();
-    let res = unsafe {
-        syscall::__win_write_string(
-            layer_id as _,
-            x as _,
-            y as _,
-            color as _,
-            buf.to_cstr().as_ptr() as _,
-        )
+    #[cfg(not(feature = "alloc"))]
+    let res = {
+        let mut buf = [0; 1024];
+        let mut buf = CStrBuf::new_unchecked(&mut buf);
+        write!(buf, "{}", s).unwrap();
+        unsafe {
+            syscall::__win_write_string(
+                layer_id as _,
+                x as _,
+                y as _,
+                color as _,
+                buf.to_cstr().as_ptr() as _,
+            )
+        }
     };
+
+    #[cfg(feature = "alloc")]
+    let res = {
+        let s = format!("{}", s);
+        let s = match CString::new(s) {
+            Ok(s) => s,
+            Err(_) => {
+                ERRNO.store(ErrNo::EINVAL.into(), Relaxed);
+                return;
+            }
+        };
+        unsafe {
+            syscall::__win_write_string(layer_id as _, x as _, y as _, color as _, s.as_ptr() as _)
+        }
+    };
+
     if res.error != 0 {
         ERRNO.store(res.error, Relaxed);
     }
 }
 
+#[cfg_attr(
+    feature = "alloc",
+    doc = "`title` がヌル文字を含んでいた場合なにもせずに終了する。"
+)]
+#[cfg_attr(
+    not(feature = "alloc"),
+    doc = "`title` が終端のヌル文字を含めて 1024 バイトを超えた場合は `panic` を起こす。"
+)]
 pub fn win_write_string_with_flags(
     layer_id: u32,
     x: i32,
@@ -72,18 +141,43 @@ pub fn win_write_string_with_flags(
     s: impl Display,
     flags: LayerFlags,
 ) {
-    let mut buf = [0; 1024];
-    let mut buf = CStrBuf::new_unchecked(&mut buf);
-    write!(buf, "{}", s).unwrap();
-    let res = unsafe {
-        syscall::__win_write_string(
-            layer_id as u64 | (flags.0 as u64) << 32,
-            x as _,
-            y as _,
-            color as _,
-            buf.to_cstr().as_ptr() as _,
-        )
+    #[cfg(not(feature = "alloc"))]
+    let res = {
+        let mut buf = [0; 1024];
+        let mut buf = CStrBuf::new_unchecked(&mut buf);
+        write!(buf, "{}", s).unwrap();
+        unsafe {
+            syscall::__win_write_string(
+                layer_id as u64 | (flags.0 as u64) << 32,
+                x as _,
+                y as _,
+                color as _,
+                buf.to_cstr().as_ptr() as _,
+            )
+        }
     };
+
+    #[cfg(feature = "alloc")]
+    let res = {
+        let s = format!("{}", s);
+        let s = match CString::new(s) {
+            Ok(s) => s,
+            Err(_) => {
+                ERRNO.store(ErrNo::EINVAL.into(), Relaxed);
+                return;
+            }
+        };
+        unsafe {
+            syscall::__win_write_string(
+                layer_id as u64 | (flags.0 as u64) << 32,
+                x as _,
+                y as _,
+                color as _,
+                s.as_ptr() as _,
+            )
+        }
+    };
+
     if res.error != 0 {
         ERRNO.store(res.error, Relaxed);
     }
