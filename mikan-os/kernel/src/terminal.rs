@@ -78,10 +78,13 @@ impl From<&mut Terminal> for TerminalRef {
 pub fn task_terminal(task_id: u64, s_ptr: i64, s_len: u32) {
     let show_window = s_ptr == 0;
 
-    let mut terminal = Terminal::new(task_id, show_window);
     asmfunc::cli();
     let task = task::current_task();
     asmfunc::sti();
+    let mut terminal = Terminal::new(task.clone(), show_window);
+    for fd in &terminal.files {
+        fd.lock_wait().set_terminal((&terminal).into());
+    }
     if show_window {
         let mut manager = LAYER_MANAGER.lock_wait();
         manager.r#move(terminal.layer_id, Vector2D::new(100, 200));
@@ -179,10 +182,12 @@ pub struct Terminal {
     linebuf: [u8; LINE_MAX],
     cmd_history: VecDeque<String>,
     cmd_history_index: i32,
+    /// 標準入出力
+    files: [Arc<Mutex<FileDescriptor>>; 3],
 }
 
 impl Terminal {
-    pub fn new(task_id: u64, show_window: bool) -> Self {
+    pub fn new(task: Arc<Task>, show_window: bool) -> Self {
         let (layer_id, window) = if show_window {
             let mut window = Window::new_toplevel(
                 COLUMNS as u32 * 8 + 8 + Window::MARGIN_X,
@@ -208,7 +213,7 @@ impl Terminal {
 
         let mut ret = Self {
             layer_id,
-            task_id,
+            task_id: task.id(),
             window,
             cursor: Vector2D::new(0, 0),
             cursor_visible: false,
@@ -216,6 +221,19 @@ impl Terminal {
             linebuf: [0u8; LINE_MAX],
             cmd_history,
             cmd_history_index: -1,
+            // TerminalRef はここでは設定できない（move が起こる）ので、
+            // 戻ってから設定する
+            files: [
+                Arc::new(Mutex::new(FileDescriptor::new_term(
+                    task.clone(),
+                    TerminalRef(0),
+                ))),
+                Arc::new(Mutex::new(FileDescriptor::new_term(
+                    task.clone(),
+                    TerminalRef(0),
+                ))),
+                Arc::new(Mutex::new(FileDescriptor::new_term(task, TerminalRef(0)))),
+            ],
         };
 
         ret.print(">");
@@ -665,8 +683,8 @@ impl Terminal {
             // Safety: TerminalRef が持たれるのは、
             //         ターミナルの制御がアプリに移っている間だけであり、
             //         その間そのターミナルではアプリ以外のことができないので問題ない
-            for i in 0..3 {
-                files.insert(i, FileDescriptor::new_term(task.clone(), self.into()));
+            for (i, fd) in self.files.iter().cloned().enumerate() {
+                files.insert(i as _, fd);
             }
         }
 

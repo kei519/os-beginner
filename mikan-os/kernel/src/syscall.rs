@@ -19,6 +19,7 @@ use crate::{
     memory_manager::BYTES_PER_FRAME,
     message::MessageType,
     msr::{IA32_EFER, IA32_FMASK, IA32_LSTAR, IA32_STAR},
+    sync::Mutex,
     sync::SharedLock,
     task::{self, FileMapping, Task},
     timer::{Timer, TIMER_FREQ, TIMER_MANAGER},
@@ -112,10 +113,11 @@ extern "sysv64" fn put_string(arg1: u64, arg2: u64, arg3: u64, _: u64, _: u64, _
     if fd < 0 || files.cap() <= fd as _ {
         return ErrNo::EBADF.into();
     }
-    let Some(file) = files.get_mut(&fd) else {
+    let Some(file) = files.get_mut(&fd).cloned() else {
         return ErrNo::EBADF.into();
     };
-    match file.write(s) {
+    let res = file.lock_wait().write(s);
+    match res {
         Ok(len) => Result::value(len as _),
         Err(e) => match e.cause() {
             // 実際はデバイスでなくメモリだが、まあ一旦こうしておく
@@ -487,7 +489,7 @@ extern "sysv64" fn open_file(path: u64, flags: u64, _: u64, _: u64, _: u64, _: u
     let fd = allocate_fd(&task);
     task.files()
         .lock_wait()
-        .insert(fd, FileDescriptor::new_fat(file));
+        .insert(fd, Arc::new(Mutex::new(FileDescriptor::new_fat(file))));
     Result::value(fd as _)
 }
 
@@ -506,7 +508,8 @@ extern "sysv64" fn read_file(fd: u64, buf: u64, count: u64, _: u64, _: u64, _: u
     let Some(fd) = files.get_mut(&fd) else {
         return ErrNo::EBADF.into();
     };
-    Result::value(fd.read(buf) as _)
+    let len = fd.lock_wait().read(buf) as _;
+    Result::value(len)
 }
 
 extern "sysv64" fn demand_pages(num_pages: u64, _: u64, _: u64, _: u64, _: u64, _: u64) -> Result {
@@ -536,7 +539,7 @@ extern "sysv64" fn map_file(fd: u64, pfile_size: u64, _: u64, _: u64, _: u64, _:
         return ErrNo::EBADF.into();
     };
 
-    *file_size = fild.size();
+    *file_size = fild.lock_wait().size();
 
     let vaddr_end = task.file_map_end();
     let vaddr_begin = (vaddr_end - *file_size as u64) & !0xfff;

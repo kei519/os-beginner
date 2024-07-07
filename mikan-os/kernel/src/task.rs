@@ -182,7 +182,7 @@ pub struct Task<const STACK_SIZE: usize = { 8 * 4096 }> {
     level: AtomicI32,
     running: AtomicBool,
     os_stack_ptr: u64,
-    files: Mutex<HashMap<i32, FileDescriptor>>,
+    files: Mutex<HashMap<i32, Arc<Mutex<FileDescriptor>>>>,
     /// デマンドページングのアドレス範囲の起点。
     dpaging_begin: AtomicU64,
     /// デマンドページングのアドレス範囲の終点。
@@ -281,7 +281,7 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
         self.level.load(Ordering::Relaxed)
     }
 
-    pub fn files(&self) -> &Mutex<HashMap<i32, FileDescriptor>> {
+    pub fn files(&self) -> &Mutex<HashMap<i32, Arc<Mutex<FileDescriptor>>>> {
         &self.files
     }
 

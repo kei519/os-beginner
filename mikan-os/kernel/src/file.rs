@@ -211,6 +211,12 @@ impl FileDescriptor {
             }
         }
     }
+
+    pub fn set_terminal(&mut self, terminal: TerminalRef) {
+        if let InnerFileDescriptor::Terminal { ref mut term, .. } = self.inner {
+            *term = terminal;
+        }
+    }
 }
 
 enum InnerFileDescriptor {

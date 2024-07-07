@@ -61,7 +61,7 @@ pub fn handle_page_fault(error_code: u64, causal_addr: u64) -> Result<()> {
     let file_maps = task.file_maps().lock_wait();
     if let Some(map) = find_file_mapping(&file_maps, causal_addr) {
         prepare_page_cache(
-            task.files().lock_wait().get(&map.fd).unwrap(),
+            &*task.files().lock_wait().get(&map.fd).unwrap().lock_wait(),
             map,
             causal_addr,
         )
