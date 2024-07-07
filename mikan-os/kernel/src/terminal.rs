@@ -18,7 +18,7 @@ use crate::{
     collections::HashMap,
     elf::{Elf64Ehdr, Elf64Phdr, ExecuteType, ProgramType},
     error::{Code, Result},
-    fat::{self, DirectoryEntry, BYTES_PER_CLUSTER},
+    fat::{self, Attribute, DirectoryEntry, BYTES_PER_CLUSTER},
     file::{self, FileDescriptor},
     font,
     graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, FB_CONFIG},
@@ -429,6 +429,52 @@ impl Terminal {
     }
 
     fn execute_line(&mut self, command: String) {
+        // > リダイレクトの指定
+        let (command, redir_dest) = if let Some(sp) = command.rsplit_once('>') {
+            (String::from(sp.0), Some(sp.1.trim()))
+        } else {
+            (command, None)
+        };
+
+        let original_stdout = if let Some(redir_dest) = redir_dest {
+            let file = match fat::find_file(redir_dest, 0) {
+                (Some(f), false) => {
+                    if f.attr == Attribute::Directory as u8 {
+                        file::print_to_fd(
+                            &mut self.files[2].lock_wait(),
+                            "cannot redirect to a directory",
+                        );
+                        return;
+                    } else {
+                        f
+                    }
+                }
+                (None, false) => match fat::create_file(redir_dest) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        file::print_to_fd(
+                            &mut self.files[2].lock_wait(),
+                            &format!("failed to create a redirect file: {}\n", e),
+                        );
+                        return;
+                    }
+                },
+                (_, true) => {
+                    file::print_to_fd(
+                        &mut self.files[2].lock_wait(),
+                        "cannot redirect to a directory",
+                    );
+                    return;
+                }
+            };
+
+            let mut new = Arc::new(Mutex::new(FileDescriptor::new_fat(file)));
+            mem::swap(&mut self.files[1], &mut new);
+            Some(new)
+        } else {
+            None
+        };
+
         let args: Vec<_> = command.split(' ').filter(|s| !s.is_empty()).collect();
 
         let Some(&command) = args.first() else {
@@ -615,6 +661,11 @@ impl Terminal {
                     file::print_to_fd(stderr, "\n");
                 }
             },
+        }
+
+        // 標準出力先を戻す
+        if let Some(stdout) = original_stdout {
+            self.files[1] = stdout;
         }
     }
 
