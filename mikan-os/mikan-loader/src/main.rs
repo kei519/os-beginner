@@ -561,8 +561,8 @@ fn efi_main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status
 
             let media = block_io.media();
             let volume_bytes = media.block_size() as u64 * (media.last_block() + 1);
-            let volume_bytes = if volume_bytes > 16 * 1024 * 1024 {
-                16 * 1024 * 1024
+            let volume_bytes = if volume_bytes > 32 * 1024 * 1024 {
+                32 * 1024 * 1024
             } else {
                 volume_bytes
             };

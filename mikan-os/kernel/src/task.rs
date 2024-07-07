@@ -174,7 +174,7 @@ impl<const SIZE: usize> Default for Stack<SIZE> {
     }
 }
 
-pub struct Task<const STACK_SIZE: usize = 4096> {
+pub struct Task<const STACK_SIZE: usize = { 8 * 4096 }> {
     id: u64,
     _stack: Box<Stack<STACK_SIZE>>,
     context: TaskContext,
