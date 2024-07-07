@@ -314,3 +314,7 @@ impl Not for FileFlags {
         Self(!self.0)
     }
 }
+
+pub fn print_to_fd(fd: &mut FileDescriptor, s: &str) -> usize {
+    fd.write(s.as_bytes()).unwrap()
+}
