@@ -40,12 +40,7 @@ pub fn write_ascii(writer: &mut dyn PixelWrite, pos: Vector2D<i32>, c: u8, color
 pub fn write_string(writer: &mut dyn PixelWrite, pos: Vector2D<i32>, s: &str, color: &PixelColor) {
     let mut x = 0;
     for c in s.chars() {
-        write_unicode(
-            writer,
-            Vector2D::new(pos.x() + 8 * x as i32, pos.y()),
-            c,
-            color,
-        );
+        write_unicode(writer, Vector2D::new(pos.x() + 8 * x, pos.y()), c, color);
         x += if c.is_ascii() { 1 } else { 2 };
     }
 }
