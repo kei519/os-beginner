@@ -19,7 +19,7 @@ use crate::{
     elf::{Elf64Ehdr, Elf64Phdr, ExecuteType, ProgramType},
     error::{Code, Result},
     fat::{self, DirectoryEntry, BYTES_PER_CLUSTER},
-    file::FileDescriptor,
+    file::{self, FileDescriptor},
     font,
     graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, FB_CONFIG},
     layer::{LAYER_MANAGER, LAYER_TASK_MAP},
@@ -437,7 +437,7 @@ impl Terminal {
         match command {
             "echo" => {
                 if let Some(first_arg) = args.get(1) {
-                    self.print(first_arg);
+                    file::print_to_fd(&mut self.files[1].lock_wait(), first_arg);
                 }
                 self.print("\n");
             }
@@ -465,7 +465,7 @@ impl Terminal {
                         dev.class_code().sub(),
                         dev.class_code().interface(),
                     );
-                    self.print(&s);
+                    file::print_to_fd(&mut self.files[1].lock_wait(), &s);
                 }
             }
             "ls" => {
@@ -475,9 +475,10 @@ impl Terminal {
                 };
 
                 let (Some(dir), post_slash) = fat::find_file(first_arg, 0) else {
-                    self.print("No such file or directory: ");
-                    self.print(first_arg);
-                    self.print("\n");
+                    let mut stderr = self.files[2].lock_wait();
+                    file::print_to_fd(&mut stderr, "No such file or directory: ");
+                    file::print_to_fd(&mut stderr, first_arg);
+                    file::print_to_fd(&mut stderr, "\n");
                     return;
                 };
                 if dir.attr == fat::Attribute::Directory as _ {
@@ -491,26 +492,31 @@ impl Terminal {
                         format!("{}.{}", base, ext)
                     };
                     if post_slash {
-                        self.print(&name);
-                        self.print(" is not a directory\n");
+                        let mut stderr = self.files[2].lock_wait();
+                        file::print_to_fd(&mut stderr, &name);
+                        file::print_to_fd(&mut stderr, " is not a directory\n");
                     } else {
-                        self.print(&name);
-                        self.print("\n");
+                        let mut stdout = self.files[1].lock_wait();
+                        file::print_to_fd(&mut stdout, &name);
+                        file::print_to_fd(&mut stdout, "\n");
                     }
                 }
             }
             "cat" => {
                 let Some(file_path) = args.get(1) else {
-                    self.print("Usage: cat <file>\n");
+                    let mut stderr = self.files[2].lock_wait();
+                    file::print_to_fd(&mut stderr, "Usage: cat <file>\n");
                     return;
                 };
                 let (Some(file_entry), post_slash) = fat::find_file(file_path, 0) else {
-                    self.print(&format!("no such file: {}\n", file_path));
+                    let mut stderr = self.files[2].lock_wait();
+                    file::print_to_fd(&mut stderr, &format!("no such file: {}\n", file_path));
                     return;
                 };
                 if file_entry.attr != fat::Attribute::Directory as _ && post_slash {
-                    self.print(file_path);
-                    self.print(" is not a directory\n");
+                    let mut stderr = self.files[2].lock_wait();
+                    file::print_to_fd(&mut stderr, file_path);
+                    file::print_to_fd(&mut stderr, " is not a directory\n");
                     return;
                 }
 
@@ -526,7 +532,8 @@ impl Terminal {
                     );
                     let s = String::from_utf8_lossy(s);
 
-                    self.print(&s);
+                    let mut stdout = self.files[1].lock_wait();
+                    file::print_to_fd(&mut stdout, &s);
                     remain_bytes -= s.len() as u32;
                     cluster = fat::next_cluster(cluster);
                 }
@@ -549,7 +556,8 @@ impl Terminal {
                             asmfunc::sti();
                             task.set_app_stack_size(size << 10);
                         } else {
-                            self.print("Usage: ulimit -s <size (KiB)>\n");
+                            let mut stderr = self.files[2].lock_wait();
+                            file::print_to_fd(&mut stderr, "Usage: ulimit -s <size (KiB)>\n");
                         }
                     }
                 } else {
@@ -557,7 +565,8 @@ impl Terminal {
                     let task = task::current_task();
                     asmfunc::sti();
                     let s = format!("stack_size: {} KiB\n", task.app_stack_size() >> 10);
-                    self.print(&s);
+                    let mut stdout = self.files[1].lock_wait();
+                    file::print_to_fd(&mut stdout, &s);
                 }
             }
             "memstat" => {
@@ -570,26 +579,40 @@ impl Terminal {
                     stat.total_frames,
                     (stat.total_frames * BYTES_PER_FRAME) >> 20,
                 );
-                self.print(&s);
+                let mut stdout = self.files[1].lock_wait();
+                file::print_to_fd(&mut stdout, &s);
             }
             command => match fat::find_file(command, 0) {
                 (Some(file_entry), post_slash) => {
                     if file_entry.attr != fat::Attribute::Directory as _ && post_slash {
-                        self.print(command);
-                        self.print(" is not a directory\n");
+                        let mut stderr = self.files[2].lock_wait();
+                        file::print_to_fd(&mut stderr, command);
+                        file::print_to_fd(&mut stderr, " is not a directory\n");
                         return;
                     }
                     match self.execute_file(file_entry, args) {
-                        Err(e) => self.print(&format!("failed to exec file: {}\n", e)),
+                        Err(e) => {
+                            let mut stderr = self.files[2].lock_wait();
+                            file::print_to_fd(
+                                &mut stderr,
+                                &format!("failed to exec file: {}\n", e),
+                            );
+                        }
                         Ok(code) => {
-                            self.print(&format!("app exited. ret = {}\n", code));
+                            let mut stdout = self.files[1].lock_wait();
+                            file::print_to_fd(
+                                &mut stdout,
+                                &format!("app exited. ret = {}\n", code),
+                            );
                         }
                     }
                 }
                 (None, _) => {
-                    self.print("no such command: ");
-                    self.print(command);
-                    self.print("\n");
+                    let mut stderr = self.files[2].lock_wait();
+                    let stderr = &mut stderr;
+                    file::print_to_fd(stderr, "no such command: ");
+                    file::print_to_fd(stderr, command);
+                    file::print_to_fd(stderr, "\n");
                 }
             },
         }
