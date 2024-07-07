@@ -120,6 +120,7 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
     interrupt::init();
 
     fat::init(volume_image);
+    font::init()?;
     pci::init()?;
 
     let main_window_id = initialize_main_window();
