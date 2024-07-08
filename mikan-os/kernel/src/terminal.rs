@@ -775,16 +775,10 @@ impl Terminal {
                     file::print_to_fd(&mut stdout, &s);
                     self.last_exit_code = 0;
                 }
-                command => match fat::find_file(command, 0) {
-                    (Some(file_entry), post_slash) => {
-                        if file_entry.attr != fat::Attribute::Directory as _ && post_slash {
-                            let mut stderr = self.files[2].lock_wait();
-                            file::print_to_fd(&mut stderr, command);
-                            file::print_to_fd(&mut stderr, " is not a directory\n");
-                            self.last_exit_code = 1;
-                            break 'exe;
-                        }
+                command => {
+                    if let Some(file_entry) = find_command(command, 0) {
                         match self.execute_file(file_entry, args) {
+                            Ok(code) => self.last_exit_code = code,
                             Err(e) => {
                                 let mut stderr = self.files[2].lock_wait();
                                 file::print_to_fd(
@@ -793,10 +787,8 @@ impl Terminal {
                                 );
                                 self.last_exit_code = -(e.cause() as i32);
                             }
-                            Ok(code) => self.last_exit_code = code,
                         }
-                    }
-                    (None, _) => {
+                    } else {
                         let mut stderr = self.files[2].lock_wait();
                         let stderr = &mut stderr;
                         file::print_to_fd(stderr, "no such command: ");
@@ -804,7 +796,7 @@ impl Terminal {
                         file::print_to_fd(stderr, "\n");
                         self.last_exit_code = 1;
                     }
-                },
+                }
             }
         }
 
@@ -1135,4 +1127,29 @@ fn make_arg_vector(args: Vec<&str>, buf: &mut [u8]) -> Result<usize> {
         buf[cur - 1] = 0;
     }
     Ok(len)
+}
+
+/// `command` を絶対パス、相対パス、もしくは `/apps` に含まれているファイル名として探索する。
+fn find_command(command: &str, dir_cluster: u64) -> Option<&'static DirectoryEntry> {
+    match fat::find_file(command, dir_cluster) {
+        (_, true) => return None,
+        (Some(entry), false) => {
+            if entry.attr == Attribute::Directory as _ {
+                return None;
+            } else {
+                return Some(entry);
+            }
+        }
+        _ => {
+            if dir_cluster != 0 || command.contains('/') {
+                return None;
+            }
+        }
+    }
+
+    if let (Some(apps_entry), _) = fat::find_file("apps", 0) {
+        find_command(command, apps_entry.first_cluster() as _)
+    } else {
+        None
+    }
 }
