@@ -584,10 +584,12 @@ impl Terminal {
                 fd_term_out = Some(new_stdout);
             };
 
-            subtask
+            let id = subtask
                 .init_context(task_terminal, Box::into_raw(term_desc) as _, 0)
                 .wake_up(-1)
-                .id()
+                .id();
+            LAYER_TASK_MAP.lock_wait().insert(self.layer_id, id);
+            id
         } else {
             0
         };
@@ -800,6 +802,7 @@ impl Terminal {
             }
         }
 
+        // パイプに送っていた場合
         if subtask_id != 0 {
             self.files[1].lock_wait().finish_write();
             asmfunc::cli();
@@ -811,6 +814,7 @@ impl Terminal {
                     log!(LogLevel::Warn, "failed to wait finish: {}", e);
                 }
             }
+            LAYER_TASK_MAP.lock_wait().insert(self.layer_id, self.task_id);
         }
 
         // 標準出力先を戻す
