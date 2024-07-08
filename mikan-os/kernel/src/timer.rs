@@ -130,7 +130,8 @@ impl TimerManager {
                 value: t.value(),
             }
             .into();
-            task::send_message(t.task_id(), m).unwrap();
+            // 失敗するのは送信先タスクが終了したときだが、別に問題はないので無視する
+            let _ = task::send_message(t.task_id(), m);
         }
         task_timer_timeout
     }
