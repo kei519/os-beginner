@@ -81,7 +81,7 @@ pub trait Write {
     fn flush(&mut self) -> Result<()>;
 }
 
-pub struct File(i32);
+pub struct File(pub(crate) i32);
 
 impl File {
     /// 現在開いているファイルをメモリにマップし、そのメモリスライスへの参照を返す。

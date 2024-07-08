@@ -11,6 +11,7 @@ pub mod errno;
 pub mod events;
 pub mod fs;
 pub mod graphics;
+pub mod io;
 pub mod logger;
 pub mod stdio;
 pub mod time;

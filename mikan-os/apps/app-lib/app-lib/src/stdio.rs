@@ -54,3 +54,28 @@ macro_rules! println {
         $crate::print!("{}\n", ::core::format_args!($($arg)*))
     };
 }
+
+#[cfg_attr(
+    not(feature = "alloc"),
+    doc = "1024 バイトを超えると `panic` を起こす。"
+)]
+#[macro_export]
+macro_rules! eprint {
+    ($($arg:tt)*) => {
+        $crate::fprintf!(2, $($arg)*);
+    };
+}
+
+#[cfg_attr(
+    not(feature = "alloc"),
+    doc = "1024 バイトを超えると `panic` を起こす。"
+)]
+#[macro_export]
+macro_rules! eprintln {
+    () => {
+        $crate::eprint!("\n")
+    };
+    ($($arg:tt)*) => {
+        $crate::eprint!("{}\n", ::core::format_args!($($arg)*))
+    };
+}
