@@ -439,6 +439,21 @@ impl Terminal {
         draw_area
     }
 
+    pub fn redraw(&mut self) {
+        let Some(ref wnd) = self.window else {
+            return;
+        };
+        let draw_area = Rectangle {
+            pos: Window::TOP_LEFT_MARGIN,
+            size: wnd.read().size(),
+        };
+
+        let msg = Message::from_draw_area(self.task_id, self.layer_id, draw_area);
+        asmfunc::cli();
+        let _ = task::send_message(1, msg);
+        asmfunc::sti();
+    }
+
     fn draw_cursor(&mut self, visible: bool) {
         let Some(ref window) = self.window else {
             return;

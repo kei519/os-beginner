@@ -123,6 +123,7 @@ impl FileDescriptor {
                         // Safety: キーボードから入力できる文字から構成されている
                         let buf = unsafe { core::str::from_utf8_unchecked(buf) };
                         term.print(buf);
+                        term.redraw();
                         return 1;
                     }
                 }
@@ -229,6 +230,7 @@ impl FileDescriptor {
             InnerFileDescriptor::Terminal { ref mut term, .. } => {
                 let buf = String::from_utf8_lossy(buf);
                 term.print(&buf);
+                term.redraw();
                 Ok(buf.len())
             }
             InnerFileDescriptor::Pipe { ref task, .. } => {
