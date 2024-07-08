@@ -1,13 +1,12 @@
+use alloc::{boxed::Box, collections::VecDeque, sync::Arc, vec, vec::Vec};
 use core::{
     arch::asm,
     mem, ptr,
     sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering},
 };
 
-use alloc::{boxed::Box, collections::VecDeque, sync::Arc, vec, vec::Vec};
-
 use crate::{
-    asmfunc,
+    asmfunc::{self, restore_context},
     collections::HashMap,
     error::{Code, Result},
     file::FileDescriptor,
@@ -86,6 +85,12 @@ pub fn current_task_checked() -> Option<Arc<Task>> {
 /// ID が `id` のタスクが存在しなかった場合はエラーを返す。
 pub fn send_message(id: u64, msg: Message) -> Result<()> {
     unsafe { TASK_MANAGER.send_message(id, msg) }
+}
+
+/// 現在のタスクを `exit_code` で終了させる。
+/// 二度と戻ってこない。
+pub fn finish(exit_code: i32) -> ! {
+    unsafe { TASK_MANAGER.finish(exit_code) }
 }
 
 #[no_mangle]
@@ -349,6 +354,12 @@ pub struct TaskManager {
     current_level: i32,
     /// 次回のタスクスイッチ時にランレベルの見直しが必要かどうかを表す。
     level_changed: bool,
+    /// key: 終了するのを待たれているタスクの ID。
+    /// value: 終了するのを待っているタスクの ID。
+    finish_waiter: HashMap<u64, u64>,
+    /// key: 終了したタスクの ID。
+    /// value: Exit Code。
+    finish_tasks: HashMap<u64, i32>,
 }
 
 impl TaskManager {
@@ -366,6 +377,8 @@ impl TaskManager {
             ],
             current_level: MAX_RUN_LEVEL,
             level_changed: false,
+            finish_waiter: HashMap::new(),
+            finish_tasks: HashMap::new(),
         }
     }
 
@@ -538,6 +551,28 @@ impl TaskManager {
 
     fn find_task_by_id(&self, id: u64) -> Option<&Arc<Task>> {
         self.tasks.iter().find(|task| task.id == id)
+    }
+
+    fn finish(&mut self, exit_code: i32) -> ! {
+        let current_task = self.rotete_current_run_queue(true);
+
+        let task_id = current_task.id();
+        // tasks に登録されていないタスクはないので unwrap() は必ず成功
+        let index = self
+            .tasks
+            .iter()
+            .enumerate()
+            .find_map(|(i, task)| if task.id == task_id { Some(i) } else { None })
+            .unwrap();
+        self.tasks.remove(index);
+
+        self.finish_tasks.insert(task_id, exit_code);
+        if let Some(&waiter_id) = self.finish_waiter.get(&task_id) {
+            let _ = self.wake_up(waiter_id, -1);
+        }
+
+        restore_context(&self.current_task().context);
+        unreachable!()
     }
 }
 
