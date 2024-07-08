@@ -582,213 +582,215 @@ impl Terminal {
         let Some(&command) = args.first() else {
             return;
         };
-        match command {
-            "echo" => {
-                match args.get(1) {
-                    Some(&"$?") => {
-                        file::print_to_fd(
-                            &mut self.files[1].lock_wait(),
-                            &format!("{}", self.last_exit_code),
+        'exe: {
+            match command {
+                "echo" => {
+                    match args.get(1) {
+                        Some(&"$?") => {
+                            file::print_to_fd(
+                                &mut self.files[1].lock_wait(),
+                                &format!("{}", self.last_exit_code),
+                            );
+                        }
+                        Some(arg) => {
+                            file::print_to_fd(&mut self.files[1].lock_wait(), arg);
+                        }
+                        None => {}
+                    }
+                    self.print("\n");
+                    self.last_exit_code = 0;
+                }
+                "clear" => {
+                    if let Some(ref window) = self.window {
+                        window.write().fill_rectangle(
+                            Vector2D::new(4, 4),
+                            Vector2D::new(8 * COLUMNS as i32, 16 * ROWS as i32),
+                            &PixelColor::new(0, 0, 0),
                         );
+                        self.cursor = Vector2D::new(self.cursor.x(), 0);
                     }
-                    Some(arg) => {
-                        file::print_to_fd(&mut self.files[1].lock_wait(), arg);
+                    self.last_exit_code = 0;
+                }
+                "lspci" => {
+                    for dev in pci::DEVICES.read().iter() {
+                        let vendor_id = dev.read_vendor_id();
+                        let s = format!(
+                            "{:02x}:{:02x}.{} vend={:04x} head={:02x} class={:02x}.{:02x}:{:02x}\n",
+                            dev.bus(),
+                            dev.device(),
+                            dev.function(),
+                            vendor_id,
+                            dev.header_type(),
+                            dev.class_code().base(),
+                            dev.class_code().sub(),
+                            dev.class_code().interface(),
+                        );
+                        file::print_to_fd(&mut self.files[1].lock_wait(), &s);
                     }
-                    None => {}
+                    self.last_exit_code = 0;
                 }
-                self.print("\n");
-                self.last_exit_code = 0;
-            }
-            "clear" => {
-                if let Some(ref window) = self.window {
-                    window.write().fill_rectangle(
-                        Vector2D::new(4, 4),
-                        Vector2D::new(8 * COLUMNS as i32, 16 * ROWS as i32),
-                        &PixelColor::new(0, 0, 0),
-                    );
-                    self.cursor = Vector2D::new(self.cursor.x(), 0);
-                }
-                self.last_exit_code = 0;
-            }
-            "lspci" => {
-                for dev in pci::DEVICES.read().iter() {
-                    let vendor_id = dev.read_vendor_id();
-                    let s = format!(
-                        "{:02x}:{:02x}.{} vend={:04x} head={:02x} class={:02x}.{:02x}:{:02x}\n",
-                        dev.bus(),
-                        dev.device(),
-                        dev.function(),
-                        vendor_id,
-                        dev.header_type(),
-                        dev.class_code().base(),
-                        dev.class_code().sub(),
-                        dev.class_code().interface(),
-                    );
-                    file::print_to_fd(&mut self.files[1].lock_wait(), &s);
-                }
-                self.last_exit_code = 0;
-            }
-            "ls" => {
-                let Some(&first_arg) = args.get(1) else {
-                    self.list_all_entries(fat::BOOT_VOLUME_IMAGE.get().root_clus());
-                    return;
-                };
-
-                let (Some(dir), post_slash) = fat::find_file(first_arg, 0) else {
-                    let mut stderr = self.files[2].lock_wait();
-                    file::print_to_fd(&mut stderr, "No such file or directory: ");
-                    file::print_to_fd(&mut stderr, first_arg);
-                    file::print_to_fd(&mut stderr, "\n");
-                    self.last_exit_code = 1;
-                    return;
-                };
-                if dir.attr == fat::Attribute::Directory as _ {
-                    self.list_all_entries(dir.first_cluster());
-                } else {
-                    let (base, ext) = fat::read_name(dir);
-                    // Safety: ASCII 文字列だけが格納されている
-                    let name = if ext.is_empty() {
-                        base.to_string()
-                    } else {
-                        format!("{}.{}", base, ext)
+                "ls" => {
+                    let Some(&first_arg) = args.get(1) else {
+                        self.list_all_entries(fat::BOOT_VOLUME_IMAGE.get().root_clus());
+                        break 'exe;
                     };
-                    if post_slash {
+
+                    let (Some(dir), post_slash) = fat::find_file(first_arg, 0) else {
                         let mut stderr = self.files[2].lock_wait();
-                        file::print_to_fd(&mut stderr, &name);
+                        file::print_to_fd(&mut stderr, "No such file or directory: ");
+                        file::print_to_fd(&mut stderr, first_arg);
+                        file::print_to_fd(&mut stderr, "\n");
+                        self.last_exit_code = 1;
+                        break 'exe;
+                    };
+                    if dir.attr == fat::Attribute::Directory as _ {
+                        self.list_all_entries(dir.first_cluster());
+                    } else {
+                        let (base, ext) = fat::read_name(dir);
+                        // Safety: ASCII 文字列だけが格納されている
+                        let name = if ext.is_empty() {
+                            base.to_string()
+                        } else {
+                            format!("{}.{}", base, ext)
+                        };
+                        if post_slash {
+                            let mut stderr = self.files[2].lock_wait();
+                            file::print_to_fd(&mut stderr, &name);
+                            file::print_to_fd(&mut stderr, " is not a directory\n");
+                            self.last_exit_code = 1;
+                        } else {
+                            let mut stdout = self.files[1].lock_wait();
+                            file::print_to_fd(&mut stdout, &name);
+                            file::print_to_fd(&mut stdout, "\n");
+                            self.last_exit_code = 0;
+                        }
+                    }
+                }
+                "cat" => {
+                    let Some(file_path) = args.get(1) else {
+                        let mut stderr = self.files[2].lock_wait();
+                        file::print_to_fd(&mut stderr, "Usage: cat <file>\n");
+                        self.last_exit_code = 1;
+                        break 'exe;
+                    };
+                    let (Some(file_entry), post_slash) = fat::find_file(file_path, 0) else {
+                        let mut stderr = self.files[2].lock_wait();
+                        file::print_to_fd(&mut stderr, &format!("no such file: {}\n", file_path));
+                        self.last_exit_code = 1;
+                        break 'exe;
+                    };
+                    if file_entry.attr != fat::Attribute::Directory as _ && post_slash {
+                        let mut stderr = self.files[2].lock_wait();
+                        file::print_to_fd(&mut stderr, file_path);
                         file::print_to_fd(&mut stderr, " is not a directory\n");
                         self.last_exit_code = 1;
-                    } else {
+                        break 'exe;
+                    }
+
+                    let mut cluster = file_entry.first_cluster() as u64;
+                    let mut remain_bytes = file_entry.file_size;
+
+                    self.draw_cursor(false);
+                    let bytes_per_cluster = fat::BYTES_PER_CLUSTER.get();
+                    while cluster != 0 && cluster != fat::END_OF_CLUSTER_CHAIN {
+                        let s = fat::get_sector_by_cluster::<u8>(
+                            cluster,
+                            cmp::min(bytes_per_cluster as _, remain_bytes as _),
+                        );
+                        let s = String::from_utf8_lossy(s);
+
                         let mut stdout = self.files[1].lock_wait();
-                        file::print_to_fd(&mut stdout, &name);
-                        file::print_to_fd(&mut stdout, "\n");
+                        file::print_to_fd(&mut stdout, &s);
+                        remain_bytes -= s.len() as u32;
+                        cluster = fat::next_cluster(cluster);
+                    }
+                    self.last_exit_code = 0;
+                }
+                "noterm" => {
+                    if args.len() >= 2 {
+                        let args = args[1..].iter().map(|&s| String::from(s)).collect();
+                        let desc = Box::new(TerminalDescriptor {
+                            args,
+                            exit_affter_command: true,
+                            show_window: false,
+                            files: self.files.clone(),
+                        });
+                        asmfunc::cli();
+                        task::new_task()
+                            .init_context(task_terminal, Box::into_raw(desc) as _, 0)
+                            .wake_up(-1);
+                        asmfunc::sti();
+                    }
+                }
+                "ulimit" => {
+                    if args.len() >= 3 {
+                        if "-s" == args[1] {
+                            if let Ok(size) = args[2].parse::<u64>() {
+                                asmfunc::cli();
+                                let task = task::current_task();
+                                asmfunc::sti();
+                                task.set_app_stack_size(size << 10);
+                            } else {
+                                let mut stderr = self.files[2].lock_wait();
+                                file::print_to_fd(&mut stderr, "Usage: ulimit -s <size (KiB)>\n");
+                                self.last_exit_code = 1;
+                            }
+                        }
+                    } else {
+                        asmfunc::cli();
+                        let task = task::current_task();
+                        asmfunc::sti();
+                        let s = format!("stack_size: {} KiB\n", task.app_stack_size() >> 10);
+                        let mut stdout = self.files[1].lock_wait();
+                        file::print_to_fd(&mut stdout, &s);
                         self.last_exit_code = 0;
                     }
                 }
-            }
-            "cat" => {
-                let Some(file_path) = args.get(1) else {
-                    let mut stderr = self.files[2].lock_wait();
-                    file::print_to_fd(&mut stderr, "Usage: cat <file>\n");
-                    self.last_exit_code = 1;
-                    return;
-                };
-                let (Some(file_entry), post_slash) = fat::find_file(file_path, 0) else {
-                    let mut stderr = self.files[2].lock_wait();
-                    file::print_to_fd(&mut stderr, &format!("no such file: {}\n", file_path));
-                    self.last_exit_code = 1;
-                    return;
-                };
-                if file_entry.attr != fat::Attribute::Directory as _ && post_slash {
-                    let mut stderr = self.files[2].lock_wait();
-                    file::print_to_fd(&mut stderr, file_path);
-                    file::print_to_fd(&mut stderr, " is not a directory\n");
-                    self.last_exit_code = 1;
-                    return;
-                }
-
-                let mut cluster = file_entry.first_cluster() as u64;
-                let mut remain_bytes = file_entry.file_size;
-
-                self.draw_cursor(false);
-                let bytes_per_cluster = fat::BYTES_PER_CLUSTER.get();
-                while cluster != 0 && cluster != fat::END_OF_CLUSTER_CHAIN {
-                    let s = fat::get_sector_by_cluster::<u8>(
-                        cluster,
-                        cmp::min(bytes_per_cluster as _, remain_bytes as _),
+                "memstat" => {
+                    let stat = MEMORY_MANAGER.stat();
+                    let s = format!(
+                        "Phys used : {} frames ({} MiB)\n\
+                    Phys total: {} frames ({} MiB)\n",
+                        stat.allocated_frames,
+                        (stat.allocated_frames * BYTES_PER_FRAME) >> 20,
+                        stat.total_frames,
+                        (stat.total_frames * BYTES_PER_FRAME) >> 20,
                     );
-                    let s = String::from_utf8_lossy(s);
-
-                    let mut stdout = self.files[1].lock_wait();
-                    file::print_to_fd(&mut stdout, &s);
-                    remain_bytes -= s.len() as u32;
-                    cluster = fat::next_cluster(cluster);
-                }
-                self.last_exit_code = 0;
-            }
-            "noterm" => {
-                if args.len() >= 2 {
-                    let args = args[1..].iter().map(|&s| String::from(s)).collect();
-                    let desc = Box::new(TerminalDescriptor {
-                        args,
-                        exit_affter_command: true,
-                        show_window: false,
-                        files: self.files.clone(),
-                    });
-                    asmfunc::cli();
-                    task::new_task()
-                        .init_context(task_terminal, Box::into_raw(desc) as _, 0)
-                        .wake_up(-1);
-                    asmfunc::sti();
-                }
-            }
-            "ulimit" => {
-                if args.len() >= 3 {
-                    if "-s" == args[1] {
-                        if let Ok(size) = args[2].parse::<u64>() {
-                            asmfunc::cli();
-                            let task = task::current_task();
-                            asmfunc::sti();
-                            task.set_app_stack_size(size << 10);
-                        } else {
-                            let mut stderr = self.files[2].lock_wait();
-                            file::print_to_fd(&mut stderr, "Usage: ulimit -s <size (KiB)>\n");
-                            self.last_exit_code = 1;
-                        }
-                    }
-                } else {
-                    asmfunc::cli();
-                    let task = task::current_task();
-                    asmfunc::sti();
-                    let s = format!("stack_size: {} KiB\n", task.app_stack_size() >> 10);
                     let mut stdout = self.files[1].lock_wait();
                     file::print_to_fd(&mut stdout, &s);
                     self.last_exit_code = 0;
                 }
-            }
-            "memstat" => {
-                let stat = MEMORY_MANAGER.stat();
-                let s = format!(
-                    "Phys used : {} frames ({} MiB)\n\
-                    Phys total: {} frames ({} MiB)\n",
-                    stat.allocated_frames,
-                    (stat.allocated_frames * BYTES_PER_FRAME) >> 20,
-                    stat.total_frames,
-                    (stat.total_frames * BYTES_PER_FRAME) >> 20,
-                );
-                let mut stdout = self.files[1].lock_wait();
-                file::print_to_fd(&mut stdout, &s);
-                self.last_exit_code = 0;
-            }
-            command => match fat::find_file(command, 0) {
-                (Some(file_entry), post_slash) => {
-                    if file_entry.attr != fat::Attribute::Directory as _ && post_slash {
-                        let mut stderr = self.files[2].lock_wait();
-                        file::print_to_fd(&mut stderr, command);
-                        file::print_to_fd(&mut stderr, " is not a directory\n");
-                        self.last_exit_code = 1;
-                        return;
-                    }
-                    match self.execute_file(file_entry, args) {
-                        Err(e) => {
+                command => match fat::find_file(command, 0) {
+                    (Some(file_entry), post_slash) => {
+                        if file_entry.attr != fat::Attribute::Directory as _ && post_slash {
                             let mut stderr = self.files[2].lock_wait();
-                            file::print_to_fd(
-                                &mut stderr,
-                                &format!("failed to exec file: {}\n", e),
-                            );
-                            self.last_exit_code = -(e.cause() as i32);
+                            file::print_to_fd(&mut stderr, command);
+                            file::print_to_fd(&mut stderr, " is not a directory\n");
+                            self.last_exit_code = 1;
+                            break 'exe;
                         }
-                        Ok(code) => self.last_exit_code = code,
+                        match self.execute_file(file_entry, args) {
+                            Err(e) => {
+                                let mut stderr = self.files[2].lock_wait();
+                                file::print_to_fd(
+                                    &mut stderr,
+                                    &format!("failed to exec file: {}\n", e),
+                                );
+                                self.last_exit_code = -(e.cause() as i32);
+                            }
+                            Ok(code) => self.last_exit_code = code,
+                        }
                     }
-                }
-                (None, _) => {
-                    let mut stderr = self.files[2].lock_wait();
-                    let stderr = &mut stderr;
-                    file::print_to_fd(stderr, "no such command: ");
-                    file::print_to_fd(stderr, command);
-                    file::print_to_fd(stderr, "\n");
-                    self.last_exit_code = 1;
-                }
-            },
+                    (None, _) => {
+                        let mut stderr = self.files[2].lock_wait();
+                        let stderr = &mut stderr;
+                        file::print_to_fd(stderr, "no such command: ");
+                        file::print_to_fd(stderr, command);
+                        file::print_to_fd(stderr, "\n");
+                        self.last_exit_code = 1;
+                    }
+                },
+            }
         }
 
         if subtask_id != 0 {
