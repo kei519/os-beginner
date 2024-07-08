@@ -231,6 +231,31 @@ impl Window {
     pub fn base_mut(&mut self) -> &mut WindowBase {
         self.into()
     }
+
+    pub fn get_window_region(&self, pos: Vector2D<i32>) -> WindowRegion {
+        match self {
+            Self::Base(_) => WindowRegion::Other,
+            Self::Toplevel { base, .. } => {
+                if !(2..base.width() as i32 - 2).contains(&pos.x())
+                    || !(2..base.height() as i32 - 2).contains(&pos.y())
+                {
+                    WindowRegion::Border
+                } else if pos.y() < Self::TOP_LEFT_MARGIN.y() {
+                    if (base.width() as i32 - 5 - CLOSE_BUTTON_WIDTH as i32
+                        ..base.width() as i32 - 5)
+                        .contains(&pos.x())
+                        && (5..5 + CLOSE_BUTTON_HEIGHT as i32).contains(&pos.y())
+                    {
+                        WindowRegion::CloseButton
+                    } else {
+                        WindowRegion::TitleBar
+                    }
+                } else {
+                    WindowRegion::Other
+                }
+            }
+        }
+    }
 }
 
 /// [WindowBase] としての [Window] 実装。
@@ -529,4 +554,12 @@ impl PixelWrite for WindowBase {
     fn vertical_resolution(&self) -> usize {
         self.height as usize
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowRegion {
+    TitleBar,
+    CloseButton,
+    Border,
+    Other,
 }
