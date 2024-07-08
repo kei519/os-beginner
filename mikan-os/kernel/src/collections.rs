@@ -121,13 +121,13 @@ impl<K: Hash + Eq, V> HashMap<K, V> {
 
         let hash = FnvBuilder.hash_one(key.borrow()) as usize;
 
-        self.used += 1;
         for i in 0..self.cap() {
             let cap = self.cap();
             // self.cap() で剰余を取っているので、中身はかならずある
             match self.buckets.get_mut((hash + i) % cap).unwrap() {
                 &mut HashEntry::TombStone => continue,
                 entry @ &mut HashEntry::None => {
+                    self.used += 1;
                     // None が入っているだけなので捨てる
                     let _ = mem::replace(entry, HashEntry::Some { key, value });
                     return None;
