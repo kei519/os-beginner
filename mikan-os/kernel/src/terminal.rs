@@ -166,7 +166,7 @@ pub fn task_terminal(task_id: u64, pdesc: i64, _: u32) {
 
                     let msg = Message::from_draw_area(task_id, terminal.layer_id, area);
                     asmfunc::cli();
-                    task::send_message(1, msg).unwrap();
+                    let _ = task::send_message(1, msg);
                     asmfunc::sti();
                 }
             }
@@ -182,7 +182,7 @@ pub fn task_terminal(task_id: u64, pdesc: i64, _: u32) {
                         area.pos += Window::TOP_LEFT_MARGIN;
                         let msg = Message::from_draw_area(task_id, terminal.layer_id, area);
                         asmfunc::cli();
-                        task::send_message(1, msg).unwrap();
+                        let _ = task::send_message(1, msg);
                         asmfunc::sti();
                     }
                 }
@@ -357,7 +357,7 @@ impl Terminal {
 
         let msg = Message::from_draw_area(self.task_id, self.layer_id, draw_area);
         asmfunc::cli();
-        task::send_message(1, msg).unwrap();
+        let _ = task::send_message(1, msg);
         asmfunc::sti();
     }
 

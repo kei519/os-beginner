@@ -293,7 +293,7 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
                     .find_map(|(&layer, &task)| if layer == active { Some(task) } else { None })
                 {
                     asmfunc::cli();
-                    task::send_message(
+                    let _ = task::send_message(
                         task_id,
                         Message {
                             ty: MessageType::KeyPush {
@@ -304,8 +304,7 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
                             },
                             src_task: 1,
                         },
-                    )
-                    .unwrap();
+                    );
                     asmfunc::sti();
                 } else {
                     printkln!(
@@ -323,8 +322,7 @@ fn main(acpi_table: &RSDP, volume_image: *mut c_void) -> Result<()> {
                 size,
             } => {
                 layer::process_layer_message(op, layer_id, pos, size);
-                // 呼び出してきたタスクがあるはずだから、unwrap は失敗しない
-                task::send_message(msg.src_task, MessageType::LayerFinish.into()).unwrap();
+                let _ = task::send_message(msg.src_task, MessageType::LayerFinish.into());
             }
             _ => {}
         }

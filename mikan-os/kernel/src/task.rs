@@ -269,8 +269,8 @@ impl<const STACK_SIZE: usize> Task<STACK_SIZE> {
     }
 
     pub fn wake_up(&self, level: i32) -> &Self {
-        // TASK_MANAGER に登録されている Task しか呼べないはずなので OK
-        unsafe { TASK_MANAGER.wake_up(self.id, level) }.unwrap();
+        // 終了しているタスクに送ろうとしても無視する
+        let _ = unsafe { TASK_MANAGER.wake_up(self.id, level) };
         self
     }
 
