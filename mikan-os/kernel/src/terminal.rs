@@ -475,7 +475,7 @@ impl Terminal {
 
     fn execute_line(&mut self, command: String) {
         // > リダイレクトの指定
-        let (command, redir_dest) = if let Some(sp) = command.rsplit_once('>') {
+        let (command, redir_dest) = if let Some(sp) = command.split_once('>') {
             (String::from(sp.0), Some(sp.1.trim()))
         } else {
             (command, None)
