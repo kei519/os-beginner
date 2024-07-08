@@ -98,6 +98,10 @@ pub fn wait_finish(task_id: u64) -> Result<i32> {
     unsafe { TASK_MANAGER.wait_finish(task_id) }
 }
 
+pub fn get_task(task_id: u64) -> Option<Arc<Task>> {
+    unsafe { TASK_MANAGER.get_task(task_id) }
+}
+
 #[no_mangle]
 pub fn get_current_task_os_stack_pointer() -> u64 {
     *unsafe { TASK_MANAGER.current_task().os_stack_ptr() }
@@ -566,13 +570,12 @@ impl TaskManager {
         let index = self
             .tasks
             .iter()
-            .enumerate()
-            .find_map(|(i, task)| if task.id == task_id { Some(i) } else { None })
+            .position(|task| task.id == task_id)
             .unwrap();
         self.tasks.remove(index);
 
         self.finish_tasks.insert(task_id, exit_code);
-        if let Some(&waiter_id) = self.finish_waiter.get(&task_id) {
+        if let Some(waiter_id) = self.finish_waiter.remove(&task_id) {
             let _ = self.wake_up(waiter_id, -1);
         }
 
@@ -586,10 +589,14 @@ impl TaskManager {
             if let Some(code) = self.finish_tasks.remove(&task_id) {
                 return Ok(code);
             }
-            self.finish_waiter.insert(current_task.id(), task_id);
+            self.finish_waiter.insert(task_id, current_task.id());
             // 今走っているタスクが登録されていないことはないので unwrap() は必ず成功
             self.sleep(current_task.id()).unwrap();
         }
+    }
+
+    fn get_task(&self, task_id: u64) -> Option<Arc<Task>> {
+        self.tasks.iter().find(|task| task.id() == task_id).cloned()
     }
 }
 

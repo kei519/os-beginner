@@ -24,6 +24,8 @@ use crate::{
     font,
     graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, FB_CONFIG},
     layer::{LAYER_MANAGER, LAYER_TASK_MAP},
+    log,
+    logger::LogLevel,
     make_error,
     memory_manager::{BYTES_PER_FRAME, MEMORY_MANAGER},
     message::{Message, MessageType},
@@ -474,6 +476,9 @@ impl Terminal {
     }
 
     fn execute_line(&mut self, command: String) {
+        // ターミナルとしての標準出力を保持する
+        let mut fd_term_out = None;
+
         // > リダイレクトの指定
         let (command, redir_dest) = if let Some(sp) = command.split_once('>') {
             (String::from(sp.0), Some(sp.1.trim()))
@@ -481,7 +486,7 @@ impl Terminal {
             (command, None)
         };
 
-        let original_stdout = if let Some(redir_dest) = redir_dest {
+        if let Some(redir_dest) = redir_dest {
             let file = match fat::find_file(redir_dest, 0) {
                 (Some(f), false) => {
                     if f.attr == Attribute::Directory as u8 {
@@ -518,9 +523,58 @@ impl Terminal {
 
             let mut new = Arc::new(Mutex::new(FileDescriptor::new_fat(file)));
             mem::swap(&mut self.files[1], &mut new);
-            Some(new)
+            fd_term_out = Some(new);
+        }
+
+        // パイプ
+        let (command, subcommand) = match command.split_once('|') {
+            Some(sp) => (String::from(sp.0), Some(sp.1)),
+            None => (command, None),
+        };
+        let subtask_id = if let Some(subcommand) = subcommand {
+            let subtask = task::new_task();
+
+            asmfunc::cli();
+            // 今発行したばかりの Task なので、必ずある
+            let subtask_arc = task::get_task(subtask.id()).unwrap();
+            asmfunc::sti();
+            let pipe_fd = Arc::new(Mutex::new(FileDescriptor::new_pipe(subtask_arc)));
+
+            let args = subcommand
+                .split(' ')
+                .filter_map(|s| {
+                    if s.is_empty() {
+                        None
+                    } else {
+                        Some(String::from(s))
+                    }
+                })
+                .collect();
+
+            // 今の task と subtask をパイプで繋げる
+            let term_desc = Box::new(TerminalDescriptor {
+                args,
+                exit_affter_command: true,
+                show_window: false,
+                files: [
+                    pipe_fd.clone(),
+                    self.files[1].clone(),
+                    self.files[2].clone(),
+                ],
+            });
+
+            let mut new_stdout = pipe_fd;
+            mem::swap(&mut self.files[1], &mut new_stdout);
+            if fd_term_out.is_none() {
+                fd_term_out = Some(new_stdout);
+            };
+
+            subtask
+                .init_context(task_terminal, Box::into_raw(term_desc) as _, 0)
+                .wake_up(-1)
+                .id()
         } else {
-            None
+            0
         };
 
         let args: Vec<_> = command.split(' ').filter(|s| !s.is_empty()).collect();
@@ -737,8 +791,21 @@ impl Terminal {
             },
         }
 
+        if subtask_id != 0 {
+            self.files[1].lock_wait().finish_write();
+            asmfunc::cli();
+            let ret = task::wait_finish(subtask_id);
+            asmfunc::sti();
+            match ret {
+                Ok(code) => self.last_exit_code = code,
+                Err(e) => {
+                    log!(LogLevel::Warn, "failed to wait finish: {}", e);
+                }
+            }
+        }
+
         // 標準出力先を戻す
-        if let Some(stdout) = original_stdout {
+        if let Some(stdout) = fd_term_out {
             self.files[1] = stdout;
         }
     }
