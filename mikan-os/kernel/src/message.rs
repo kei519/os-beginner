@@ -107,6 +107,9 @@ pub enum MessageType {
         data: [u8; 16],
         len: u8,
     },
+    WindowClose {
+        layer_id: u32,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

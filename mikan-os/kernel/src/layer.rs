@@ -64,6 +64,26 @@ pub fn process_layer_message(
     }
 }
 
+/// `layer_id` が ID のレイヤーがない場合エラーを返す。
+/// 存在する場合はそのレイヤーを消す。
+pub fn close_layer(layer_id: u32) -> Result<()> {
+    let mut manager = LAYER_MANAGER.lock_wait();
+    let Some(layer) = manager.find_layer(layer_id) else {
+        return Err(make_error!(Code::NoSuchEntry));
+    };
+
+    let pos = layer.pos();
+    let size = layer.window().read().base().size();
+
+    // LAYER_MANAGER も LAYER_TASK_MAP もロックを必要とするため割り込みは禁止しない
+    manager.activate(0);
+    manager.remove_layer(layer_id);
+    manager.draw(&Rectangle { pos, size });
+    LAYER_TASK_MAP.lock_wait().remove(&layer_id);
+
+    Ok(())
+}
+
 /// 全レイヤーを管理する構造体。
 pub struct LayerManager {
     /// レイヤーを描画するライター。

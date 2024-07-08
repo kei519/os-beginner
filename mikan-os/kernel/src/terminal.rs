@@ -22,7 +22,7 @@ use crate::{
     file::{self, FileDescriptor},
     font,
     graphics::{PixelColor, PixelWrite, Rectangle, Vector2D, FB_CONFIG},
-    layer::{LAYER_MANAGER, LAYER_TASK_MAP},
+    layer::{self, LAYER_MANAGER, LAYER_TASK_MAP},
     log,
     logger::LogLevel,
     make_error,
@@ -190,6 +190,11 @@ pub fn task_terminal(task_id: u64, pdesc: i64, _: u32) {
                 window_isactive = activate;
                 let current_time = TIMER_MANAGER.lock_wait().current_tick();
                 add_blink_timer(current_time);
+            }
+            MessageType::WindowClose { layer_id } => {
+                let _ = layer::close_layer(layer_id);
+                asmfunc::cli();
+                task::finish(terminal.last_exit_code);
             }
             _ => {}
         }

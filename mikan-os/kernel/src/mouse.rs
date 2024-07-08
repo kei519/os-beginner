@@ -7,7 +7,7 @@ use crate::{
     message::{Message, MessageType},
     task,
     usb::HIDMouseDriver,
-    window::Window,
+    window::{Window, WindowRegion},
 };
 
 pub static MOUSE_LAYER_ID: AtomicU32 = AtomicU32::new(0);
@@ -49,15 +49,19 @@ pub fn mouse_observer(buttons: u8, displacement_x: i8, displacement_y: i8) {
 
     layer_manager.r#move(layer_id, mouse_position);
 
+    let mut close_layer_id = 0;
+
     let previous_left_pressed = PREVIOUS_BUTTONS.load(Ordering::Acquire).get_bit(0);
     let left_pressed = buttons.get_bit(0);
     if !previous_left_pressed && left_pressed {
         if let Some(id) = layer_manager.find_layer_by_position(&mouse_position, layer_id) {
-            if layer_manager.layer(id).is_draggable() {
-                // y 座標がタイトルバーの中のときだけドラッグモードに入る
-                let y_layer = mouse_position.y() - layer_manager.layer(id).pos().y();
-                if y_layer < Window::TOP_LEFT_MARGIN.y() {
-                    MOUSE_DRAG_LAYER_ID.store(id, Ordering::Release);
+            let layer = layer_manager.layer(id);
+            if layer.is_draggable() {
+                let pos_layer = mouse_position - layer.pos();
+                match layer.window().read().get_window_region(pos_layer) {
+                    WindowRegion::TitleBar => MOUSE_DRAG_LAYER_ID.store(id, Ordering::Release),
+                    WindowRegion::CloseButton => close_layer_id = id,
+                    _ => {}
                 }
                 layer_manager.activate(id);
             } else {
@@ -77,12 +81,16 @@ pub fn mouse_observer(buttons: u8, displacement_x: i8, displacement_y: i8) {
     // ウィンドウのドラッグを行っているときは、
     // アクティブウィンドウの相対位置が動かないため送らない
     if MOUSE_DRAG_LAYER_ID.load(Ordering::Acquire) == 0 {
-        send_mouse_message(
-            newpos,
-            posdiff,
-            buttons,
-            PREVIOUS_BUTTONS.load(Ordering::Relaxed),
-        );
+        if close_layer_id == 0 {
+            send_mouse_message(
+                newpos,
+                posdiff,
+                buttons,
+                PREVIOUS_BUTTONS.load(Ordering::Relaxed),
+            );
+        } else {
+            send_close_message();
+        }
     }
 
     PREVIOUS_BUTTONS.store(buttons, Ordering::Release);
@@ -133,6 +141,20 @@ pub fn draw_mouse_cursor(writer: &mut dyn PixelWrite, pos: &Vector2D<i32>) {
             }
         }
     }
+}
+
+fn send_close_message() {
+    let active_layer_id = LAYER_MANAGER.lock_wait().get_active();
+    // ID = 0 に結びついているタスクはない
+    let Some(&task_id) = LAYER_TASK_MAP.lock_wait().get(&active_layer_id) else {
+        return;
+    };
+
+    let msg = MessageType::WindowClose {
+        layer_id: active_layer_id,
+    }
+    .into();
+    let _ = task::send_message(task_id, msg);
 }
 
 fn send_mouse_message(

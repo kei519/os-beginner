@@ -11,16 +11,15 @@ use crate::{
     fat::{self, DirectoryEntry},
     file::{FileDescriptor, FileFlags},
     font,
-    graphics::{PixelColor, PixelWrite as _, Rectangle, Vector2D, FB_CONFIG},
+    graphics::{PixelColor, PixelWrite as _, Vector2D, FB_CONFIG},
     keyboard::{LCONTROL_BIT, RCONTROL_BIT},
-    layer::{LAYER_MANAGER, LAYER_TASK_MAP},
+    layer::{self, LAYER_MANAGER, LAYER_TASK_MAP},
     log,
     logger::LogLevel,
     memory_manager::BYTES_PER_FRAME,
     message::MessageType,
     msr::{IA32_EFER, IA32_FMASK, IA32_LSTAR, IA32_STAR},
-    sync::Mutex,
-    sync::SharedLock,
+    sync::{Mutex, SharedLock},
     task::{self, FileMapping, Task},
     timer::{Timer, TIMER_FREQ, TIMER_MANAGER},
     window::Window,
@@ -307,18 +306,7 @@ extern "sysv64" fn close_window(
     _: u64,
 ) -> Result {
     let layer_id = layer_id_flags.get_bits(..32) as u32;
-
-    let mut manager = LAYER_MANAGER.lock_wait();
-    let layer = manager.layer(layer_id);
-
-    let pos = layer.pos();
-    let size = layer.window().read().base().size();
-
-    manager.activate(0);
-    manager.remove_layer(layer_id);
-    manager.draw(&Rectangle { pos, size });
-    LAYER_TASK_MAP.lock_wait().remove(&layer_id);
-
+    let _ = layer::close_layer(layer_id);
     Result::value(0)
 }
 
@@ -410,6 +398,10 @@ extern "sysv64" fn read_event(events: u64, len: u64, _: u64, _: u64, _: u64, _: 
                     };
                     i += 1;
                 }
+            }
+            MessageType::WindowClose { .. } => {
+                app_events[i] = AppEvent::Quit;
+                i += 1;
             }
             ty => log!(LogLevel::Info, "uncaught event type: {:?}", ty),
         }
