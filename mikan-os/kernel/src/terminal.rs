@@ -7,7 +7,6 @@ use alloc::{
     vec::Vec,
 };
 use core::{
-    cmp,
     ffi::c_char,
     mem,
     ops::{Deref, DerefMut},
@@ -684,42 +683,55 @@ impl Terminal {
                     }
                 }
                 "cat" => {
-                    let Some(file_path) = args.get(1) else {
-                        let mut stderr = self.files[2].lock_wait();
-                        file::print_to_fd(&mut stderr, "Usage: cat <file>\n");
-                        self.last_exit_code = 1;
-                        break 'exe;
+                    let fd = if let Some(file_path) = args.get(1) {
+                        let (Some(file_entry), post_slash) = fat::find_file(file_path, 0) else {
+                            let mut stderr = self.files[2].lock_wait();
+                            file::print_to_fd(
+                                &mut stderr,
+                                &format!("no such file: {}\n", file_path),
+                            );
+                            self.last_exit_code = 1;
+                            break 'exe;
+                        };
+                        if file_entry.attr != fat::Attribute::Directory as _ && post_slash {
+                            let mut stderr = self.files[2].lock_wait();
+                            file::print_to_fd(&mut stderr, file_path);
+                            file::print_to_fd(&mut stderr, " is not a directory\n");
+                            self.last_exit_code = 1;
+                            break 'exe;
+                        }
+                        Arc::new(Mutex::new(FileDescriptor::new_fat(file_entry)))
+                    } else {
+                        self.files[0].clone()
                     };
-                    let (Some(file_entry), post_slash) = fat::find_file(file_path, 0) else {
-                        let mut stderr = self.files[2].lock_wait();
-                        file::print_to_fd(&mut stderr, &format!("no such file: {}\n", file_path));
-                        self.last_exit_code = 1;
-                        break 'exe;
-                    };
-                    if file_entry.attr != fat::Attribute::Directory as _ && post_slash {
-                        let mut stderr = self.files[2].lock_wait();
-                        file::print_to_fd(&mut stderr, file_path);
-                        file::print_to_fd(&mut stderr, " is not a directory\n");
-                        self.last_exit_code = 1;
-                        break 'exe;
-                    }
 
-                    let mut cluster = file_entry.first_cluster() as u64;
-                    let mut remain_bytes = file_entry.file_size;
-
+                    let mut buf = [0; 1024];
+                    let mut stored = 0;
                     self.draw_cursor(false);
-                    let bytes_per_cluster = fat::BYTES_PER_CLUSTER.get();
-                    while cluster != 0 && cluster != fat::END_OF_CLUSTER_CHAIN {
-                        let s = fat::get_sector_by_cluster::<u8>(
-                            cluster,
-                            cmp::min(bytes_per_cluster as _, remain_bytes as _),
-                        );
-                        let s = String::from_utf8_lossy(s);
+                    loop {
+                        let read_bytes = match fd.lock_wait().read(&mut buf[stored..]) {
+                            0 => break,
+                            len => len,
+                        };
+                        let s = match core::str::from_utf8(&buf[..read_bytes]) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                if e.error_len().is_some() {
+                                    file::print_to_fd(
+                                        &mut self.files[2].lock_wait(),
+                                        "\ninvalid UTF-8 sequence\n",
+                                    );
+                                    break 'exe;
+                                }
+                                unsafe { core::str::from_utf8_unchecked(&buf[..e.valid_up_to()]) }
+                            }
+                        };
+                        file::print_to_fd(&mut self.files[1].lock_wait(), s);
 
-                        let mut stdout = self.files[1].lock_wait();
-                        file::print_to_fd(&mut stdout, &s);
-                        remain_bytes -= s.len() as u32;
-                        cluster = fat::next_cluster(cluster);
+                        stored = read_bytes - s.len();
+                        if stored > 0 {
+                            unsafe { ptr::copy(buf[s.len()..].as_ptr(), buf.as_mut_ptr(), stored) };
+                        }
                     }
                     self.last_exit_code = 0;
                 }
@@ -814,7 +826,9 @@ impl Terminal {
                     log!(LogLevel::Warn, "failed to wait finish: {}", e);
                 }
             }
-            LAYER_TASK_MAP.lock_wait().insert(self.layer_id, self.task_id);
+            LAYER_TASK_MAP
+                .lock_wait()
+                .insert(self.layer_id, self.task_id);
         }
 
         // 標準出力先を戻す
