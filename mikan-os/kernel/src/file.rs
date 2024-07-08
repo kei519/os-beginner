@@ -121,7 +121,7 @@ impl FileDescriptor {
 
                         buf[0] = ascii;
                         // Safety: キーボードから入力できる文字から構成されている
-                        let buf = unsafe { core::str::from_utf8_unchecked(buf) };
+                        let buf = unsafe { core::str::from_utf8_unchecked(&buf[..1]) };
                         term.print(buf);
                         term.redraw();
                         return 1;
