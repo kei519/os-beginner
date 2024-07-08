@@ -93,6 +93,11 @@ pub fn finish(exit_code: i32) -> ! {
     unsafe { TASK_MANAGER.finish(exit_code) }
 }
 
+/// `task_id` のタスクが終了するのを待機し、終了したらその ExitCode を返す。
+pub fn wait_finish(task_id: u64) -> Result<i32> {
+    unsafe { TASK_MANAGER.wait_finish(task_id) }
+}
+
 #[no_mangle]
 pub fn get_current_task_os_stack_pointer() -> u64 {
     *unsafe { TASK_MANAGER.current_task().os_stack_ptr() }
@@ -573,6 +578,18 @@ impl TaskManager {
 
         restore_context(&self.current_task().context);
         unreachable!()
+    }
+
+    fn wait_finish(&mut self, task_id: u64) -> Result<i32> {
+        let current_task = self.current_task();
+        loop {
+            if let Some(code) = self.finish_tasks.remove(&task_id) {
+                return Ok(code);
+            }
+            self.finish_waiter.insert(current_task.id(), task_id);
+            // 今走っているタスクが登録されていないことはないので unwrap() は必ず成功
+            self.sleep(current_task.id()).unwrap();
+        }
     }
 }
 
