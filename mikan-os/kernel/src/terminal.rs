@@ -1,4 +1,5 @@
 use alloc::{
+    boxed::Box,
     collections::VecDeque,
     format,
     string::{String, ToString as _},
@@ -71,19 +72,39 @@ impl From<&mut Terminal> for TerminalRef {
     }
 }
 
+pub struct TerminalDescriptor {
+    pub args: Vec<String>,
+    pub exit_affter_command: bool,
+    pub show_window: bool,
+    pub files: [Arc<Mutex<FileDescriptor>>; 3],
+}
+
 /// 通常タスクに渡される `data`, `layer_id` だが、ターミナルは両者を必要としないので、
-/// `data` はターミナルを表示せずに実行するアプリのパス文字列の先頭へのポインタ、
-/// `layer_id` はそのパス文字列の長さとして使うことにする。
-/// `data` が `0` の場合は通常通りターミナルを表示する。
-pub fn task_terminal(task_id: u64, s_ptr: i64, s_len: u32) {
-    let show_window = s_ptr == 0;
+///
+/// `data` は `Box::into_raw()` で生成した [TerminalDescriptor] へのポインタ。
+/// `0` の場合は `None`。
+pub fn task_terminal(task_id: u64, pdesc: i64, _: u32) {
+    let desc = if pdesc == 0 {
+        None
+    } else {
+        Some(unsafe { Box::from_raw(pdesc as *mut TerminalDescriptor) })
+    };
+
+    let show_window = if let Some(ref desc) = desc {
+        desc.show_window
+    } else {
+        true
+    };
 
     asmfunc::cli();
     let task = task::current_task();
     asmfunc::sti();
-    let mut terminal = Terminal::new(task.clone(), show_window);
-    for fd in &terminal.files {
-        fd.lock_wait().set_terminal((&terminal).into());
+    let mut terminal = Terminal::new(task.clone(), desc.as_deref());
+    // desc がない場合は標準入出力の指定がないため、自身で埋める
+    if desc.is_none() {
+        for fd in &terminal.files {
+            fd.lock_wait().set_terminal((&terminal).into());
+        }
     }
     if show_window {
         let mut manager = LAYER_MANAGER.lock_wait();
@@ -94,13 +115,20 @@ pub fn task_terminal(task_id: u64, s_ptr: i64, s_len: u32) {
             .insert(terminal.layer_id, task_id);
     }
 
-    // ウィンドウを表示しないということは、外から実行パスが与えられているということ
-    if !show_window {
-        let command_line = unsafe { slice::from_raw_parts(s_ptr as *const u8, s_len as _) };
-        for &b in command_line {
-            terminal.input_key(0, 0, b);
+    if let Some(desc) = desc {
+        for arg in &desc.args {
+            for &b in arg.as_bytes() {
+                terminal.input_key(0, 0, b);
+            }
+            terminal.input_key(0, 0, b' ');
         }
         terminal.input_key(0, 0, b'\n');
+
+        if desc.exit_affter_command {
+            drop(desc);
+            asmfunc::cli();
+            task::finish(terminal.last_exit_code);
+        }
     }
 
     let add_blink_timer = |t| {
@@ -188,7 +216,32 @@ pub struct Terminal {
 }
 
 impl Terminal {
-    pub fn new(task: Arc<Task>, show_window: bool) -> Self {
+    pub fn new(task: Arc<Task>, term_desc: Option<&TerminalDescriptor>) -> Self {
+        let show_window = if let Some(desc) = term_desc {
+            desc.show_window
+        } else {
+            true
+        };
+
+        let files = if let Some(desc) = term_desc {
+            desc.files.clone()
+        } else {
+            [
+                Arc::new(Mutex::new(FileDescriptor::new_term(
+                    task.clone(),
+                    TerminalRef(0),
+                ))),
+                Arc::new(Mutex::new(FileDescriptor::new_term(
+                    task.clone(),
+                    TerminalRef(0),
+                ))),
+                Arc::new(Mutex::new(FileDescriptor::new_term(
+                    task.clone(),
+                    TerminalRef(0),
+                ))),
+            ]
+        };
+
         let (layer_id, window) = if show_window {
             let mut window = Window::new_toplevel(
                 COLUMNS as u32 * 8 + 8 + Window::MARGIN_X,
@@ -224,17 +277,7 @@ impl Terminal {
             cmd_history_index: -1,
             // TerminalRef はここでは設定できない（move が起こる）ので、
             // 戻ってから設定する
-            files: [
-                Arc::new(Mutex::new(FileDescriptor::new_term(
-                    task.clone(),
-                    TerminalRef(0),
-                ))),
-                Arc::new(Mutex::new(FileDescriptor::new_term(
-                    task.clone(),
-                    TerminalRef(0),
-                ))),
-                Arc::new(Mutex::new(FileDescriptor::new_term(task, TerminalRef(0)))),
-            ],
+            files,
             last_exit_code: 0,
         };
 
@@ -609,10 +652,17 @@ impl Terminal {
                 self.last_exit_code = 0;
             }
             "noterm" => {
-                if let Some(&command) = args.get(1) {
+                if args.len() >= 2 {
+                    let args = args[1..].iter().map(|&s| String::from(s)).collect();
+                    let desc = Box::new(TerminalDescriptor {
+                        args,
+                        exit_affter_command: true,
+                        show_window: false,
+                        files: self.files.clone(),
+                    });
                     asmfunc::cli();
                     task::new_task()
-                        .init_context(task_terminal, command.as_ptr() as _, command.len() as _)
+                        .init_context(task_terminal, Box::into_raw(desc) as _, 0)
                         .wake_up(-1);
                     asmfunc::sti();
                 }
