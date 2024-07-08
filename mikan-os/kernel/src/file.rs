@@ -41,6 +41,17 @@ impl FileDescriptor {
         }
     }
 
+    pub fn new_pipe(task: Arc<Task>) -> Self {
+        Self {
+            inner: InnerFileDescriptor::Pipe {
+                task,
+                data: [0; 16],
+                len: 0,
+                closed: false,
+            },
+        }
+    }
+
     pub fn read(&mut self, buf: &mut [u8]) -> usize {
         match self.inner {
             InnerFileDescriptor::Fat {
@@ -116,6 +127,57 @@ impl FileDescriptor {
                     }
                 }
             }
+            InnerFileDescriptor::Pipe {
+                ref task,
+                ref mut data,
+                ref mut len,
+                ref mut closed,
+            } => {
+                // パイプ内に溜まっているデータがあればそれを渡す
+                if *len > 0 {
+                    let copy_bytes = cmp::min(buf.len(), *len);
+                    buf[..copy_bytes].copy_from_slice(&data[..copy_bytes]);
+                    *len -= copy_bytes;
+                    let (dest, src) = data.split_at_mut(*len);
+                    dest.copy_from_slice(&src[..*len]);
+                    return copy_bytes;
+                }
+                // 溜まっているデータの処理を終えて closed なら終了
+                if *closed {
+                    return 0;
+                }
+
+                // パイプ内にデータは無いので、Pipe メッセージを受け取るのを待つ
+                let msg = loop {
+                    if let Some(msg) = task.receive_message() {
+                        break msg;
+                    } else {
+                        task.sleep();
+                        continue;
+                    }
+                };
+
+                if let MessageType::Pipe {
+                    data: received_data,
+                    len: received_len,
+                } = msg.ty
+                {
+                    // Pipe メッセージ長が 0 の場合はこのパイプは閉じられたので終了
+                    if received_len == 0 {
+                        *closed = true;
+                        return 0;
+                    }
+                    // それ以外の場合は、buf が保持できる分は渡し、残りは自分に溜めておいて返す
+                    let received_len = received_len as _;
+                    let copy_bytes = cmp::min(received_len, buf.len());
+                    buf[..copy_bytes].copy_from_slice(&received_data[..copy_bytes]);
+                    *len = received_len - copy_bytes;
+                    data[..*len].copy_from_slice(&received_data[copy_bytes..copy_bytes + *len]);
+                    copy_bytes
+                } else {
+                    0
+                }
+            }
         }
     }
 
@@ -169,19 +231,34 @@ impl FileDescriptor {
                 term.print(&buf);
                 Ok(buf.len())
             }
+            InnerFileDescriptor::Pipe { ref task, .. } => {
+                let mut sent_bytes = 0;
+                while sent_bytes < buf.len() {
+                    let mut data = [0; 16];
+                    let len = cmp::min(buf.len() - sent_bytes, data.len());
+                    data[..len].copy_from_slice(&buf[sent_bytes..sent_bytes + len]);
+                    let msg = MessageType::Pipe {
+                        data,
+                        len: len as _,
+                    }
+                    .into();
+                    sent_bytes += len;
+                    task.send_message(msg);
+                }
+                Ok(buf.len())
+            }
         }
     }
 
     pub fn size(&self) -> usize {
         match self.inner {
             InnerFileDescriptor::Fat { ref fat_entry, .. } => fat_entry.file_size as _,
-            InnerFileDescriptor::Terminal { .. } => 0,
+            _ => 0,
         }
     }
 
     pub fn load(&self, buf: &mut [u8], mut offset: usize) -> usize {
         match self.inner {
-            InnerFileDescriptor::Terminal { .. } => 0,
             InnerFileDescriptor::Fat { ref fat_entry, .. } => {
                 // ここで作った fat_entry は 'static ライフタイムを要求されるが、
                 // 実際はこのスコープ内で落ちる変数に渡すだけなので問題ない
@@ -209,12 +286,24 @@ impl FileDescriptor {
                 let mut fd = Self { inner };
                 fd.read(buf)
             }
+            _ => 0,
         }
     }
 
     pub fn set_terminal(&mut self, terminal: TerminalRef) {
         if let InnerFileDescriptor::Terminal { ref mut term, .. } = self.inner {
             *term = terminal;
+        }
+    }
+
+    pub fn finish_write(&self) {
+        if let InnerFileDescriptor::Pipe { ref task, .. } = self.inner {
+            let msg = MessageType::Pipe {
+                data: [0; 16],
+                len: 0,
+            }
+            .into();
+            task.send_message(msg);
         }
     }
 }
@@ -239,6 +328,12 @@ enum InnerFileDescriptor {
     Terminal {
         task: Arc<Task>,
         term: TerminalRef,
+    },
+    Pipe {
+        task: Arc<Task>,
+        data: [u8; 16],
+        len: usize,
+        closed: bool,
     },
 }
 

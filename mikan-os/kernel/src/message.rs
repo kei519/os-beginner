@@ -102,7 +102,11 @@ pub enum MessageType {
     },
     WindowActive {
         activate: bool,
-    }
+    },
+    Pipe {
+        data: [u8; 16],
+        len: u8,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
