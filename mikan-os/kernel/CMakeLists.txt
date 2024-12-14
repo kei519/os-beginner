@@ -1,8 +1,17 @@
 # CMake のバージョンを設定
 cmake_minimum_required(VERSION 3.22)
 
+# クロスコンパイル時にリンクしないように設定
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+
 # プロジェクト名と使用する言語を設定
 project(usb CXX C)
+
+# target triple の設定
+set(CMAKE_SYSTEM_NAME Generic-ELF)
+set(CMAKE_SYSTEM_PROCESSOR x86_64)
+set(CMAKE_C_COMPILER_TARGET x86_64-unknown-none)
+set(CMAKE_CXX_COMPILER_TARGET x86_64-unknown-none)
 
 add_library(usb STATIC)
 
@@ -17,8 +26,6 @@ target_compile_options(usb PRIVATE
 	-fno-exceptions
 	-fno-rtti
 	-fno-inline-functions
-	-march=x86-64
-	-mabi=elf
 )
 target_compile_features(usb PRIVATE cxx_std_17)
 
