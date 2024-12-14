@@ -16,6 +16,10 @@ fi
 
 mkdir -p $MOUNT_POINT
 
-uid=$(id -u $(whoami))
-gid=$(id -g $(whoami))
-sudo mount -o uid=${uid},gid=${gid} $DISK_IMG $MOUNT_POINT
+if [ $(uname) = "Darwin" ]; then
+	hdiutil attach -mountpoint $MOUNT_POINT $DISK_IMG
+else
+	uid=$(id -u $(whoami))
+	gid=$(id -g $(whoami))
+	sudo mount -o uid=${uid},gid=${gid} $DISK_IMG $MOUNT_POINT
+fi

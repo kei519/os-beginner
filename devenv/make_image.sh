@@ -42,4 +42,8 @@ if [ "${RESOURCE_DIR}" != "" ]; then
 fi
 
 sleep 0.5
-sudo umount $MOUNT_POINT
+if [ $(uname) = "Darwin" ]; then
+	hdiutil detach $MOUNT_POINT
+else
+	sudo umount $MOUNT_POINT
+fi
