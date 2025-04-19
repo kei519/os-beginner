@@ -275,8 +275,6 @@ switch_context_unsafe: # switch_context_unsafe(next_ctx, current_ctx)
     mov [rsi + 0x30], RCX
     mov dx, gs
     mov [rsi + 0x38], RDX
-
-    fxsave [rsi + 0xc0]
     # fall through to restore_context_unsafe
 
 .global restore_context_unsafe
@@ -289,8 +287,6 @@ restore_context_unsafe:
     push qword ptr [rdi + 0x08] # RIP
 
     # コンテキストの復帰
-    fxrstor [rdi + 0xc0]
-
     mov rax, [rdi + 0x00]
     mov cr3, rax
     mov rax, [rdi + 0x30]

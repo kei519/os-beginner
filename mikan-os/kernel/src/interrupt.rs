@@ -175,8 +175,6 @@ int_handler_lapic_timer: # int_handler_lapic_timer()
     mov rbp, rsp
 
     # スタック上に TaskContex 型の構造を構築する
-    sub rsp, 512
-    fxsave [rsp]
     push r15
     push r14
     push r13
@@ -227,7 +225,6 @@ int_handler_lapic_timer: # int_handler_lapic_timer()
     pop r13
     pop r14
     pop r15
-    fxrstor [rsp]
 
     mov rsp, rbp
     pop rbp
